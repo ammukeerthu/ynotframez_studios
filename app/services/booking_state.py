@@ -19,11 +19,14 @@ class BookingStateMachine:
 
     def handle_message(self, phone_number: str, message: str) -> str:
         text = message.strip()
+        normalized = text.lower()
         booking = self._get_or_create_active_booking(phone_number)
 
-        if text.lower() in {"restart", "start", "hi", "hello"}:
-            booking.state = BookingState.SELECT_SPACE
-            self._clear_booking_details(booking)
+        if normalized in {"restart", "start", "hi", "hello", "book"}:
+            if self._is_empty_booking(booking):
+                booking.state = BookingState.SELECT_SPACE
+            else:
+                booking = self._create_booking(phone_number)
             self.db.commit()
             return list_spaces_message()
 
@@ -49,13 +52,16 @@ class BookingStateMachine:
         stmt = (
             select(Booking)
             .where(Booking.phone_number == phone_number)
-            .where(Booking.state != BookingState.CANCELLED)
+            .where(Booking.state.notin_([BookingState.CANCELLED, BookingState.CONFIRMED]))
             .order_by(Booking.created_at.desc())
         )
         booking = self.db.scalars(stmt).first()
         if booking:
             return booking
 
+        return self._create_booking(phone_number)
+
+    def _create_booking(self, phone_number: str) -> Booking:
         booking = Booking(phone_number=phone_number, state=BookingState.SELECT_SPACE)
         self.db.add(booking)
         self.db.flush()
@@ -182,15 +188,10 @@ class BookingStateMachine:
             "A confirmation email has been sent."
         )
 
-    def _clear_booking_details(self, booking: Booking) -> None:
-        booking.space_id = None
-        booking.booking_date = None
-        booking.start_time = None
-        booking.duration_hours = None
-        booking.customer_name = None
-        booking.customer_email = None
-        booking.purpose = None
-        booking.terms_accepted = None
-        booking.payment_mode = None
-        booking.payment_link = None
-        booking.calendar_event_id = None
+    def _is_empty_booking(self, booking: Booking) -> bool:
+        return (
+            booking.state == BookingState.SELECT_SPACE
+            and booking.space_id is None
+            and booking.booking_date is None
+            and booking.customer_name is None
+        )
