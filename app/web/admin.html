@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex,nofollow">
+  <title>Studio Dashboard | YNotFramez Studios</title>
+  <link rel="stylesheet" href="/static/admin.css">
+  <script src="/static/admin.js" defer></script>
+</head>
+<body>
+  <section id="login-view" class="login-view" hidden>
+    <div class="login-visual">
+      <div class="login-shade"></div>
+      <a href="/" class="admin-brand inverse"><b>YNotFramez</b><small>STUDIOS</small></a>
+      <div><p>PRIVATE STUDIO CONSOLE</p><h1>Your studio,<br><em>at a glance.</em></h1></div>
+    </div>
+    <div class="login-panel">
+      <form id="admin-login-form">
+        <p class="eyebrow">SECURE ACCESS</p><h2>Welcome back.</h2><p class="form-copy">Sign in to view studio bookings and activity.</p>
+        <label><span>Username</span><input name="username" autocomplete="username" value="admin" required></label>
+        <label><span>Password</span><input name="password" type="password" autocomplete="current-password" required></label>
+        <div id="login-message" class="form-message" role="alert" hidden></div>
+        <button id="login-button" type="submit">Sign in <span>→</span></button>
+        <small>Your password is stored as a salted hash in the local SQLite database.</small>
+      </form>
+      <form id="admin-setup-form" hidden>
+        <p class="eyebrow">FIRST-RUN SETUP</p><h2>Create the owner account.</h2><p class="form-copy">Choose the credentials you’ll use to manage studio bookings. This setup is available only once.</p>
+        <label><span>Owner username</span><input name="username" autocomplete="username" value="admin" minlength="3" pattern="[A-Za-z0-9_.-]+" required></label>
+        <label><span>Password</span><input name="password" type="password" autocomplete="new-password" minlength="10" required></label>
+        <label><span>Confirm password</span><input name="confirm_password" type="password" autocomplete="new-password" minlength="10" required></label>
+        <div id="setup-message" class="form-message" role="alert" hidden></div>
+        <button id="setup-button" type="submit">Create owner account <span>→</span></button>
+        <small>No default password is created. Store your chosen password securely.</small>
+      </form>
+    </div>
+  </section>
+
+  <div id="dashboard-view" class="admin-shell" hidden>
+    <aside>
+      <a href="/" class="admin-brand"><b>YNotFramez</b><small>STUDIO DASHBOARD</small></a>
+      <nav><a class="active" href="#overview"><span>01</span>Overview</a><a href="#bookings"><span>02</span>Bookings</a><a href="#availability"><span>03</span>Availability</a><a href="#settings"><span>04</span>Studio settings</a></nav>
+      <div class="admin-user"><p>Signed in as</p><b id="admin-username">admin</b><button id="change-password-button">Change password</button><button id="logout-button">Sign out</button></div>
+    </aside>
+    <main>
+      <header><div><p class="eyebrow">OWNER DASHBOARD</p><h1>Studio overview</h1></div><div class="today"><span></span><p>Live data<small id="current-date"></small></p></div></header>
+
+      <div id="dashboard-message" class="dashboard-message" hidden></div>
+
+      <section id="overview" class="stats" aria-label="Booking overview">
+        <article><p>BOOKINGS TODAY</p><strong id="stat-today">—</strong><small>Confirmed sessions</small></article>
+        <article><p>UPCOMING</p><strong id="stat-upcoming">—</strong><small>Confirmed bookings</small></article>
+        <article><p>ALL CONFIRMED</p><strong id="stat-confirmed">—</strong><small>Lifetime bookings</small></article>
+        <article class="dark"><p>ESTIMATED VALUE</p><strong id="stat-value">—</strong><small>At current studio rates</small></article>
+        <article><p>COLLECTED</p><strong id="stat-collected">—</strong><small>Paid bookings</small></article>
+        <article><p>OUTSTANDING</p><strong id="stat-outstanding">—</strong><small>Pending collection</small></article>
+        <article><p>REFUNDS DUE</p><strong id="stat-refunds">—</strong><small>Cancelled paid bookings</small></article>
+      </section>
+
+      <section id="bookings" class="bookings-section">
+        <div class="section-heading"><div><p class="eyebrow">BOOKING DIRECTORY</p><h2>Bookings by studio</h2></div><p>Select a studio space to view its bookings.</p></div>
+        <form id="booking-filters" class="filters">
+          <label><span>STUDIO SPACE</span><select name="space_id"><option value="standard_small">Standard Small Space</option><option value="premium_large">Premium Large Space</option></select></label>
+          <label><span>SEARCH</span><input name="q" placeholder="Name, email, or phone"></label>
+          <label><span>STATUS</span><select name="status"><option value="">All statuses</option><option value="confirmed">Confirmed</option><option value="payment_pending">Payment pending</option><option value="cancelled">Cancelled</option></select></label>
+          <label><span>FROM DATE</span><input name="date_from" type="date"></label>
+          <label><span>TO DATE</span><input name="date_to" type="date"></label>
+          <div class="filter-actions"><button type="submit">Apply</button><a id="booking-export" href="/api/admin/bookings/export.csv">Export CSV</a></div>
+        </form>
+        <div class="table-wrap">
+          <table><thead><tr><th>Reference</th><th>Customer</th><th>Studio</th><th>Date & time</th><th>Value</th><th>Payment</th><th>Status</th><th>Actions</th></tr></thead><tbody id="bookings-body"><tr><td colspan="8" class="empty">Loading bookings…</td></tr></tbody></table>
+        </div>
+        <p id="booking-count" class="booking-count"></p>
+      </section>
+
+      <section id="availability" class="availability-section">
+        <div class="section-heading"><div><p class="eyebrow">STUDIO CALENDAR</p><h2>Availability control</h2></div><p>Block private use, maintenance, or time off.</p></div>
+        <form id="availability-filters" class="availability-toolbar">
+          <label><span>STUDIO SPACE</span><select name="space_id"><option value="standard_small">Standard Small Space</option><option value="premium_large">Premium Large Space</option></select></label>
+          <label><span>DATE</span><input name="booking_date" type="date" required></label>
+          <button type="submit">View schedule</button>
+        </form>
+        <div id="availability-message" class="dashboard-message" hidden></div>
+        <div class="availability-layout">
+          <div class="schedule-card">
+            <div class="schedule-head"><div><p id="schedule-space">Standard Small Space</p><h3 id="schedule-date">Choose a date</h3></div><div class="schedule-legend"><span><i class="available"></i>Available</span><span><i class="booked"></i>Booked</span><span><i class="blocked"></i>Blocked</span></div></div>
+            <div class="admin-slot-heading"><span>AVAILABLE TIMES</span><small>Click an available time to block it, or a blocked time to reopen it.</small></div>
+            <div id="availability-slots" class="availability-slots"><p class="availability-empty">Loading schedule…</p></div>
+          </div>
+          <form id="availability-block-form" class="block-card">
+            <p class="eyebrow">CLOSE A TIME WINDOW</p><h3>Block studio time</h3><p>Customers will immediately see this period as unavailable.</p>
+            <label><span>START TIME</span><select name="start_time" required></select></label>
+            <label><span>DURATION</span><select name="duration_hours" required></select></label>
+            <label><span>REASON</span><input name="reason" maxlength="240" placeholder="Maintenance, private use…"></label>
+            <button id="block-time-button" type="submit">Block selected time <span>→</span></button>
+          </form>
+        </div>
+      </section>
+
+      <section id="settings" class="settings-section">
+        <div class="section-heading"><div><p class="eyebrow">STUDIO CATALOGUE</p><h2>Studio settings</h2></div><p>Changes apply immediately to new bookings and public studio pages.</p></div>
+        <div id="studio-settings-message" class="dashboard-message" hidden></div>
+        <div id="studio-settings-list" class="studio-settings-list"><p class="settings-empty">Loading studio settings…</p></div>
+      </section>
+    </main>
+  </div>
+
+  <div id="booking-modal" class="password-modal booking-modal" hidden>
+    <form id="booking-edit-form">
+      <button class="booking-modal-close" type="button" aria-label="Close">×</button>
+      <p class="eyebrow">MANAGE BOOKING</p><h2 id="booking-modal-reference">Booking details</h2>
+      <input name="booking_id" type="hidden">
+      <div class="edit-grid">
+        <label><span>STUDIO SPACE</span><select name="space_id" required><option value="standard_small">Standard Small Space</option><option value="premium_large">Premium Large Space</option></select></label>
+        <label><span>DATE</span><input name="booking_date" type="date" required></label>
+        <label><span>START TIME</span><select name="start_time" required></select></label>
+        <label><span>DURATION</span><select name="duration_hours" required></select></label>
+        <label><span>CUSTOMER NAME</span><input name="customer_name" maxlength="120" required></label>
+        <label><span>EMAIL</span><input name="customer_email" type="email" maxlength="255" required></label>
+        <label><span>PHONE</span><input name="phone_number" maxlength="32" required></label>
+        <label class="full"><span>PURPOSE</span><textarea name="purpose" maxlength="1000" required></textarea></label>
+      </div>
+      <div class="payment-control">
+        <div><p>PAYMENT</p><strong id="booking-payment-status">Pending</strong><small id="booking-payment-summary"></small></div>
+        <label><span>PAYMENT / REFUND REFERENCE</span><input id="payment-reference" maxlength="180" placeholder="Cash, UPI reference, Razorpay ID…"></label>
+        <button id="payment-action-button" type="button" hidden>Mark paid</button>
+      </div>
+      <div id="booking-edit-message" class="form-message" role="alert" hidden></div>
+      <div class="booking-modal-actions"><button id="cancel-booking-button" class="cancel-booking" type="button">Cancel booking</button><button id="save-booking-button" class="save-password" type="submit">Save changes <span>→</span></button></div>
+    </form>
+  </div>
+
+  <div id="password-modal" class="password-modal" hidden>
+    <form id="change-password-form">
+      <button class="password-modal-close" type="button" aria-label="Close">×</button>
+      <p class="eyebrow">ACCOUNT SECURITY</p><h2>Change password</h2>
+      <label><span>Current password</span><input name="current_password" type="password" autocomplete="current-password" required></label>
+      <label><span>New password</span><input name="new_password" type="password" autocomplete="new-password" minlength="10" required></label>
+      <label><span>Confirm new password</span><input name="confirm_password" type="password" autocomplete="new-password" minlength="10" required></label>
+      <div id="password-message" class="form-message" role="alert" hidden></div>
+      <button id="save-password-button" class="save-password" type="submit">Update password <span>→</span></button>
+    </form>
+  </div>
+</body>
+</html>

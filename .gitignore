@@ -5,4 +5,5 @@ __pycache__/
 *.py[cod]
 .venv/
 .pytest_cache/
-# google-service-account.json
+google-service-account.json
+.admin_session_secret

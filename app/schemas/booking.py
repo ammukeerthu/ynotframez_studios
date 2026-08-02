@@ -1,13 +1,132 @@
-from pydantic import BaseModel, EmailStr
+from datetime import date, time
+
+from pydantic import BaseModel, EmailStr, Field, field_validator
 
 
 class BookingDetails(BaseModel):
     space_id: str
     booking_date: str
     start_time: str
-    duration_hours: int
+    duration_hours: float
     customer_name: str
     customer_email: EmailStr
     purpose: str
     payment_mode: str
+
+
+class SpaceResponse(BaseModel):
+    id: str
+    slug: str
+    name: str
+    short_description: str
+    brochure: str
+    rules: str
+    hourly_rate: int
+    capacity: int
+    dimensions: str
+    equipment: tuple[str, ...]
+    amenities: tuple[str, ...]
+    cover_image: str
+    opening_time: str
+    closing_time: str
+    min_duration_hours: float
+    max_duration_hours: float
+    booking_purposes: tuple[str, ...]
+
+
+class AvailabilityRequest(BaseModel):
+    space_id: str
+    booking_date: date
+    start_time: time
+    duration_hours: float = Field(ge=0.5, le=12, multiple_of=0.5)
+
+    @field_validator("start_time")
+    @classmethod
+    def require_half_hour_start(cls, value: time) -> time:
+        if value.minute not in {0, 30} or value.second or value.microsecond:
+            raise ValueError("Start time must be on the hour or half hour.")
+        return value
+
+
+class AvailabilityResponse(BaseModel):
+    available: bool
+    message: str
+
+
+class AvailabilitySlot(BaseModel):
+    start_time: str
+    end_time: str
+    status: str
+
+
+class DayAvailabilityResponse(BaseModel):
+    space_id: str
+    booking_date: str
+    opening_time: str
+    closing_time: str
+    slots: list[AvailabilitySlot]
+
+
+class WebBookingCreate(AvailabilityRequest):
+    customer_name: str = Field(min_length=2, max_length=120)
+    customer_email: EmailStr
+    phone_number: str = Field(min_length=7, max_length=32)
+    purpose: str = Field(min_length=3, max_length=1000)
+    terms_accepted: bool
+    payment_mode: str
+
+    @field_validator("payment_mode")
+    @classmethod
+    def validate_payment_mode(cls, value: str) -> str:
+        normalized = value.strip().lower()
+        if normalized not in {"pay_now", "pay_at_studio"}:
+            raise ValueError("Payment mode must be pay_now or pay_at_studio")
+        return normalized
+
+
+class BookingResponse(BaseModel):
+    id: int
+    reference: str
+    status: str
+    space_name: str
+    booking_date: str
+    start_time: str
+    end_time: str
+    duration_hours: float
+    total_amount: int
+    customer_name: str
+    customer_email: EmailStr
+    payment_mode: str
+    payment_link: str | None = None
+    calendar_event_id: str
+
+
+class BookingLookupRequest(BaseModel):
+    reference: str = Field(min_length=10, max_length=32)
+    customer_email: EmailStr
+
+    @field_validator("reference")
+    @classmethod
+    def validate_reference(cls, value: str) -> str:
+        normalized = value.strip().upper()
+        numeric_id = normalized.removeprefix("YNF-")
+        if not normalized.startswith("YNF-") or len(numeric_id) < 6 or not numeric_id.isdigit():
+            raise ValueError("Enter a valid booking reference such as YNF-000123.")
+        return normalized
+
+
+class CustomerBookingStatusResponse(BaseModel):
+    reference: str
+    booking_status: str
+    payment_status: str
+    space_name: str
+    booking_date: str
+    start_time: str
+    end_time: str
+    duration_hours: float
+    total_amount: int
+    customer_name: str
+    customer_email: EmailStr
+    payment_mode: str
+    payment_link: str | None = None
 

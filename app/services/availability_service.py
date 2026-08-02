@@ -1,0 +1,71 @@
+from datetime import date, datetime, time, timedelta
+
+from sqlalchemy import select
+from sqlalchemy.orm import Session
+
+from app.models.availability import AvailabilityBlock
+from app.models.booking import Booking, BookingState
+
+
+def interval_for(booking_date: date, start_time: time, duration_hours: float) -> tuple[datetime, datetime]:
+    start = datetime.combine(booking_date, start_time)
+    return start, start + timedelta(hours=duration_hours)
+
+
+def intervals_overlap(
+    requested_start: datetime,
+    requested_end: datetime,
+    existing_start: datetime,
+    existing_end: datetime,
+) -> bool:
+    return requested_start < existing_end and existing_start < requested_end
+
+
+def overlapping_block(
+    db: Session,
+    space_id: str,
+    booking_date: date,
+    requested_start: datetime,
+    requested_end: datetime,
+) -> AvailabilityBlock | None:
+    statement = select(AvailabilityBlock).where(
+        AvailabilityBlock.space_id == space_id,
+        AvailabilityBlock.booking_date == booking_date.isoformat(),
+    )
+    for block in db.scalars(statement):
+        block_start, block_end = interval_for(
+            date.fromisoformat(block.booking_date),
+            time.fromisoformat(block.start_time),
+            block.duration_hours,
+        )
+        if intervals_overlap(requested_start, requested_end, block_start, block_end):
+            return block
+    return None
+
+
+def overlapping_booking(
+    db: Session,
+    space_id: str,
+    booking_date: date,
+    requested_start: datetime,
+    requested_end: datetime,
+    exclude_booking_id: int | None = None,
+) -> Booking | None:
+    statement = select(Booking).where(
+        Booking.space_id == space_id,
+        Booking.booking_date == booking_date.isoformat(),
+        Booking.state == BookingState.CONFIRMED,
+    )
+    for booking in db.scalars(statement):
+        if booking.id == exclude_booking_id:
+            continue
+        if not booking.start_time or not booking.duration_hours:
+            continue
+        booking_start, booking_end = interval_for(
+            booking_date,
+            time.fromisoformat(booking.start_time),
+            booking.duration_hours,
+        )
+        if intervals_overlap(requested_start, requested_end, booking_start, booking_end):
+            return booking
+    return None

@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Explore a YNotFramez Studios photography space and book it by the hour.">
+  <title>Studio | YNotFramez Studios</title>
+  <link rel="stylesheet" href="/static/marketing.css">
+  <script src="/static/studio.js" defer></script>
+</head>
+<body>
+  <header class="nav-shell">
+    <a class="wordmark" href="/"><b>YNotFramez</b><small>STUDIOS</small></a>
+    <nav aria-label="Main navigation">
+      <a href="/#studios">Studios</a><a href="/#process">How it works</a><a href="/my-booking">Find booking</a><a href="/#faq">FAQs</a>
+      <a id="nav-book-space" class="nav-cta" href="/book">Book this studio <span>→</span></a>
+    </nav>
+  </header>
+
+  <main id="studio-detail" class="studio-detail" aria-live="polite">
+    <section class="detail-hero">
+      <img id="detail-image" alt="">
+      <div class="detail-shade"></div>
+      <div class="detail-title"><p class="overline light">YNotFramez · Space</p><h1 id="detail-name">Loading studio…</h1><p id="detail-short"></p></div>
+      <a href="/#studios" class="back-link">← All studios</a>
+    </section>
+
+    <section class="detail-intro section-pad">
+      <div><p class="overline">THE SPACE</p><h2 id="detail-statement"></h2></div>
+      <div class="detail-copy"><p id="detail-description"></p><dl><div><dt>Capacity</dt><dd id="detail-capacity"></dd></div><div><dt>Dimensions</dt><dd id="detail-dimensions"></dd></div><div><dt>Hourly rate</dt><dd id="detail-rate"></dd></div><div><dt>Minimum</dt><dd>30 minutes</dd></div></dl></div>
+    </section>
+
+    <section class="equipment-section section-pad">
+      <div><p class="overline">INCLUDED WITH YOUR BOOKING</p><h2>Ready when<br>you arrive.</h2></div>
+      <ul id="detail-amenities" class="equipment-list"></ul>
+    </section>
+
+    <section class="rules-section section-pad">
+      <div class="rules-heading"><p class="overline">BEFORE YOU BOOK</p><h2>Simple rules.<br>Better shoots.</h2><p>These guidelines keep the studios safe, professional, and ready for every creator.</p></div>
+      <ol id="detail-rules"></ol>
+    </section>
+
+    <section class="detail-booking-cta">
+      <div><p class="overline light">YOUR SPACE IS WAITING</p><h2 id="detail-cta-title">Ready to create?</h2></div>
+      <div><p id="detail-cta-price"></p><a id="detail-book-link" class="button light-button" href="/book">Check dates & hours <span>→</span></a></div>
+    </section>
+  </main>
+
+  <section id="studio-error" class="studio-error" hidden><p class="overline">STUDIO NOT FOUND</p><h1>We couldn’t find that space.</h1><a href="/#studios">Return to all studios</a></section>
+
+  <footer><div class="wordmark inverse"><b>YNotFramez</b><small>STUDIOS</small></div><p>Premium hourly studios for creators, brands, and storytellers.</p><div><a href="/#studios">Studios</a><a href="/book">Book now</a><a href="/docs">API</a></div><small>© <span id="year"></span> YNotFramez Studios</small></footer>
+</body>
+</html>

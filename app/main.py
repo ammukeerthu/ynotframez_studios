@@ -1,13 +1,63 @@
-from fastapi import FastAPI
+from pathlib import Path
 
+from fastapi import FastAPI
+from fastapi.responses import FileResponse, RedirectResponse
+from fastapi.staticfiles import StaticFiles
+
+from app.api.routes.admin import router as admin_router
+from app.api.routes.bookings import router as bookings_router
 from app.api.routes.whatsapp import router as whatsapp_router
 from app.core.config import settings
-from app.core.database import Base, engine
+from app.core.database import Base, SessionLocal, engine
+from app.services.spaces import seed_studio_settings
 
 Base.metadata.create_all(bind=engine)
+with SessionLocal() as seed_session:
+    seed_studio_settings(seed_session)
 
 app = FastAPI(title=settings.app_name)
+app.include_router(admin_router)
+app.include_router(bookings_router)
 app.include_router(whatsapp_router)
+
+web_directory = Path(__file__).parent / "web"
+static_directory = Path(__file__).parent / "static"
+app.mount("/static", StaticFiles(directory=static_directory), name="static")
+
+
+@app.get("/", include_in_schema=False)
+def home_page() -> FileResponse:
+    return FileResponse(web_directory / "home.html")
+
+
+@app.get("/studios", include_in_schema=False)
+def studios_page() -> FileResponse:
+    return FileResponse(web_directory / "home.html")
+
+
+@app.get("/studios/{slug}", include_in_schema=False)
+def studio_detail_page(slug: str) -> FileResponse:
+    return FileResponse(web_directory / "studio.html")
+
+
+@app.get("/book", include_in_schema=False)
+def booking_page() -> FileResponse:
+    return FileResponse(web_directory / "index.html")
+
+
+@app.get("/admin", include_in_schema=False)
+def admin_page() -> RedirectResponse:
+    return RedirectResponse(url="/dashboard")
+
+
+@app.get("/my-booking", include_in_schema=False)
+def my_booking_page() -> FileResponse:
+    return FileResponse(web_directory / "my_booking.html")
+
+
+@app.get("/dashboard", include_in_schema=False)
+def dashboard_page() -> FileResponse:
+    return FileResponse(web_directory / "admin.html")
 
 
 @app.get("/health")

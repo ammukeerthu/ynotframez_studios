@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Book a photography studio at YNotFramez Studios.">
+  <title>Book a Studio | YNotFramez Studios</title>
+  <link rel="stylesheet" href="/static/styles.css">
+  <script src="/static/app.js" defer></script>
+</head>
+<body>
+  <header class="site-header">
+    <a class="brand" href="/" aria-label="YNotFramez Studios home">
+      <span class="brand-mark">Y</span>
+      <span>YNotFramez<small>STUDIOS</small></span>
+    </a>
+    <a class="header-note header-link" href="/#studios">Explore studios</a>
+  </header>
+
+  <main class="booking-shell">
+    <aside class="intro-panel">
+      <p class="eyebrow">STUDIO BOOKING</p>
+      <h1>Make room for<br><em>your idea.</em></h1>
+      <p class="intro-copy">Two thoughtfully equipped spaces for portraits, products, campaigns, and motion.</p>
+
+      <ol class="progress" aria-label="Booking progress">
+        <li class="active" data-progress="1"><span>01</span><div><b>Choose a space</b><small>Find your setting</small></div></li>
+        <li data-progress="2"><span>02</span><div><b>Pick a slot</b><small>Date and duration</small></div></li>
+        <li data-progress="3"><span>03</span><div><b>Your details</b><small>Tell us about the shoot</small></div></li>
+        <li data-progress="4"><span>04</span><div><b>Confirm</b><small>Review and reserve</small></div></li>
+      </ol>
+
+      <div class="trust-note">
+        <span class="trust-icon">✓</span>
+        <p><b>Instant reservation</b><br>Availability is checked before you confirm.</p>
+      </div>
+      <div id="live-summary" class="live-summary">
+        <p>YOUR SELECTION</p>
+        <dl><div><dt>Studio</dt><dd data-summary="space">Not selected</dd></div><div><dt>Date</dt><dd data-summary="date">—</dd></div><div><dt>Time</dt><dd data-summary="time">—</dd></div><div><dt>Estimate</dt><dd data-summary="price">₹0</dd></div></dl>
+      </div>
+    </aside>
+
+    <section class="form-panel">
+      <div id="global-message" class="message" role="status" aria-live="polite" hidden></div>
+
+      <form id="booking-form" novalidate>
+        <section class="form-step active" data-step="1">
+          <div class="step-heading">
+            <div><p class="step-kicker">STEP 1 OF 4</p><h2>Choose your canvas</h2></div>
+            <p>Rates shown are per hour</p>
+          </div>
+          <div id="space-list" class="space-grid" aria-live="polite">
+            <div class="space-skeleton"></div><div class="space-skeleton"></div>
+          </div>
+          <div id="space-rules" class="rules-card" hidden>
+            <span>PLEASE NOTE</span><p></p>
+          </div>
+          <div class="form-actions end"><button class="button primary" type="button" data-next>Choose date <span>→</span></button></div>
+        </section>
+
+        <section class="form-step" data-step="2" hidden>
+          <div class="step-heading">
+            <div><p class="step-kicker">STEP 2 OF 4</p><h2>When are you creating?</h2></div>
+            <p>Studio hours: 9 AM–8 PM</p>
+          </div>
+          <label class="field date-field"><span>Date</span><input id="booking-date" name="booking_date" type="date" required></label>
+          <input id="start-time" name="start_time" type="hidden">
+          <input id="duration" name="duration_hours" type="hidden">
+          <div class="slot-heading"><span>AVAILABLE TIMES</span><small id="operating-hours">Choose a date to load studio times</small></div>
+          <div id="slot-grid" class="slot-grid"><p>Choose your date, then select one or more consecutive 30-minute slots.</p></div>
+          <div class="slot-legend"><span><i class="available"></i>Available</span><span><i class="selected"></i>Selected</span><span><i class="unavailable"></i>Booked / unavailable</span></div>
+          <div class="price-strip"><div><small>ESTIMATED TOTAL</small><strong id="estimated-total">₹0</strong></div><p id="slot-note">Select a date and time to check availability.</p></div>
+          <div class="form-actions"><button class="button secondary" type="button" data-back>← Back</button><button class="button primary" type="button" data-next>Check availability <span>→</span></button></div>
+        </section>
+
+        <section class="form-step" data-step="3" hidden>
+          <div class="step-heading">
+            <div><p class="step-kicker">STEP 3 OF 4</p><h2>Tell us about the shoot</h2></div>
+            <p>We’ll send confirmation here</p>
+          </div>
+          <div class="field-grid two-columns">
+            <label class="field"><span>Full name</span><input name="customer_name" type="text" autocomplete="name" placeholder="Your full name" minlength="2" required></label>
+            <label class="field"><span>Phone number</span><input name="phone_number" type="tel" autocomplete="tel" placeholder="+91 98765 43210" minlength="7" required></label>
+            <label class="field full"><span>Email address</span><input name="customer_email" type="email" autocomplete="email" placeholder="you@example.com" required></label>
+            <label class="field full"><span>Purpose</span><select name="purpose" required><option value="">Choose a purpose</option></select></label>
+          </div>
+          <label class="terms"><input name="terms_accepted" type="checkbox" required><span>I’ve read and accept the selected studio’s rules and understand that overtime is subject to availability.</span></label>
+          <div class="form-actions"><button class="button secondary" type="button" data-back>← Back</button><button class="button primary" type="button" data-next>Review booking <span>→</span></button></div>
+        </section>
+
+        <section class="form-step" data-step="4" hidden>
+          <div class="step-heading">
+            <div><p class="step-kicker">STEP 4 OF 4</p><h2>Review and reserve</h2></div>
+            <p>Almost yours</p>
+          </div>
+          <div id="booking-summary" class="summary-card"></div>
+          <fieldset class="payment-options">
+            <legend>How would you like to pay?</legend>
+            <label><input type="radio" name="payment_mode" value="pay_now" checked><span><b>Pay now</b><small>Receive a secure Razorpay payment link</small></span><em>→</em></label>
+            <label><input type="radio" name="payment_mode" value="pay_at_studio"><span><b>Pay at the studio</b><small>Settle when you arrive</small></span><em>→</em></label>
+          </fieldset>
+          <div class="form-actions"><button class="button secondary" type="button" data-back>← Back</button><button id="submit-booking" class="button primary" type="submit">Confirm booking <span>→</span></button></div>
+        </section>
+      </form>
+
+      <section id="confirmation" class="confirmation" hidden aria-live="polite">
+        <div class="success-mark">✓</div>
+        <p class="step-kicker">BOOKING CONFIRMED</p>
+        <h2>Your studio is ready.</h2>
+        <p id="confirmation-copy"></p>
+        <div id="confirmation-details" class="confirmation-details"></div>
+        <a id="payment-link" class="button primary" href="#" target="_blank" rel="noopener" hidden>Open payment link <span>→</span></a>
+        <a id="calendar-link" class="button secondary" href="#" download>Add to calendar</a>
+        <a id="whatsapp-share" class="button secondary" href="#" target="_blank" rel="noopener">Share via WhatsApp</a>
+        <button id="print-booking" class="button secondary" type="button">Print confirmation</button>
+        <a id="retrieve-booking" class="button secondary" href="/my-booking">View booking later</a>
+        <div class="arrival-note"><b>Arrival note</b><p>Please arrive 10 minutes before your start time. The studio should be cleared by the booking end time so the next creator can begin promptly.</p></div>
+        <button id="new-booking" class="button secondary" type="button">Make another booking</button>
+      </section>
+    </section>
+  </main>
+
+  <footer><span>YNotFramez Studios</span><span><a href="/my-booking">Find an existing booking</a> · Questions? Contact the studio team</span></footer>
+</body>
+</html>

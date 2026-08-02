@@ -1,9 +1,11 @@
 from datetime import date, datetime, time, timedelta
 from pathlib import Path
+from uuid import uuid4
 from zoneinfo import ZoneInfo
 
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
+from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.models.booking import Booking
@@ -33,19 +35,38 @@ class GoogleCalendarService:
         "available for booking",
     )
 
-    def __init__(self) -> None:
+    def __init__(self, db: Session | None = None) -> None:
+        self.db = db
         self.calendar_id = settings.google_calendar_id
         self.timezone = ZoneInfo(settings.studio_timezone)
-        self.service = self._build_service()
+        self.mode = settings.calendar_mode.strip().lower()
+        if self.mode not in {"stub", "google"}:
+            raise RuntimeError("CALENDAR_MODE must be either 'stub' or 'google'.")
+        self.service = self._build_service() if self.mode == "google" else None
 
-    def is_available(self, booking: Booking) -> bool:
+    def is_available(self, booking: Booking, ignore_event_id: str | None = None) -> bool:
         if not booking.booking_date or not booking.start_time or not booking.duration_hours:
             return False
 
         start = self._start_datetime(booking)
         end = start + timedelta(hours=booking.duration_hours)
 
-        events = self._list_events(start, end)
+        space = get_space_by_id(booking.space_id, self.db, include_inactive=True)
+        opening = time.fromisoformat(space.opening_time) if space else time(settings.studio_opening_hour)
+        closing = time.fromisoformat(space.closing_time) if space else time(settings.studio_closing_hour)
+        business_start = datetime.combine(start.date(), opening, tzinfo=self.timezone)
+        business_end = datetime.combine(start.date(), closing, tzinfo=self.timezone)
+        if start < business_start or end > business_end:
+            return False
+
+        if self.mode == "stub":
+            return True
+
+        events = [
+            event
+            for event in self._list_events(start, end)
+            if not ignore_event_id or event.get("id") != ignore_event_id
+        ]
         if not self._is_within_business_hours(start, end, events):
             return False
 
@@ -55,11 +76,78 @@ class GoogleCalendarService:
         if not booking.booking_date or not booking.start_time or not booking.duration_hours:
             raise ValueError("Booking must have date, start time, and duration before creating a calendar event.")
 
-        space = get_space_by_id(booking.space_id)
+        space = get_space_by_id(booking.space_id, self.db, include_inactive=True)
         space_name = space.name if space else "Studio Space"
         start = self._start_datetime(booking)
         end = start + timedelta(hours=booking.duration_hours)
-        event = {
+
+        if self.mode == "stub":
+            event_id = f"gcal_stub_{uuid4().hex[:12]}"
+            print(
+                "Google Calendar stub event created:",
+                {
+                    "event_id": event_id,
+                    "space": space_name,
+                    "date": booking.booking_date,
+                    "start_time": booking.start_time,
+                    "duration_hours": booking.duration_hours,
+                },
+            )
+            return event_id
+
+        event = self._event_body(booking, space_name, start, end)
+
+        created_event = (
+            self.service.events()
+            .insert(calendarId=self.calendar_id, body=event)
+            .execute()
+        )
+        return created_event["id"]
+
+    def update_event(self, booking: Booking) -> str:
+        if not booking.booking_date or not booking.start_time or not booking.duration_hours:
+            raise ValueError("Booking must have a complete schedule before updating its calendar event.")
+
+        space = get_space_by_id(booking.space_id, self.db, include_inactive=True)
+        space_name = space.name if space else "Studio Space"
+        start = self._start_datetime(booking)
+        end = start + timedelta(hours=booking.duration_hours)
+        if self.mode == "stub":
+            event_id = booking.calendar_event_id or f"gcal_stub_{uuid4().hex[:12]}"
+            print(
+                "Google Calendar stub event updated:",
+                {"event_id": event_id, "date": booking.booking_date, "start_time": booking.start_time},
+            )
+            return event_id
+
+        body = self._event_body(booking, space_name, start, end)
+        if booking.calendar_event_id:
+            updated = (
+                self.service.events()
+                .update(calendarId=self.calendar_id, eventId=booking.calendar_event_id, body=body)
+                .execute()
+            )
+            return updated["id"]
+
+        created = self.service.events().insert(calendarId=self.calendar_id, body=body).execute()
+        return created["id"]
+
+    def delete_event(self, event_id: str | None) -> None:
+        if not event_id:
+            return
+        if self.mode == "stub":
+            print("Google Calendar stub event deleted:", {"event_id": event_id})
+            return
+        self.service.events().delete(calendarId=self.calendar_id, eventId=event_id).execute()
+
+    def _event_body(
+        self,
+        booking: Booking,
+        space_name: str,
+        start: datetime,
+        end: datetime,
+    ) -> dict:
+        return {
             "summary": f"{space_name} booking - {booking.customer_name}",
             "description": (
                 f"Customer: {booking.customer_name}\n"
@@ -78,18 +166,13 @@ class GoogleCalendarService:
             },
         }
 
-        created_event = (
-            self.service.events()
-            .insert(calendarId=self.calendar_id, body=event)
-            .execute()
-        )
-        return created_event["id"]
-
     def _start_datetime(self, booking: Booking) -> datetime:
         naive_start = datetime.strptime(f"{booking.booking_date} {booking.start_time}", "%Y-%m-%d %H:%M")
         return naive_start.replace(tzinfo=self.timezone)
 
     def _list_events(self, start: datetime, end: datetime) -> list[dict]:
+        if self.service is None:
+            return []
         response = (
             self.service.events()
             .list(
@@ -115,7 +198,7 @@ class GoogleCalendarService:
         if event_space_id:
             return event_space_id == requested_space_id
 
-        space = get_space_by_id(requested_space_id)
+        space = get_space_by_id(requested_space_id, self.db, include_inactive=True)
         event_text = f"{event.get('summary', '')}\n{event.get('description', '')}".lower()
         if space and (space.id.lower() in event_text or space.name.lower() in event_text):
             return True

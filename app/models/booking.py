@@ -1,10 +1,15 @@
-from datetime import datetime
+from datetime import UTC, datetime
 from enum import StrEnum
 
-from sqlalchemy import DateTime, Enum, Integer, String, Text
+from sqlalchemy import DateTime, Enum, Float, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.database import Base
+
+
+def utc_now() -> datetime:
+    """Return naive UTC for compatibility with the existing SQLite columns."""
+    return datetime.now(UTC).replace(tzinfo=None)
 
 
 class BookingState(StrEnum):
@@ -36,7 +41,7 @@ class Booking(Base):
     space_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
     booking_date: Mapped[str | None] = mapped_column(String(16), nullable=True)
     start_time: Mapped[str | None] = mapped_column(String(8), nullable=True)
-    duration_hours: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    duration_hours: Mapped[float | None] = mapped_column(Float, nullable=True)
     customer_name: Mapped[str | None] = mapped_column(String(120), nullable=True)
     customer_email: Mapped[str | None] = mapped_column(String(255), nullable=True)
     purpose: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -44,6 +49,6 @@ class Booking(Base):
     payment_mode: Mapped[PaymentMode | None] = mapped_column(Enum(PaymentMode), nullable=True)
     payment_link: Mapped[str | None] = mapped_column(String(500), nullable=True)
     calendar_event_id: Mapped[str | None] = mapped_column(String(120), nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
-    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, onupdate=utc_now)
 

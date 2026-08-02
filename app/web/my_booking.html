@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Retrieve your YNotFramez Studios booking.">
+  <title>Find My Booking | YNotFramez Studios</title>
+  <link rel="stylesheet" href="/static/customer_booking.css">
+  <script src="/static/my_booking.js" defer></script>
+</head>
+<body>
+  <header>
+    <a class="wordmark" href="/"><b>YNotFramez</b><small>STUDIOS</small></a>
+    <nav><a href="/">Home</a><a class="book-link" href="/book">Book a studio <span>→</span></a></nav>
+  </header>
+
+  <main>
+    <section class="lookup-intro">
+      <div class="intro-shade"></div>
+      <div class="intro-copy"><p>BOOKING DESK · SELF SERVICE</p><h1>Your session,<br><em>within reach.</em></h1><span>Retrieve the latest studio, schedule, booking, and payment status whenever you need it.</span></div>
+    </section>
+    <section class="lookup-panel">
+      <div id="lookup-view">
+        <p class="eyebrow">FIND MY BOOKING</p><h2>Welcome back.</h2>
+        <p class="panel-copy">Enter the reference from your confirmation and the same email used while booking.</p>
+        <form id="lookup-form">
+          <label><span>BOOKING REFERENCE</span><input name="reference" placeholder="YNF-000123" autocomplete="off" maxlength="32" required></label>
+          <label><span>EMAIL ADDRESS</span><input name="customer_email" type="email" placeholder="you@example.com" autocomplete="email" required></label>
+          <div id="lookup-message" class="message" role="alert" hidden></div>
+          <button id="lookup-button" type="submit">Find booking <span>→</span></button>
+        </form>
+        <small>Both details must match. We never expose a public booking directory.</small>
+      </div>
+
+      <article id="booking-result" hidden>
+        <div class="result-heading"><div><p class="eyebrow">BOOKING FOUND</p><h2 id="result-reference"></h2></div><div class="badges"><span id="result-booking-status"></span><span id="result-payment-status"></span></div></div>
+        <p id="result-greeting" class="panel-copy"></p>
+        <dl>
+          <div><dt>STUDIO</dt><dd id="result-space"></dd></div>
+          <div><dt>DATE</dt><dd id="result-date"></dd></div>
+          <div><dt>TIME</dt><dd id="result-time"></dd></div>
+          <div><dt>DURATION</dt><dd id="result-duration"></dd></div>
+          <div><dt>TOTAL</dt><dd id="result-total"></dd></div>
+          <div><dt>PAYMENT MODE</dt><dd id="result-payment-mode"></dd></div>
+        </dl>
+        <div id="result-note" class="result-note"></div>
+        <div class="result-actions">
+          <a id="result-payment-link" class="primary" href="#" target="_blank" rel="noopener" hidden>Open payment link <span>→</span></a>
+          <a id="result-calendar" href="#" download hidden>Add to calendar</a>
+          <button id="result-print" type="button">Print</button>
+          <button id="new-lookup" type="button">Find another</button>
+        </div>
+      </article>
+    </section>
+  </main>
+
+  <footer><span>YNotFramez Studios</span><span>Keep your reference private and use only the email attached to the booking.</span></footer>
+</body>
+</html>
