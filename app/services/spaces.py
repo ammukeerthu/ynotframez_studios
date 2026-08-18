@@ -146,6 +146,13 @@ def seed_studio_settings(db: Session, commit: bool = True) -> None:
                     is_active=space.is_active,
                 )
             )
+
+    # Purpose options reference studio_settings. Flush the parent rows first
+    # because these models intentionally do not maintain ORM relationships;
+    # PostgreSQL enforces the foreign key while SQLite commonly does not.
+    db.flush()
+
+    for space in SPACES.values():
         if space.id not in purpose_space_ids:
             for purpose_order, label in enumerate(space.booking_purposes, start=1):
                 db.add(StudioPurposeOption(space_id=space.id, label=label, sort_order=purpose_order))
