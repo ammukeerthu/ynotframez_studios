@@ -21,6 +21,7 @@ class EmailService:
         "confirmation": "Booking confirmed",
         "update": "Booking updated",
         "cancellation": "Booking cancelled",
+        "payment_failure": "Payment action required",
     }
 
     def __init__(self, db: Session | None = None) -> None:
@@ -34,6 +35,9 @@ class EmailService:
 
     def send_booking_cancelled(self, booking: Booking) -> bool:
         return self._send_booking_message(booking, "cancellation")
+
+    def send_payment_failed(self, booking: Booking) -> bool:
+        return self._send_booking_message(booking, "payment_failure")
 
     def _send_booking_message(self, booking: Booking, message_type: str) -> bool:
         if not booking.customer_email:
@@ -81,7 +85,15 @@ class EmailService:
             raise ValueError(f"Unsupported booking email type: {message_type}")
 
         details = self._booking_details(booking)
-        subject = f"{self.subjects[message_type]} · {details['reference']}"
+        subject = (
+            f"Booking confirmation for {details['customer_name']}"
+            if message_type == "confirmation"
+            else f"Rescheduled booking confirmation for {details['customer_name']}"
+            if message_type == "update"
+            else f"Booking cancellation for {details['customer_name']}"
+            if message_type == "cancellation"
+            else f"Payment action required for {details['customer_name']}"
+        )
         message = EmailMessage()
         message["Subject"] = subject
         message["From"] = formataddr((settings.email_from_name, settings.studio_email))
@@ -139,23 +151,42 @@ class EmailService:
             "payment_mode": "Pay now" if payment_mode == PaymentMode.PAY_NOW.value else "Pay at studio",
             "amount": f"₹{amount:,.0f}",
             "payment_link": booking.payment_link or "",
+            "payment_failed": (
+                "yes"
+                if payment_mode == PaymentMode.PAY_AT_STUDIO.value and not booking.payment_link
+                else ""
+            ),
         }
 
     def _plain_body(self, details: dict[str, str], message_type: str) -> str:
         introductions = {
-            "confirmation": "Your studio booking is confirmed.",
-            "update": "Your studio booking details have been updated.",
-            "cancellation": "Your studio booking has been cancelled.",
+            "confirmation": "Your booking has been scheduled.",
+            "update": "Your booking has been rescheduled.",
+            "cancellation": "Your booking has been cancelled.",
+            "payment_failure": "Your payment could not be completed.",
+        }
+        salutations = {
+            "confirmation": "Dear",
+            "update": "Dear",
+            "cancellation": "Dear",
+            "payment_failure": "Dear",
         }
         payment_line = ""
         if message_type != "cancellation" and details["payment_link"]:
             payment_line = f"\nPayment link: {details['payment_link']}"
+        payment_failure_line = ""
+        if message_type != "cancellation" and details["payment_failed"]:
+            payment_failure_line = (
+                f"\n\nImportant: Your payment of {details['amount']} has failed. "
+                "Kindly contact the studio team to reserve your booking; otherwise, "
+                "we may unblock the booking if payment remains unresolved for more than two hours."
+            )
         rules_section = ""
         if message_type != "cancellation":
             rules_section = f"\n\nStudio rules:\n{details['rules']}"
         return (
             f"YNotFramez Studios\n\n"
-            f"Hi {details['customer_name']},\n\n"
+            f"{salutations[message_type]} {details['customer_name']},\n\n"
             f"{introductions[message_type]}\n\n"
             f"Reference: {details['reference']}\n"
             f"Studio: {details['space_name']}\n"
@@ -163,8 +194,9 @@ class EmailService:
             f"Time: {details['time']}\n"
             f"Duration: {details['duration']}\n"
             f"Purpose: {details['purpose']}\n"
-            f"Payment: {details['payment_mode']} · {details['amount']}"
+            f"Amount: {details['amount']}"
             f"{payment_line}\n\n"
+            f"{payment_failure_line}\n"
             f"{rules_section}\n\n"
             f"Please keep your booking reference for future lookup.\n\n"
             f"YNotFramez Studios"
@@ -172,9 +204,16 @@ class EmailService:
 
     def _html_body(self, details: dict[str, str], message_type: str) -> str:
         introductions = {
-            "confirmation": "Your studio is reserved.",
-            "update": "Your booking has been updated.",
+            "confirmation": "Your booking has been scheduled.",
+            "update": "Your booking has been rescheduled.",
             "cancellation": "Your booking has been cancelled.",
+            "payment_failure": "Your payment could not be completed.",
+        }
+        salutations = {
+            "confirmation": "Dear",
+            "update": "Dear",
+            "cancellation": "Dear",
+            "payment_failure": "Dear",
         }
         escaped = {key: html.escape(value) for key, value in details.items()}
         rules_section = ""
@@ -192,6 +231,16 @@ class EmailService:
                 'style="display:inline-block;padding:14px 22px;background:#ff5b35;color:#fff;'
                 'text-decoration:none;font:700 12px Arial;letter-spacing:.08em">COMPLETE PAYMENT</a></p>'
             )
+        payment_failure_notice = ""
+        if message_type != "cancellation" and details["payment_failed"]:
+            payment_failure_notice = (
+                '<div style="margin-top:28px;padding:18px 20px;background:#fdeaea;'
+                'border-left:4px solid #c62828;color:#8f1d1d">'
+                '<p style="margin:0;font:700 13px/1.7 Arial">Your payment of '
+                + escaped["amount"]
+                + " has failed. Kindly contact the studio team to reserve your booking; otherwise, "
+                "we may unblock the booking if payment remains unresolved for more than two hours.</p></div>"
+            )
         rows = "".join(
             f'<tr><td style="padding:9px 0;color:#777;font:11px Arial;text-transform:uppercase">{label}</td>'
             f'<td style="padding:9px 0;text-align:right;color:#111;font:15px Georgia">{escaped[key]}</td></tr>'
@@ -202,7 +251,6 @@ class EmailService:
                 ("Time", "time"),
                 ("Duration", "duration"),
                 ("Purpose", "purpose"),
-                ("Payment", "payment_mode"),
                 ("Amount", "amount"),
             )
         )
@@ -210,14 +258,15 @@ class EmailService:
 <html><body style="margin:0;background:#f5f3ed;color:#111">
   <div style="max-width:620px;margin:0 auto;padding:38px 20px">
     <div style="padding:28px;background:#111;color:#fff">
-      <div style="font:700 15px Arial;letter-spacing:.12em">YNotFramez</div>
-      <div style="margin-top:5px;color:#aaa;font:8px Arial;letter-spacing:.3em">STUDIOS</div>
+      <div style="font:700 15px Arial;letter-spacing:.12em">YNotFramez Studios</div>
+      <div style="margin-top:5px;color:#aaa;font:8px Arial;letter-spacing:.3em">AVADI</div>
       <h1 style="margin:36px 0 0;font:38px Georgia">{introductions[message_type]}</h1>
     </div>
     <div style="padding:30px;background:#fff">
-      <p style="margin:0 0 24px;font:17px Georgia">Hi {escaped['customer_name']},</p>
+      <p style="margin:0 0 24px;font:17px Georgia">{salutations[message_type]} {escaped['customer_name']},</p>
       <table style="width:100%;border-collapse:collapse;border-top:1px solid #ddd;border-bottom:1px solid #ddd">{rows}</table>
       {payment_button}
+      {payment_failure_notice}
       {rules_section}
       <p style="margin:25px 0 0;color:#777;font:12px/1.6 Arial">Keep your reference private. You can retrieve this booking from the Find My Booking page.</p>
     </div>

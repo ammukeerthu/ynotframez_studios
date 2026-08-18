@@ -67,7 +67,7 @@
           <input id="start-time" name="start_time" type="hidden">
           <input id="duration" name="duration_hours" type="hidden">
           <div class="slot-heading"><span>AVAILABLE TIMES</span><small id="operating-hours">Choose a date to load studio times</small></div>
-          <div id="slot-grid" class="slot-grid"><p>Choose your date, then select one or more consecutive 30-minute slots.</p></div>
+          <div id="slot-grid" class="slot-grid"><p>Choose your date, then select a start time for the minimum 2-hour booking.</p></div>
           <div class="slot-legend"><span><i class="available"></i>Available</span><span><i class="selected"></i>Selected</span><span><i class="unavailable"></i>Booked / unavailable</span></div>
           <div class="price-strip"><div><small>ESTIMATED TOTAL</small><strong id="estimated-total">₹0</strong></div><p id="slot-note">Select a date and time to check availability.</p></div>
           <div class="form-actions"><button class="button secondary" type="button" data-back>← Back</button><button class="button primary" type="button" data-next>Check availability <span>→</span></button></div>
@@ -95,9 +95,8 @@
           </div>
           <div id="booking-summary" class="summary-card"></div>
           <fieldset class="payment-options">
-            <legend>How would you like to pay?</legend>
-            <label><input type="radio" name="payment_mode" value="pay_now" checked><span><b>Pay now</b><small>Receive a secure Razorpay payment link</small></span><em>→</em></label>
-            <label><input type="radio" name="payment_mode" value="pay_at_studio"><span><b>Pay at the studio</b><small>Settle when you arrive</small></span><em>→</em></label>
+            <legend>Payment</legend>
+            <label><input type="radio" name="payment_mode" value="pay_now" checked><span><b>Online payment required</b><small>Receive a secure Razorpay payment link after confirming the booking</small></span><em>→</em></label>
           </fieldset>
           <div class="form-actions"><button class="button secondary" type="button" data-back>← Back</button><button id="submit-booking" class="button primary" type="submit">Confirm booking <span>→</span></button></div>
         </section>
@@ -105,8 +104,8 @@
 
       <section id="confirmation" class="confirmation" hidden aria-live="polite">
         <div class="success-mark">✓</div>
-        <p class="step-kicker">BOOKING CONFIRMED</p>
-        <h2>Your studio is ready.</h2>
+        <p id="confirmation-kicker" class="step-kicker">PAYMENT REQUIRED</p>
+        <h2 id="confirmation-title">Complete payment to reserve.</h2>
         <p id="confirmation-copy"></p>
         <div id="confirmation-details" class="confirmation-details"></div>
         <a id="payment-link" class="button primary" href="#" target="_blank" rel="noopener" hidden>Open payment link <span>→</span></a>
@@ -120,6 +119,6 @@
     </section>
   </main>
 
-  <footer><span>YNotFramez Studios</span><span><a href="/my-booking">Find an existing booking</a> · Questions? Contact the studio team</span></footer>
+  <footer><span>© <span id="year"></span> YNotFramez Studios. All rights reserved.</span><span><a href="/my-booking">Find an existing booking</a> · Questions? Contact the studio team</span></footer>
 </body>
 </html>

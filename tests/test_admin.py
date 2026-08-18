@@ -1,7 +1,7 @@
 import csv
 import tempfile
 import unittest
-from datetime import date, time, timedelta
+from datetime import date, datetime, time, timedelta
 from http.cookies import SimpleCookie
 from io import StringIO
 from pathlib import Path
@@ -23,13 +23,18 @@ from app.api.routes.admin import (
     admin_export_bookings,
     admin_login,
     admin_overview,
+    admin_alerts,
+    admin_read_alert,
     admin_setup,
     admin_update_booking,
     admin_update_payment,
+    _operational_alerts,
 )
 from app.core.config import settings
 from app.core.database import Base
 from app.models.admin import AdminUser
+from app.models.booking import Booking, BookingState
+from app.models.notification import AdminNotification
 from app.schemas.admin import (
     AdminChangePasswordRequest,
     AdminAvailabilityBlockCreate,
@@ -49,6 +54,7 @@ from app.services.admin_auth import (
 from app.services.booking_service import BookingApplicationService
 
 settings.email_mode = "console"
+settings.calendar_mode = "stub"
 
 
 def cookie_value(response: Response) -> str:
@@ -184,7 +190,7 @@ class AdminAuthenticationTest(unittest.TestCase):
                     space_id="standard_small",
                     booking_date=booking_date,
                     start_time=time(14, 30),
-                    duration_hours=1.5,
+                    duration_hours=2,
                     reason="Private production",
                 ),
                 db,
@@ -193,7 +199,7 @@ class AdminAuthenticationTest(unittest.TestCase):
             statuses = {slot.start_time: slot for slot in day.slots}
 
             self.assertEqual(created.start_time, "14:30")
-            self.assertEqual(created.end_time, "16:00")
+            self.assertEqual(created.end_time, "16:30")
             self.assertEqual(statuses["14:00"].status, "available")
             self.assertEqual(statuses["14:30"].status, "blocked")
             self.assertEqual(statuses["15:00"].block_id, created.id)
@@ -205,18 +211,83 @@ class AdminAuthenticationTest(unittest.TestCase):
                         space_id="standard_small",
                         booking_date=booking_date,
                         start_time=time(15, 30),
-                        duration_hours=0.5,
+                        duration_hours=2,
                         reason="Overlap",
                     ),
                     db,
                 )
             self.assertEqual(duplicate.exception.status_code, 409)
 
+            with self.assertRaises(ValueError):
+                AdminAvailabilityBlockCreate(
+                    space_id="standard_small",
+                    booking_date=booking_date,
+                    start_time=time(17),
+                    duration_hours=1.5,
+                    reason="Too short",
+                )
+
             response = admin_delete_availability_block(created.id, db)
             reopened = admin_availability("standard_small", booking_date, db)
             reopened_statuses = {slot.start_time: slot.status for slot in reopened.slots}
             self.assertEqual(response.status_code, 204)
             self.assertEqual(reopened_statuses["14:30"], "available")
+
+    def test_alerts_include_new_booking_start_and_end_handover_reminders(self) -> None:
+        engine = create_engine(
+            "sqlite://",
+            connect_args={"check_same_thread": False},
+            poolclass=StaticPool,
+        )
+        self.addCleanup(engine.dispose)
+        Base.metadata.create_all(engine)
+
+        with Session(engine) as db:
+            now = datetime(2026, 9, 20, 14, 5)
+            current = Booking(
+                phone_number="+919999999991",
+                state=BookingState.CONFIRMED,
+                space_id="standard_small",
+                booking_date="2026-09-20",
+                start_time="13:15",
+                duration_hours=1,
+                customer_name="Current Customer",
+                customer_email="current@example.com",
+                purpose="Fashion Shoot",
+            )
+            upcoming = Booking(
+                phone_number="+919999999992",
+                state=BookingState.CONFIRMED,
+                space_id="standard_small",
+                booking_date="2026-09-20",
+                start_time="14:20",
+                duration_hours=1,
+                customer_name="Next Customer",
+                customer_email="next@example.com",
+                purpose="Editorial",
+            )
+            db.add_all([current, upcoming])
+            db.flush()
+            notification = AdminNotification(booking_id=upcoming.id)
+            db.add(notification)
+            db.commit()
+
+            operational = _operational_alerts(db, now)
+            kinds = {alert.kind for alert in operational}
+            ending = next(alert for alert in operational if alert.kind == "ends_soon")
+            response = admin_alerts(db)
+
+            self.assertEqual(kinds, {"starts_soon", "ends_soon"})
+            self.assertIn("Next Customer", ending.message)
+            self.assertEqual(response.unread_count, 1)
+            self.assertEqual(response.new_bookings[0].booking_id, upcoming.id)
+            self.assertFalse(response.new_bookings[0].is_read)
+
+            admin_read_alert(notification.id, db)
+            read_response = admin_alerts(db)
+            self.assertEqual(read_response.unread_count, 0)
+            self.assertEqual(len(read_response.new_bookings), 1)
+            self.assertTrue(read_response.new_bookings[0].is_read)
 
     def test_admin_can_reschedule_edit_and_cancel_a_booking(self) -> None:
         engine = create_engine(
@@ -236,7 +307,7 @@ class AdminAuthenticationTest(unittest.TestCase):
                     space_id="standard_small",
                     booking_date=booking_date,
                     start_time=start_time,
-                    duration_hours=1,
+                    duration_hours=2,
                     customer_name="Original Customer",
                     customer_email=email,
                     phone_number="+919999999999",
@@ -247,6 +318,10 @@ class AdminAuthenticationTest(unittest.TestCase):
 
             original = service.create_booking(booking_payload(time(11), "first@example.com"))
             second = service.create_booking(booking_payload(time(15), "second@example.com"))
+            # Simulate legacy confirmed-but-unpaid records for the admin lifecycle test.
+            db.get(Booking, original.id).state = BookingState.CONFIRMED
+            db.get(Booking, second.id).state = BookingState.CONFIRMED
+            db.commit()
 
             with self.assertRaises(HTTPException) as conflict:
                 admin_update_booking(
@@ -255,7 +330,7 @@ class AdminAuthenticationTest(unittest.TestCase):
                         space_id="standard_small",
                         booking_date=booking_date,
                         start_time=time(15),
-                        duration_hours=1,
+                        duration_hours=2,
                         customer_name="Updated Customer",
                         customer_email="updated@example.com",
                         phone_number="+918888888888",
@@ -270,8 +345,8 @@ class AdminAuthenticationTest(unittest.TestCase):
                 AdminBookingUpdate(
                     space_id="standard_small",
                     booking_date=booking_date,
-                    start_time=time(13, 30),
-                    duration_hours=0.5,
+                    start_time=time(13),
+                    duration_hours=2,
                     customer_name="Updated Customer",
                     customer_email="updated@example.com",
                     phone_number="+918888888888",
@@ -284,14 +359,14 @@ class AdminAuthenticationTest(unittest.TestCase):
                     space_id="standard_small",
                     booking_date=booking_date,
                     start_time=time(11),
-                    duration_hours=0.5,
+                    duration_hours=2,
                 )
             )
 
-            self.assertEqual(updated.start_time, "13:30")
-            self.assertEqual(updated.end_time, "14:00")
+            self.assertEqual(updated.start_time, "13:00")
+            self.assertEqual(updated.end_time, "15:00")
             self.assertEqual(updated.customer_name, "Updated Customer")
-            self.assertEqual(updated.total_amount, 600)
+            self.assertEqual(updated.total_amount, 2400)
             self.assertEqual(updated.payment_status, "pending")
             self.assertTrue(old_slot)
 
@@ -303,8 +378,8 @@ class AdminAuthenticationTest(unittest.TestCase):
             overview = admin_overview(db)
             self.assertEqual(paid.payment_status, "paid")
             self.assertEqual(paid.payment_reference, "UPI-TEST-001")
-            self.assertEqual(overview.collected_value, 600)
-            self.assertEqual(overview.outstanding_value, 1200)
+            self.assertEqual(overview.collected_value, 2400)
+            self.assertEqual(overview.outstanding_value, 2400)
 
             with self.assertRaises(HTTPException) as paid_price_change:
                 admin_update_booking(
@@ -312,8 +387,8 @@ class AdminAuthenticationTest(unittest.TestCase):
                     AdminBookingUpdate(
                         space_id="standard_small",
                         booking_date=booking_date,
-                        start_time=time(13),
-                        duration_hours=1,
+                        start_time=time(12, 30),
+                        duration_hours=2.5,
                         customer_name="Updated Customer",
                         customer_email="updated@example.com",
                         phone_number="+918888888888",
@@ -328,8 +403,8 @@ class AdminAuthenticationTest(unittest.TestCase):
                 AvailabilityRequest(
                     space_id="standard_small",
                     booking_date=booking_date,
-                    start_time=time(13, 30),
-                    duration_hours=0.5,
+                    start_time=time(13),
+                    duration_hours=2,
                 )
             )
             self.assertEqual(cancelled.status, "cancelled")
@@ -373,13 +448,13 @@ class AdminAuthenticationTest(unittest.TestCase):
                         space_id="standard_small",
                         booking_date=booking_date,
                         start_time=time(11),
-                        duration_hours=0.5,
+                        duration_hours=2,
                         customer_name=customer_name,
                         customer_email=email,
                         phone_number="+919999999999",
                         purpose="E-commerce",
                         terms_accepted=True,
-                        payment_mode="pay_at_studio",
+                        payment_mode="pay_now",
                     )
                 )
 
@@ -388,13 +463,13 @@ class AdminAuthenticationTest(unittest.TestCase):
                     space_id="premium_large",
                     booking_date=first_date,
                     start_time=time(11),
-                    duration_hours=0.5,
+                    duration_hours=2,
                     customer_name="Other Studio Customer",
                     customer_email="other@example.com",
                     phone_number="+918888888888",
                     purpose="Fashion Shoot",
                     terms_accepted=True,
-                    payment_mode="pay_at_studio",
+                    payment_mode="pay_now",
                 )
             )
 
@@ -411,7 +486,7 @@ class AdminAuthenticationTest(unittest.TestCase):
             self.assertEqual(len(rows), 2)
             self.assertEqual(rows[0][0], "Booking reference")
             self.assertEqual(rows[1][8], "'=Formula Customer")
-            self.assertEqual(rows[1][13], "600")
+            self.assertEqual(rows[1][13], "2400")
             self.assertIn("attachment", response.headers["content-disposition"])
 
 

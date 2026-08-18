@@ -3,6 +3,7 @@ from zoneinfo import ZoneInfo
 
 from sqlalchemy.orm import Session
 
+from app.core.booking_rules import MINIMUM_BOOKING_DURATION_HOURS
 from app.core.config import settings
 from app.models.booking import Booking, BookingState, PaymentMode
 from app.schemas.booking import (
@@ -16,6 +17,7 @@ from app.services.calendar_service import GoogleCalendarService
 from app.services.availability_service import overlapping_block, overlapping_booking
 from app.services.email_service import EmailService
 from app.services.payment_service import PaymentService
+from app.services.notification_service import notify_new_booking
 from app.services.razorpay_service import RazorpayService
 from app.services.spaces import get_space_by_id
 
@@ -34,20 +36,82 @@ class BookingApplicationService:
         self.email = EmailService(db)
         self.payments = PaymentService(db)
 
+    def prepare_online_payment(self, booking: Booking) -> bool:
+        """Create a payment link while leaving the booking unconfirmed."""
+        booking.payment_mode = PaymentMode.PAY_NOW
+        booking.payment_link = None
+        payment = self.payments.ensure(booking)
+        payment.mode = PaymentMode.PAY_NOW
+        try:
+            payment_link = self.razorpay.create_payment_link(booking)
+            if not payment_link.url:
+                raise ValueError("The payment provider returned an empty payment link.")
+        except Exception as error:
+            booking.payment_mode = PaymentMode.PAY_AT_STUDIO
+            payment.mode = PaymentMode.PAY_AT_STUDIO
+            print(
+                "Payment link creation failed; booking remains pending for studio follow-up:",
+                {"booking_id": booking.id, "error": f"{type(error).__name__}: {error}"},
+            )
+            self.email.send_payment_failed(booking)
+            return False
+        booking.payment_link = payment_link.url
+        payment.provider_reference = payment_link.id
+        return True
+
+    def confirm_paid_booking(self, booking: Booking, provider_reference: str | None = None) -> None:
+        """Reserve the studio only after a verified or owner-recorded payment."""
+        if booking.state == BookingState.CONFIRMED:
+            return
+        if booking.state != BookingState.PAYMENT_PENDING:
+            raise ValueError("Only a payment-pending booking can be confirmed.")
+        available, message = self.check_availability(
+            AvailabilityRequest(
+                space_id=booking.space_id or "",
+                booking_date=date.fromisoformat(booking.booking_date or ""),
+                start_time=time.fromisoformat(booking.start_time or ""),
+                duration_hours=booking.duration_hours or 0,
+            ),
+            exclude_booking_id=booking.id,
+        )
+        if not available:
+            raise BookingUnavailableError(message)
+        payment = self.payments.get(booking.id)
+        if payment is None or payment.status.value != "pending":
+            raise ValueError("The booking does not have a pending payment.")
+        self.payments.mark_paid(booking, provider_reference)
+        booking.calendar_event_id = self.calendar.create_event(booking)
+        booking.state = BookingState.CONFIRMED
+        notify_new_booking(self.db, booking)
+        self.email.send_booking_confirmation(booking)
+
+    def record_payment_failure(self, booking: Booking) -> None:
+        if booking.state != BookingState.PAYMENT_PENDING:
+            return
+        first_failure = booking.payment_mode != PaymentMode.PAY_AT_STUDIO
+        booking.payment_mode = PaymentMode.PAY_AT_STUDIO
+        booking.payment_link = None
+        payment = self.payments.ensure(booking)
+        payment.mode = PaymentMode.PAY_AT_STUDIO
+        if first_failure:
+            self.email.send_payment_failed(booking)
+
     def check_availability(
         self,
         request: AvailabilityRequest,
         exclude_booking_id: int | None = None,
         ignore_calendar_event_id: str | None = None,
         enforce_duration_limits: bool = True,
+        calendar_events: list[dict] | None = None,
     ) -> tuple[bool, str]:
         space = get_space_by_id(request.space_id, self.db)
         if not space:
             return False, "Please select a valid studio space."
-        if enforce_duration_limits and not space.min_duration_hours <= request.duration_hours <= space.max_duration_hours:
+        minimum_duration = max(space.min_duration_hours, MINIMUM_BOOKING_DURATION_HOURS)
+        if enforce_duration_limits and not minimum_duration <= request.duration_hours <= space.max_duration_hours:
             return False, (
                 f"Bookings for {space.name} must be between "
-                f"{space.min_duration_hours:g} and {space.max_duration_hours:g} hours."
+                f"{minimum_duration:g} and {space.max_duration_hours:g} hours."
             )
 
         requested_start = datetime.combine(request.booking_date, request.start_time)
@@ -84,7 +148,11 @@ class BookingApplicationService:
             start_time=request.start_time.strftime("%H:%M"),
             duration_hours=request.duration_hours,
         )
-        if not self.calendar.is_available(candidate, ignore_event_id=ignore_calendar_event_id):
+        if not self.calendar.is_available(
+            candidate,
+            ignore_event_id=ignore_calendar_event_id,
+            events=calendar_events,
+        ):
             return False, (
                 "That slot is unavailable. Studio hours are "
                 f"{space.opening_time} to {space.closing_time}."
@@ -100,6 +168,17 @@ class BookingApplicationService:
         studio_now = datetime.now(ZoneInfo(settings.studio_timezone)).replace(tzinfo=None)
         day_start = datetime.combine(booking_date, time.fromisoformat(space.opening_time))
         day_end = datetime.combine(booking_date, time.fromisoformat(space.closing_time))
+        within_booking_window = 0 <= (booking_date - studio_now.date()).days <= settings.future_booking_days
+        calendar_events = (
+            self.calendar.events_for_day(
+                space_id,
+                booking_date,
+                space.opening_time,
+                space.closing_time,
+            )
+            if day_end > studio_now and within_booking_window
+            else []
+        )
         slot_start = day_start
         while slot_start < day_end:
             slot_end = slot_start + timedelta(minutes=30)
@@ -111,7 +190,11 @@ class BookingApplicationService:
                 start_time=start,
                 duration_hours=0.5,
             )
-            available, message = self.check_availability(request, enforce_duration_limits=False)
+            available, message = self.check_availability(
+                request,
+                enforce_duration_limits=False,
+                calendar_events=calendar_events,
+            )
             slot_start = datetime.combine(booking_date, start)
             if available:
                 status = "available"
@@ -174,13 +257,9 @@ class BookingApplicationService:
         self.db.add(booking)
         self.db.flush()
 
-        if booking.payment_mode == PaymentMode.PAY_NOW:
-            booking.payment_link = self.razorpay.create_payment_link(booking)
-
         self.payments.ensure(booking)
-        booking.calendar_event_id = self.calendar.create_event(booking)
-        booking.state = BookingState.CONFIRMED
-        self.email.send_booking_confirmation(booking)
+        self.prepare_online_payment(booking)
+        booking.state = BookingState.PAYMENT_PENDING
         self.db.commit()
         self.db.refresh(booking)
 

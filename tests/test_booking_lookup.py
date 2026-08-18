@@ -15,6 +15,7 @@ from app.schemas.booking import BookingLookupRequest, WebBookingCreate
 from app.services.booking_service import BookingApplicationService
 
 settings.email_mode = "console"
+settings.calendar_mode = "stub"
 
 
 class CustomerBookingLookupTest(unittest.TestCase):
@@ -32,7 +33,7 @@ class CustomerBookingLookupTest(unittest.TestCase):
                 space_id="standard_small",
                 booking_date=self.booking_date,
                 start_time=time(14, 30),
-                duration_hours=1.5,
+                duration_hours=2,
                 customer_name="Lookup Customer",
                 customer_email="lookup@example.com",
                 phone_number="+919999999999",
@@ -56,11 +57,11 @@ class CustomerBookingLookupTest(unittest.TestCase):
         result = self.lookup()
 
         self.assertEqual(result.reference, self.created.reference)
-        self.assertEqual(result.booking_status, "confirmed")
+        self.assertEqual(result.booking_status, "payment_pending")
         self.assertEqual(result.payment_status, "pending")
         self.assertEqual(result.start_time, "14:30")
-        self.assertEqual(result.end_time, "16:00")
-        self.assertEqual(result.total_amount, 1800)
+        self.assertEqual(result.end_time, "16:30")
+        self.assertEqual(result.total_amount, 2400)
         self.assertIsNotNone(result.payment_link)
 
     def test_wrong_email_returns_same_private_not_found_response(self) -> None:

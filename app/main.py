@@ -55,6 +55,19 @@ def my_booking_page() -> FileResponse:
     return FileResponse(web_directory / "my_booking.html")
 
 
+@app.get("/payment/return", include_in_schema=False)
+def payment_return(reference: str = "") -> RedirectResponse:
+    target = "/my-booking"
+    if reference:
+        target += f"?reference={reference}"
+    return RedirectResponse(url=target)
+
+
+@app.get("/payment/return/{reference}", include_in_schema=False)
+def payment_return_with_reference(reference: str) -> RedirectResponse:
+    return RedirectResponse(url=f"/my-booking?reference={reference}")
+
+
 @app.get("/dashboard", include_in_schema=False)
 def dashboard_page() -> FileResponse:
     return FileResponse(web_directory / "admin.html")

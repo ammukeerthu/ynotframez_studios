@@ -25,6 +25,7 @@ fetch(`/api/spaces/${encodeURIComponent(slug)}`)
     setText("#detail-capacity", `Up to ${space.capacity} people`);
     setText("#detail-dimensions", space.dimensions);
     setText("#detail-rate", `${money.format(space.hourly_rate)} / hour`);
+    setText("#detail-minimum", `${space.min_duration_hours} hours`);
     setText("#detail-cta-title", `Make ${space.name} yours.`);
     setText("#detail-cta-price", `From ${money.format(space.hourly_rate)} per hour`);
 

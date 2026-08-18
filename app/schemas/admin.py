@@ -2,6 +2,8 @@ from datetime import date, time
 
 from pydantic import BaseModel, EmailStr, Field, field_validator, model_validator
 
+from app.core.booking_rules import MINIMUM_BOOKING_DURATION_HOURS
+
 
 class AdminLoginRequest(BaseModel):
     username: str = Field(min_length=1, max_length=120)
@@ -32,6 +34,32 @@ class AdminOverviewResponse(BaseModel):
     collected_value: int
     outstanding_value: int
     refund_due_value: int
+
+
+class AdminAlertItem(BaseModel):
+    id: str
+    notification_id: int | None = None
+    kind: str
+    priority: str
+    title: str
+    message: str
+    booking_id: int
+    reference: str
+    space_id: str
+    space_name: str
+    booking_date: str
+    start_time: str
+    end_time: str
+    minutes_remaining: int | None = None
+    created_at: str | None = None
+    is_read: bool = False
+
+
+class AdminAlertsResponse(BaseModel):
+    unread_count: int
+    new_bookings: list[AdminAlertItem]
+    operational: list[AdminAlertItem]
+    generated_at: str
 
 
 class AdminStudioResponse(BaseModel):
@@ -68,8 +96,8 @@ class AdminStudioUpdate(BaseModel):
     cover_image: str = Field(min_length=1, max_length=1000)
     opening_time: time
     closing_time: time
-    min_duration_hours: float = Field(ge=0.5, le=12, multiple_of=0.5)
-    max_duration_hours: float = Field(ge=0.5, le=12, multiple_of=0.5)
+    min_duration_hours: float = Field(ge=MINIMUM_BOOKING_DURATION_HOURS, le=12, multiple_of=0.5)
+    max_duration_hours: float = Field(ge=MINIMUM_BOOKING_DURATION_HOURS, le=12, multiple_of=0.5)
     is_active: bool
     booking_purposes: list[str] = Field(min_length=1, max_length=50)
 
@@ -139,7 +167,7 @@ class AdminBookingUpdate(BaseModel):
     space_id: str = Field(min_length=1, max_length=64)
     booking_date: date
     start_time: time
-    duration_hours: float = Field(ge=0.5, le=12, multiple_of=0.5)
+    duration_hours: float = Field(ge=MINIMUM_BOOKING_DURATION_HOURS, le=12, multiple_of=0.5)
     customer_name: str = Field(min_length=2, max_length=120)
     customer_email: EmailStr
     phone_number: str = Field(min_length=7, max_length=32)
@@ -170,7 +198,7 @@ class AdminAvailabilityBlockCreate(BaseModel):
     space_id: str = Field(min_length=1, max_length=64)
     booking_date: date
     start_time: time
-    duration_hours: float = Field(ge=0.5, le=12, multiple_of=0.5)
+    duration_hours: float = Field(ge=MINIMUM_BOOKING_DURATION_HOURS, le=12, multiple_of=0.5)
     reason: str = Field(default="Owner blocked", max_length=240)
 
     @field_validator("start_time")

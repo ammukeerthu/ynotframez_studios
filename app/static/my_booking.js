@@ -1,6 +1,7 @@
 const form = document.querySelector("#lookup-form");
 const lookupView = document.querySelector("#lookup-view");
 const resultView = document.querySelector("#booking-result");
+document.querySelector("#year").textContent = new Date().getFullYear();
 const currency = new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 });
 let currentBooking = null;
 

@@ -5,10 +5,11 @@ A minimal FastAPI booking application for a two-space photography studio. Custom
 ## What is included
 
 - Editorial public website at `/`
-- Dedicated studio pages at `/studios/standard-small-space` and `/studios/premium-large-space`
+- Dedicated studio pages at `/studios/standard-studio` and `/studios/premium-studio`
 - Customer web booking flow at `/book`
 - Customer booking retrieval at `/my-booking` using reference plus email
 - Protected studio-owner dashboard at `/dashboard` (`/admin` redirects there)
+- Persistent new-booking alerts and live 15-minute start/end handover reminders
 - Owner-managed studio availability blocks and day schedule
 - Owner-managed studio details, rates, hours, booking limits, equipment, amenities, booking purposes, and active status
 - JSON APIs for spaces, availability, and bookings
@@ -17,7 +18,7 @@ A minimal FastAPI booking application for a two-space photography studio. Custom
 - Half-hour start times, durations, and proportional pricing
 - Two studio spaces with individual details, rules, and hourly rates
 - Google Calendar integration with a local stub mode
-- Razorpay Payment Link placeholder
+- Razorpay Payment Links API with signed webhook confirmation and a local stub mode
 - Multipart booking emails with safe console and SMTP delivery modes
 - Interactive API documentation at `/docs`
 
@@ -36,6 +37,7 @@ app/
     admin.py
     availability.py
     booking.py
+    notification.py
     payment.py
   schemas/
     admin.py
@@ -120,6 +122,22 @@ Open `http://127.0.0.1:8000/dashboard`. On the first visit, the setup screen let
 
 After signing in, use **Change password** in the dashboard sidebar. A successful password change invalidates older signed sessions and keeps the current browser signed in with a fresh session.
 
+### Forgotten admin password
+
+The original password cannot be retrieved because the application stores only a salted one-way hash. To set a new password, open PowerShell in the project root and run:
+
+```powershell
+.\.venv\Scripts\python.exe -m scripts.reset_admin_password
+```
+
+The default username is `admin`. Enter and confirm a password containing at least 10 characters. Input is hidden while typing and is not placed in terminal history. A successful reset updates only the admin password hash, increments the session version, and signs out previously authenticated dashboard sessions. Bookings, payments, calendars, availability, and studio settings are not changed.
+
+To reset a differently named owner account, use:
+
+```powershell
+.\.venv\Scripts\python.exe -m scripts.reset_admin_password --username owner_name
+```
+
 The session secret is not an admin password. It is a private random key used by the server to sign the browser's HttpOnly login cookie, preventing a visitor from forging a cookie or changing its username, version, or expiry. For local development, the app generates it once in the ignored `.admin_session_secret` file. You do not need to type or edit it.
 
 For deployment, supply a stable secret through the environment so sessions continue to work across restarts or multiple application instances:
@@ -129,11 +147,13 @@ ADMIN_SESSION_SECRET="use-a-random-secret-with-at-least-32-characters"
 ADMIN_COOKIE_SECURE="true"
 ```
 
-Keep `ADMIN_COOKIE_SECURE="false"` for local HTTP and set it to `true` when the deployed site uses HTTPS. Back up both the SQLite database and the session secret for a stable deployed installation. There is intentionally no password-recovery flow in this MVP yet.
+Keep `ADMIN_COOKIE_SECURE="false"` for local HTTP and set it to `true` when the deployed site uses HTTPS. Back up both the SQLite database and the session secret for a stable deployed installation. Password recovery is intentionally an offline, local command for this MVP rather than a public web endpoint.
 
-The dashboard shows confirmed activity and estimated value and lets the owner search/filter customer bookings. Confirmed rows include a **Manage** action for editing customer details, changing studios, rescheduling in 30-minute increments, or cancelling the booking. Reschedules use the same live overlap checks as customer bookings. Cancellation removes the Calendar event and releases the studio time.
+The dashboard shows confirmed activity and estimated value and lets the owner search/filter customer bookings. Confirmed rows include a **Manage** action for editing customer details, changing studios, rescheduling in 30-minute increments, or cancelling the booking. Reschedules use the same live overlap checks as customer bookings. Cancellation retains a red `DECLINED` event in Google Calendar while releasing the studio time.
 
-Every confirmed booking also has a local payment record. The dashboard shows collected, outstanding, and refund-due totals. In **Manage**, the owner can record a payment reference and mark a pending payment as paid. Cancelling an unpaid booking voids its payment; cancelling a paid booking creates a refund-due state that the owner can later mark refunded. These are manual MVP controls until a real Razorpay webhook is connected.
+The **Studio alerts** panel stores new bookings as unread until the owner marks them seen. It also refreshes every 30 seconds and shows operational reminders during the 15 minutes before a booking starts and the final 15 minutes of a current booking. When another session follows within 30 minutes, the ending reminder includes the next customer. Optional desktop notifications work while the dashboard is open and browser permission is granted.
+
+Every booking has a local payment record. New customer requests remain in `payment_pending` and hold the selected time for two hours. The studio is reserved, its Google Calendar event is created, and its confirmation email is sent only after a verified Razorpay `payment_link.paid` webhook. The dashboard retains a manual **Mark paid** action for studio follow-up and payment-provider exceptions.
 
 The booking directory supports customer search, booking-status filtering, and inclusive from/to date filters. **Export CSV** downloads the currently filtered records with schedule, customer, payment, and value columns for Excel or reconciliation. The export requires an authenticated admin session and neutralizes spreadsheet-formula prefixes in customer-entered text.
 
@@ -156,17 +176,20 @@ Stub mode enforces studio hours (9:00 AM–8:00 PM), checks confirmed SQLite boo
 To use Google Calendar:
 
 1. Create a Google Cloud service account with Calendar API access.
-2. Share the target calendar with the service account email and allow it to add events.
-3. Store the downloaded key as `google-service-account.json` locally. This file is ignored by Git.
-4. Configure `.env`:
+2. In the studio owner's Google account, create one calendar for each physical studio space.
+3. Share both calendars with the service account email and grant **Make changes to events** access.
+4. Copy each ID from the calendar's **Settings and sharing > Integrate calendar** section.
+5. Store the downloaded key as `google-service-account.json` locally. This file is ignored by Git.
+6. Configure `.env`:
 
 ```env
 CALENDAR_MODE="google"
-GOOGLE_CALENDAR_ID="your-calendar-id"
+GOOGLE_CALENDAR_STANDARD_SMALL_ID="standard-space-calendar-id"
+GOOGLE_CALENDAR_PREMIUM_LARGE_ID="premium-space-calendar-id"
 GOOGLE_SERVICE_ACCOUNT_FILE="./google-service-account.json"
 ```
 
-The live Calendar availability logic expects events named with a phrase such as `Business Hours` or `Studio Open` to define bookable periods. Events associated with a `space_id` block only that space; closure, holiday, unavailable, and out-of-office events block both.
+Studio hours continue to come from Studio Dashboard settings. Any normal busy event placed on a dedicated studio calendar blocks that time for only that studio; events marked **Free** remain bookable. Confirmed bookings are created on the selected studio's calendar, and rescheduling or cancellation updates the same event. The legacy `GOOGLE_CALENDAR_ID` setting remains available when both studios intentionally share one calendar.
 
 ## Web API
 
@@ -179,8 +202,8 @@ GET /api/spaces
 Rich studio details are also available by public slug:
 
 ```http
-GET /api/spaces/standard-small-space
-GET /api/spaces/premium-large-space
+GET /api/spaces/standard-studio
+GET /api/spaces/premium-studio
 ```
 
 ### Check availability
@@ -193,7 +216,7 @@ Content-Type: application/json
   "space_id": "standard_small",
   "booking_date": "2026-08-15",
   "start_time": "14:30",
-  "duration_hours": 1.5
+  "duration_hours": 2
 }
 ```
 
@@ -207,7 +230,7 @@ Content-Type: application/json
   "space_id": "standard_small",
   "booking_date": "2026-08-15",
   "start_time": "14:30",
-  "duration_hours": 1.5,
+  "duration_hours": 2,
   "customer_name": "Sample Customer",
   "customer_email": "customer@example.com",
   "phone_number": "+919999999999",
@@ -219,7 +242,9 @@ Content-Type: application/json
 
 `purpose` must match one of the selected studio's owner-configured booking-purpose options.
 
-`pay_now` returns a placeholder Razorpay URL. `pay_at_studio` confirms without a link.
+All bookings require a minimum duration of 2 hours. Longer bookings can use 30-minute increments.
+
+New public bookings accept only `pay_now`. In `RAZORPAY_MODE=api`, the app creates a unique Razorpay Payment Link in INR and returns the hosted `short_url`. `pay_at_studio` is retained only as an internal failure/follow-up mode and is not a customer-selectable option.
 
 ### Retrieve a customer booking
 
@@ -246,10 +271,19 @@ Invoke-RestMethod -Method Post `
 
 The webhook returns the next bot message as JSON. It is provider-neutral for MVP testing; connecting Meta WhatsApp Cloud API still requires signature verification, payload adaptation, and outbound-message delivery.
 
-## Provider placeholders
+## Razorpay payment-first setup
 
-- Razorpay creates a deterministic placeholder URL from the configured base URL.
-- WhatsApp remains provider-neutral until the Meta Cloud API adapter is connected.
+Create Razorpay Test Mode API keys and configure the `RAZORPAY_*` values shown in `.env.example`. Set `RAZORPAY_MODE="api"`. Configure a Razorpay webhook pointing to:
+
+```text
+https://your-public-domain.example/api/payments/razorpay/webhook
+```
+
+Use the same secret in Razorpay and `RAZORPAY_WEBHOOK_SECRET`. Subscribe to `payment_link.paid`, `payment_link.expired`, `payment_link.cancelled`, and `payment.failed`. Razorpay must be able to reach this HTTPS endpoint; `127.0.0.1` cannot receive provider webhooks.
+
+For offline UI development only, use `RAZORPAY_MODE="stub"`. Stub mode produces a deterministic URL but cannot complete payment or confirm the booking automatically.
+
+WhatsApp remains provider-neutral until the Meta Cloud API adapter is connected.
 
 ## Email delivery
 

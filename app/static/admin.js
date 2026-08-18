@@ -8,8 +8,19 @@ const bookingEditForm = document.querySelector("#booking-edit-form");
 const bookingFilters = document.querySelector("#booking-filters");
 const availabilityFilters = document.querySelector("#availability-filters");
 const availabilityBlockForm = document.querySelector("#availability-block-form");
+const alertCenter = document.querySelector("#alert-center");
+const alertBell = document.querySelector("#alert-bell");
+const alertList = document.querySelector("#alert-list");
+const desktopAlertsButton = document.querySelector("#desktop-alerts-button");
+const accountMenuButton = document.querySelector("#account-menu-button");
+const accountMenuPanel = document.querySelector("#account-menu-panel");
 let adminBookings = [];
 let studioSettings = [];
+let alertPollTimer = null;
+let alertsPayload = { unread_count: 0, new_bookings: [], operational: [] };
+let alertFilter = "all";
+const dashboardMessageTimers = new WeakMap();
+const MAX_BLOCK_DURATION_HOURS = 12;
 const currency = new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 });
 const adminNavLinks = Array.from(document.querySelectorAll(".admin-shell aside nav a[href^='#']"));
 const adminSections = adminNavLinks
@@ -44,6 +55,12 @@ async function api(url, options = {}) {
 }
 
 function showLogin(message = "") {
+  if (alertPollTimer) window.clearInterval(alertPollTimer);
+  alertPollTimer = null;
+  alertCenter.hidden = true;
+  alertBell.setAttribute("aria-expanded", "false");
+  accountMenuPanel.hidden = true;
+  accountMenuButton.setAttribute("aria-expanded", "false");
   dashboardView.hidden = true;
   loginView.hidden = false;
   setupForm.hidden = true;
@@ -65,11 +82,15 @@ function showSetup(message = "") {
 
 async function showDashboard(username) {
   loginView.hidden = true;
+  const initialSection = showAdminSection(window.location.hash.slice(1));
   dashboardView.hidden = false;
   document.querySelector("#admin-username").textContent = username || "admin";
   await loadStudioSettings();
-  await Promise.all([loadOverview(), loadBookings(), loadAvailability()]);
-  requestAnimationFrame(updateActiveNavigation);
+  const initialLoads = [loadOverview(), loadBookings(), loadAlerts()];
+  if (initialSection === "availability") initialLoads.push(loadAvailability());
+  await Promise.all(initialLoads);
+  startAlertPolling();
+  updateDesktopAlertsButton();
 }
 
 function setActiveNavigation(sectionId) {
@@ -81,22 +102,33 @@ function setActiveNavigation(sectionId) {
   });
 }
 
-function updateActiveNavigation() {
-  const marker = window.scrollY + Math.min(window.innerHeight * 0.3, 240);
-  let activeSection = adminSections[0];
+function showAdminSection(sectionId, scrollToTop = false) {
+  const activeSection = adminSections.find((section) => section.id === sectionId) || adminSections[0];
+  if (!activeSection) return null;
   adminSections.forEach((section) => {
-    if (section.offsetTop <= marker) activeSection = section;
+    section.hidden = section !== activeSection;
   });
-  if (activeSection) setActiveNavigation(activeSection.id);
+  setActiveNavigation(activeSection.id);
+  if (scrollToTop) window.scrollTo({ top: 0, behavior: "auto" });
+  return activeSection.id;
+}
+
+function navigateToAdminSection(sectionId) {
+  const nextHash = `#${sectionId}`;
+  if (window.location.hash !== nextHash) window.history.pushState(null, "", nextHash);
+  const activeSection = showAdminSection(sectionId, true);
+  if (activeSection === "availability") loadAvailability();
 }
 
 adminNavLinks.forEach((link) => {
-  link.addEventListener("click", () => setActiveNavigation(link.getAttribute("href").slice(1)));
+  link.addEventListener("click", (event) => {
+    event.preventDefault();
+    navigateToAdminSection(link.getAttribute("href").slice(1));
+  });
 });
-window.addEventListener("scroll", updateActiveNavigation, { passive: true });
-window.addEventListener("hashchange", () => {
-  const sectionId = window.location.hash.slice(1);
-  if (adminSections.some((section) => section.id === sectionId)) setActiveNavigation(sectionId);
+window.addEventListener("popstate", () => {
+  const activeSection = showAdminSection(window.location.hash.slice(1), true);
+  if (activeSection === "availability") loadAvailability();
 });
 
 async function loadOverview() {
@@ -112,6 +144,126 @@ async function loadOverview() {
   } catch (error) {
     handleDashboardError(error);
   }
+}
+
+function notifiedAlertIds() {
+  try {
+    return new Set(JSON.parse(localStorage.getItem("ynf_notified_alerts") || "[]"));
+  } catch {
+    return new Set();
+  }
+}
+
+function rememberNotifiedAlert(id) {
+  const ids = notifiedAlertIds();
+  ids.add(id);
+  try {
+    localStorage.setItem("ynf_notified_alerts", JSON.stringify([...ids].slice(-100)));
+  } catch {
+    // In-dashboard alerts still work when browser storage is unavailable.
+  }
+}
+
+function updateDesktopAlertsButton() {
+  if (!("Notification" in window)) {
+    desktopAlertsButton.textContent = "Desktop alerts unavailable";
+    desktopAlertsButton.disabled = true;
+    return;
+  }
+  if (Notification.permission === "granted") {
+    desktopAlertsButton.textContent = "Desktop alerts on";
+    desktopAlertsButton.disabled = true;
+  } else if (Notification.permission === "denied") {
+    desktopAlertsButton.textContent = "Desktop alerts blocked";
+    desktopAlertsButton.disabled = true;
+  } else {
+    desktopAlertsButton.textContent = "Enable desktop alerts";
+    desktopAlertsButton.disabled = false;
+  }
+}
+
+function sendDesktopAlerts(alerts) {
+  if (!("Notification" in window) || Notification.permission !== "granted") return;
+  const notified = notifiedAlertIds();
+  alerts.forEach((alert) => {
+    if (notified.has(alert.id)) return;
+    new Notification(alert.title, {
+      body: `${alert.message} · ${alert.reference}`,
+      tag: alert.id,
+    });
+    rememberNotifiedAlert(alert.id);
+  });
+}
+
+function alertCard(alert) {
+  const kindClass = alert.kind.replaceAll("_", "-");
+  const label = alert.kind === "new_booking"
+    ? "New booking"
+    : alert.kind === "starts_soon" ? "Starting soon" : "Session ending";
+  const seenButton = alert.notification_id && !alert.is_read
+    ? `<button type="button" data-read-alert="${alert.notification_id}">Mark seen</button>`
+    : "";
+  const readClass = alert.is_read ? " is-read" : "";
+  return `<article class="alert-card ${safeAttr(kindClass)}${readClass}">
+    <div class="alert-card-kicker"><b>${safe(label)}</b><span>${safe(alert.reference)}</span></div>
+    <h3>${safe(alert.title)}</h3>
+    <p>${safe(alert.message)}</p>
+    <footer><small>${safe(formatDate(alert.booking_date))} · ${safe(displayTime(alert.start_time))}–${safe(displayTime(alert.end_time))}</small><div class="alert-card-controls"><button type="button" data-view-alert-booking="${alert.booking_id}" data-alert-space="${safeAttr(alert.space_id)}" data-notification-id="${alert.notification_id || ""}">View</button>${seenButton}</div></footer>
+  </article>`;
+}
+
+function filteredAlerts() {
+  const bookings = alertFilter === "unread"
+    ? alertsPayload.new_bookings.filter((alert) => !alert.is_read)
+    : alertsPayload.new_bookings;
+  return [...alertsPayload.operational, ...bookings];
+}
+
+function renderAlertList() {
+  const alerts = filteredAlerts();
+  alertList.innerHTML = alerts.length
+    ? alerts.map(alertCard).join("")
+    : '<p class="alerts-clear">No notifications</p>';
+}
+
+function renderAlerts(payload) {
+  alertsPayload = payload;
+  renderAlertList();
+  const activeAlerts = [...payload.operational, ...payload.new_bookings.filter((alert) => !alert.is_read)];
+  const count = document.querySelector("#alert-count");
+  count.textContent = activeAlerts.length;
+  count.hidden = activeAlerts.length === 0;
+  alertBell.classList.toggle("has-alerts", activeAlerts.length > 0);
+  alertBell.setAttribute(
+    "aria-label",
+    activeAlerts.length ? `Open notifications, ${activeAlerts.length} unread` : "Open notifications",
+  );
+  document.querySelector("#read-all-alerts").hidden = payload.unread_count === 0;
+  sendDesktopAlerts(activeAlerts);
+}
+
+async function loadAlerts() {
+  try {
+    renderAlerts(await api("/api/admin/alerts"));
+  } catch (error) {
+    if (error.status === 401) handleDashboardError(error);
+    else alertList.innerHTML = `<p class="alerts-clear">Alerts could not be refreshed. ${safe(error.message)}</p>`;
+  }
+}
+
+function startAlertPolling() {
+  if (alertPollTimer) window.clearInterval(alertPollTimer);
+  alertPollTimer = window.setInterval(loadAlerts, 30000);
+}
+
+function setAlertPanel(open) {
+  alertCenter.hidden = !open;
+  alertBell.setAttribute("aria-expanded", String(open));
+}
+
+function setAccountMenu(open) {
+  accountMenuPanel.hidden = !open;
+  accountMenuButton.setAttribute("aria-expanded", String(open));
 }
 
 async function loadBookings() {
@@ -177,9 +329,9 @@ function halfHourOptions(selected = "", startIndex = 0, endIndex = 48) {
   }).join("");
 }
 
-function durationOptions(selected = 0.5) {
-  return Array.from({ length: 24 }, (_, index) => {
-    const value = (index + 1) / 2;
+function durationOptions(selected = 2) {
+  return Array.from({ length: 21 }, (_, index) => {
+    const value = 2 + (index / 2);
     return `<option value="${value}"${value === Number(selected) ? " selected" : ""}>${value} hour${value === 1 ? "" : "s"}</option>`;
   }).join("");
 }
@@ -248,14 +400,48 @@ function renderStudioSettings() {
   `).join("");
 }
 
+function hideDashboardMessage(message) {
+  const timer = dashboardMessageTimers.get(message);
+  if (timer) window.clearTimeout(timer);
+  dashboardMessageTimers.delete(message);
+  message.hidden = true;
+  message.replaceChildren();
+}
+
+function showDashboardMessage(target, text, { autoHide = true, kind = "success" } = {}) {
+  const message = typeof target === "string" ? document.querySelector(target) : target;
+  const previousTimer = dashboardMessageTimers.get(message);
+  if (previousTimer) window.clearTimeout(previousTimer);
+
+  const copy = document.createElement("span");
+  copy.textContent = text;
+  const close = document.createElement("button");
+  close.type = "button";
+  close.className = "dashboard-message-close";
+  close.setAttribute("aria-label", "Dismiss message");
+  close.textContent = "×";
+  close.addEventListener("click", () => hideDashboardMessage(message));
+
+  message.replaceChildren(copy, close);
+  message.classList.toggle("is-success", kind === "success");
+  message.classList.toggle("is-error", kind === "error");
+  message.setAttribute("role", kind === "error" ? "alert" : "status");
+  message.hidden = false;
+
+  if (autoHide) {
+    dashboardMessageTimers.set(
+      message,
+      window.setTimeout(() => hideDashboardMessage(message), 10000),
+    );
+  }
+}
+
 function handleDashboardError(error) {
   if (error.status === 401) {
     showLogin("Your session has expired. Please sign in again.");
     return;
   }
-  const message = document.querySelector("#dashboard-message");
-  message.textContent = error.message;
-  message.hidden = false;
+  showDashboardMessage("#dashboard-message", error.message, { autoHide: false, kind: "error" });
 }
 
 function localDate(addDays = 0) {
@@ -274,7 +460,7 @@ function setupHalfHourBlockOptions() {
   const openingIndex = timeToMinutes(studio.opening_time) / 30;
   const closingIndex = timeToMinutes(studio.closing_time) / 30;
   const previous = startSelect.value;
-  startSelect.innerHTML = halfHourOptions(previous, openingIndex, closingIndex);
+  startSelect.innerHTML = halfHourOptions(previous, openingIndex, Math.max(openingIndex, closingIndex - 3));
   syncBlockDurationOptions();
 }
 
@@ -283,13 +469,15 @@ function syncBlockDurationOptions() {
   if (!studio) return;
   const startValue = availabilityBlockForm.elements.start_time.value || studio.opening_time;
   const durationSelect = availabilityBlockForm.elements.duration_hours;
-  const previousDuration = Number(durationSelect.value || 0.5);
+  const previousDuration = Number(durationSelect.value || 2);
   const remainingHalfHours = (timeToMinutes(studio.closing_time) - timeToMinutes(startValue)) / 30;
-  durationSelect.innerHTML = Array.from({ length: remainingHalfHours }, (_, index) => {
-    const duration = (index + 1) / 2;
+  const maximumDuration = Math.min(MAX_BLOCK_DURATION_HOURS, remainingHalfHours / 2);
+  const optionCount = Math.max(0, Math.floor((maximumDuration - 2) * 2) + 1);
+  durationSelect.innerHTML = Array.from({ length: optionCount }, (_, index) => {
+    const duration = 2 + (index / 2);
     return `<option value="${duration}">${duration} hour${duration === 1 ? "" : "s"}</option>`;
   }).join("");
-  durationSelect.value = String(Math.min(previousDuration, remainingHalfHours / 2));
+  durationSelect.value = String(Math.max(2, Math.min(previousDuration, maximumDuration)));
 }
 
 function setupBookingEditOptions() {
@@ -349,7 +537,7 @@ function openBookingModal(bookingId) {
     `${booking.payment_mode?.replaceAll("_", " ") || "No mode"} · ${currency.format(booking.total_amount)}`;
   document.querySelector("#payment-reference").value = booking.payment_reference || "";
   const paymentAction = document.querySelector("#payment-action-button");
-  if (booking.payment_status === "pending" && booking.status === "confirmed") {
+  if (booking.payment_status === "pending" && ["payment_pending", "confirmed"].includes(booking.status)) {
     paymentAction.hidden = false;
     paymentAction.dataset.status = "paid";
     paymentAction.textContent = "Mark paid";
@@ -462,6 +650,84 @@ bookingFilters.addEventListener("submit", (event) => {
   event.preventDefault();
   loadBookings();
 });
+alertBell.addEventListener("click", () => {
+  setAlertPanel(alertCenter.hidden);
+});
+accountMenuButton.addEventListener("click", () => {
+  setAccountMenu(accountMenuPanel.hidden);
+});
+document.querySelectorAll("[data-alert-filter]").forEach((button) => {
+  button.addEventListener("click", () => {
+    alertFilter = button.dataset.alertFilter;
+    document.querySelectorAll("[data-alert-filter]").forEach((tab) => {
+      const selected = tab === button;
+      tab.classList.toggle("active", selected);
+      tab.setAttribute("aria-selected", String(selected));
+    });
+    renderAlertList();
+  });
+});
+document.addEventListener("click", (event) => {
+  if (!event.target.closest(".alert-menu")) setAlertPanel(false);
+  if (!event.target.closest(".account-menu")) setAccountMenu(false);
+});
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape") {
+    setAlertPanel(false);
+    setAccountMenu(false);
+  }
+});
+desktopAlertsButton.addEventListener("click", async () => {
+  if (!("Notification" in window)) return;
+  await Notification.requestPermission();
+  updateDesktopAlertsButton();
+  await loadAlerts();
+});
+document.querySelector("#read-all-alerts").addEventListener("click", async (event) => {
+  const button = event.currentTarget;
+  button.disabled = true;
+  try {
+    await api("/api/admin/alerts/read-all", { method: "POST" });
+    await loadAlerts();
+  } catch (error) {
+    handleDashboardError(error);
+  } finally {
+    button.disabled = false;
+  }
+});
+alertList.addEventListener("click", async (event) => {
+  const readButton = event.target.closest("[data-read-alert]");
+  if (readButton) {
+    readButton.disabled = true;
+    try {
+      await api(`/api/admin/alerts/${readButton.dataset.readAlert}/read`, { method: "POST" });
+      await loadAlerts();
+    } catch (error) {
+      handleDashboardError(error);
+      readButton.disabled = false;
+    }
+    return;
+  }
+
+  const viewButton = event.target.closest("[data-view-alert-booking]");
+  if (!viewButton) return;
+  viewButton.disabled = true;
+  try {
+    if (viewButton.dataset.notificationId) {
+      await api(`/api/admin/alerts/${viewButton.dataset.notificationId}/read`, { method: "POST" });
+    }
+    bookingFilters.reset();
+    bookingFilters.elements.space_id.value = viewButton.dataset.alertSpace;
+    await loadBookings();
+    setAlertPanel(false);
+    navigateToAdminSection("bookings");
+    openBookingModal(viewButton.dataset.viewAlertBooking);
+    await loadAlerts();
+  } catch (error) {
+    handleDashboardError(error);
+    viewButton.disabled = false;
+  }
+});
 document.querySelector("#bookings-body").addEventListener("click", (event) => {
   const button = event.target.closest("[data-booking-id]");
   if (button) openBookingModal(button.dataset.bookingId);
@@ -492,9 +758,7 @@ bookingEditForm.addEventListener("submit", async (event) => {
       }),
     });
     bookingModal.hidden = true;
-    const dashboardMessage = document.querySelector("#dashboard-message");
-    dashboardMessage.textContent = `${booking.reference} updated successfully.`;
-    dashboardMessage.hidden = false;
+    showDashboardMessage("#dashboard-message", `${booking.reference} updated successfully.`);
     await Promise.all([loadOverview(), loadBookings(), loadAvailability()]);
   } catch (error) {
     message.textContent = error.message;
@@ -513,11 +777,10 @@ document.querySelector("#cancel-booking-button").addEventListener("click", async
   try {
     const booking = await api(`/api/admin/bookings/${bookingId}/cancel`, { method: "POST" });
     bookingModal.hidden = true;
-    const dashboardMessage = document.querySelector("#dashboard-message");
-    dashboardMessage.textContent = booking.payment_status === "refund_due"
+    const confirmation = booking.payment_status === "refund_due"
       ? `${booking.reference} cancelled. Its time is available and a refund is now due.`
       : `${booking.reference} cancelled. Its time is available again.`;
-    dashboardMessage.hidden = false;
+    showDashboardMessage("#dashboard-message", confirmation);
     await Promise.all([loadOverview(), loadBookings(), loadAvailability()]);
   } catch (error) {
     message.textContent = error.message;
@@ -539,9 +802,10 @@ document.querySelector("#payment-action-button").addEventListener("click", async
       body: JSON.stringify({ status, provider_reference: reference || null }),
     });
     bookingModal.hidden = true;
-    const dashboardMessage = document.querySelector("#dashboard-message");
-    dashboardMessage.textContent = `${booking.reference} payment marked ${booking.payment_status.replaceAll("_", " ")}.`;
-    dashboardMessage.hidden = false;
+    showDashboardMessage(
+      "#dashboard-message",
+      `${booking.reference} payment marked ${booking.payment_status.replaceAll("_", " ")}.`,
+    );
     await Promise.all([loadOverview(), loadBookings()]);
   } catch (error) {
     const message = document.querySelector("#booking-edit-message");
@@ -580,15 +844,14 @@ availabilityBlockForm.addEventListener("submit", async (event) => {
         reason: block.get("reason") || "Owner blocked",
       }),
     });
-    const message = document.querySelector("#availability-message");
-    message.textContent = "Studio time blocked. Customer availability has been updated.";
-    message.hidden = false;
+    showDashboardMessage(
+      "#availability-message",
+      "Studio time blocked. Customer availability has been updated.",
+    );
     availabilityBlockForm.querySelector('input[name="reason"]').value = "";
     await loadAvailability();
   } catch (error) {
-    const message = document.querySelector("#availability-message");
-    message.textContent = error.message;
-    message.hidden = false;
+    showDashboardMessage("#availability-message", error.message, { autoHide: false, kind: "error" });
   } finally {
     button.disabled = false;
   }
@@ -606,14 +869,10 @@ document.querySelector("#availability-slots").addEventListener("click", async (e
   unblockButton.disabled = true;
   try {
     await api(`/api/admin/availability/blocks/${unblockButton.dataset.unblock}`, { method: "DELETE" });
-    const message = document.querySelector("#availability-message");
-    message.textContent = "Studio time reopened for customer bookings.";
-    message.hidden = false;
+    showDashboardMessage("#availability-message", "Studio time reopened for customer bookings.");
     await loadAvailability();
   } catch (error) {
-    const message = document.querySelector("#availability-message");
-    message.textContent = error.message;
-    message.hidden = false;
+    showDashboardMessage("#availability-message", error.message, { autoHide: false, kind: "error" });
     unblockButton.disabled = false;
   }
 });
@@ -653,13 +912,14 @@ document.querySelector("#studio-settings-list").addEventListener("submit", async
         is_active: data.get("is_active") === "on",
       }),
     });
-    message.textContent = `${studio.name} settings saved. Public booking availability has been updated.`;
-    message.hidden = false;
+    showDashboardMessage(
+      message,
+      `${studio.name} settings saved. Public booking availability has been updated.`,
+    );
     await loadStudioSettings();
     await Promise.all([loadOverview(), loadBookings(), loadAvailability()]);
   } catch (error) {
-    message.textContent = error.message;
-    message.hidden = false;
+    showDashboardMessage(message, error.message, { autoHide: false, kind: "error" });
     if (error.status === 401) handleDashboardError(error);
   } finally {
     button.disabled = false;
@@ -670,6 +930,7 @@ document.querySelector("#logout-button").addEventListener("click", async () => {
   showLogin();
 });
 document.querySelector("#change-password-button").addEventListener("click", () => {
+  setAccountMenu(false);
   document.querySelector("#change-password-form").reset();
   document.querySelector("#password-message").hidden = true;
   passwordModal.hidden = false;
@@ -696,9 +957,10 @@ document.querySelector("#change-password-form").addEventListener("submit", async
       body: JSON.stringify({ current_password: data.get("current_password"), new_password: data.get("new_password") }),
     });
     passwordModal.hidden = true;
-    const dashboardMessage = document.querySelector("#dashboard-message");
-    dashboardMessage.textContent = "Password updated. Other signed-in sessions have been invalidated.";
-    dashboardMessage.hidden = false;
+    showDashboardMessage(
+      "#dashboard-message",
+      "Password updated. Other signed-in sessions have been invalidated.",
+    );
   } catch (error) {
     message.textContent = error.message;
     message.hidden = false;
@@ -727,6 +989,9 @@ availabilityFilters.elements.booking_date.value = localDate(1);
 bookingEditForm.elements.booking_date.min = localDate();
 setupHalfHourBlockOptions();
 setupBookingEditOptions();
+document.addEventListener("visibilitychange", () => {
+  if (!document.hidden && !dashboardView.hidden) loadAlerts();
+});
 
 api("/api/admin/session")
   .then((session) => session.authenticated ? showDashboard(session.username) : session.setup_required ? showSetup() : showLogin())

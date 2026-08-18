@@ -28,13 +28,20 @@ class EmailServiceTest(unittest.TestCase):
         html = message.get_body(preferencelist=("html",)).get_content()
 
         self.assertEqual(message["To"], "customer@example.com")
-        self.assertIn("YNF-000042", message["Subject"])
-        self.assertIn("Standard Small Space", plain)
+        self.assertEqual(message["Subject"], "Booking confirmation for Email Customer")
+        self.assertIn("Standard Studio", plain)
         self.assertIn("2:30 PM – 4:00 PM", plain)
         self.assertIn("https://payments.example/booking-42", plain)
+        self.assertNotIn("Payment:", plain)
+        self.assertNotIn(">Payment<", html)
+        self.assertIn(">Amount<", html)
         self.assertIn("Studio rules:", plain)
         self.assertIn("arrive on time", plain.lower())
         self.assertIn("COMPLETE PAYMENT", html)
+        self.assertIn("YNotFramez Studios", html)
+        self.assertIn("AVADI", html)
+        self.assertIn("Your booking has been scheduled.", html)
+        self.assertIn("Dear Email Customer,", html)
         self.assertIn("Studio rules", html)
         self.assertIn("arrive on time", html.lower())
 
@@ -43,10 +50,44 @@ class EmailServiceTest(unittest.TestCase):
         plain = message.get_body(preferencelist=("plain",)).get_content()
         html = message.get_body(preferencelist=("html",)).get_content()
 
+        self.assertEqual(message["Subject"], "Booking cancellation for Email Customer")
+        self.assertIn("Your booking has been cancelled.", plain)
+        self.assertIn("Dear Email Customer,", plain)
+        self.assertIn("Your booking has been cancelled.", html)
+        self.assertIn("Dear Email Customer,", html)
         self.assertNotIn("Payment link:", plain)
         self.assertNotIn("Studio rules:", plain)
         self.assertNotIn("COMPLETE PAYMENT", html)
         self.assertNotIn("Studio rules", html)
+
+    def test_update_uses_rescheduled_customer_copy(self) -> None:
+        message = EmailService()._build_message(self.booking(), "update")
+        plain = message.get_body(preferencelist=("plain",)).get_content()
+        html = message.get_body(preferencelist=("html",)).get_content()
+
+        self.assertEqual(message["Subject"], "Rescheduled booking confirmation for Email Customer")
+        self.assertIn("Your booking has been rescheduled.", plain)
+        self.assertIn("Dear Email Customer,", plain)
+        self.assertIn("Your booking has been rescheduled.", html)
+        self.assertIn("Dear Email Customer,", html)
+
+    def test_payment_link_failure_is_highlighted_without_a_payment_row(self) -> None:
+        booking = self.booking()
+        booking.payment_mode = PaymentMode.PAY_AT_STUDIO
+        booking.payment_link = None
+
+        message = EmailService()._build_message(booking, "payment_failure")
+        plain = message.get_body(preferencelist=("plain",)).get_content()
+        html = message.get_body(preferencelist=("html",)).get_content()
+
+        self.assertEqual(message["Subject"], "Payment action required for Email Customer")
+        self.assertIn("Your payment could not be completed.", html)
+        self.assertIn("has failed", plain)
+        self.assertIn("more than two hours", plain)
+        self.assertIn("has failed", html)
+        self.assertIn("more than two hours", html)
+        self.assertIn("border-left:4px solid #c62828", html)
+        self.assertNotIn(">Payment<", html)
 
     def test_smtp_mode_uses_starttls_login_and_multipart_message(self) -> None:
         smtp = MagicMock()

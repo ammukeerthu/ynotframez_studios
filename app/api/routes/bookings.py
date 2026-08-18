@@ -1,6 +1,9 @@
 from datetime import date, datetime, timedelta
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+import json
+
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, status
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
@@ -15,12 +18,33 @@ from app.schemas.booking import (
     WebBookingCreate,
 )
 from app.models.booking import Booking, BookingState, PaymentMode
-from app.models.payment import PaymentStatus
+from app.models.payment import PaymentRecord, PaymentStatus
 from app.services.payment_service import PaymentService
 from app.services.booking_service import BookingApplicationService, BookingUnavailableError
+from app.services.razorpay_service import RazorpayService
 from app.services.spaces import get_space_by_id, get_space_by_slug, list_spaces
 
 router = APIRouter(prefix="/api", tags=["Web bookings"])
+
+
+def _webhook_booking(payload: dict, db: Session) -> Booking | None:
+    event_payload = payload.get("payload", {})
+    payment_link = event_payload.get("payment_link", {}).get("entity", {})
+    payment = event_payload.get("payment", {}).get("entity", {})
+    reference = payment_link.get("reference_id")
+    notes = payment_link.get("notes") or payment.get("notes") or {}
+    booking_id = notes.get("booking_id")
+    if booking_id and str(booking_id).isdigit():
+        return db.get(Booking, int(booking_id))
+    if reference and str(reference).upper().startswith("YNF-"):
+        numeric = str(reference).upper().removeprefix("YNF-")
+        if numeric.isdigit():
+            return db.get(Booking, int(numeric))
+    link_id = payment_link.get("id")
+    if link_id:
+        record = db.scalar(select(PaymentRecord).where(PaymentRecord.provider_reference == link_id))
+        return db.get(Booking, record.booking_id) if record else None
+    return None
 
 
 @router.get("/spaces", response_model=list[SpaceResponse])
@@ -74,6 +98,45 @@ def create_booking(
         raise
 
 
+@router.post("/payments/razorpay/webhook", include_in_schema=False)
+async def razorpay_webhook(
+    request: Request,
+    x_razorpay_signature: str = Header(default=""),
+    db: Session = Depends(get_db),
+) -> dict[str, bool]:
+    raw_payload = await request.body()
+    if not RazorpayService.verify_webhook_signature(raw_payload, x_razorpay_signature):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid Razorpay signature.")
+    try:
+        payload = json.loads(raw_payload)
+    except json.JSONDecodeError as error:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid webhook payload.") from error
+
+    event = payload.get("event", "")
+    booking = _webhook_booking(payload, db)
+    if booking is None:
+        return {"ok": True}
+    service = BookingApplicationService(db)
+    if event == "payment_link.paid":
+        link = payload.get("payload", {}).get("payment_link", {}).get("entity", {})
+        payment = payload.get("payload", {}).get("payment", {}).get("entity", {})
+        record = service.payments.get(booking.id)
+        if record is None:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Payment record not found.")
+        if link.get("status") != "paid" or link.get("currency") not in {None, "INR"}:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Razorpay link is not fully paid.")
+        if int(link.get("amount_paid", 0)) != record.amount * 100:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Razorpay amount does not match.")
+        if booking.state != BookingState.CONFIRMED:
+            booking.payment_mode = PaymentMode.PAY_NOW
+            record.mode = PaymentMode.PAY_NOW
+            service.confirm_paid_booking(booking, payment.get("id") or link.get("id"))
+    elif event in {"payment.failed", "payment_link.expired", "payment_link.cancelled"}:
+        service.record_payment_failure(booking)
+    db.commit()
+    return {"ok": True}
+
+
 @router.post("/bookings/lookup", response_model=CustomerBookingStatusResponse)
 def lookup_booking(
     payload: BookingLookupRequest,
@@ -97,7 +160,7 @@ def lookup_booking(
     start = datetime.strptime(f"{booking.booking_date} {booking.start_time}", "%Y-%m-%d %H:%M")
     space = get_space_by_id(booking.space_id, db, include_inactive=True)
     show_payment_link = (
-        booking.state == BookingState.CONFIRMED
+        booking.state in {BookingState.PAYMENT_PENDING, BookingState.CONFIRMED}
         and payment_status == PaymentStatus.PENDING
         and booking.payment_mode == PaymentMode.PAY_NOW
     )

@@ -12,8 +12,10 @@ from app.schemas.admin import AdminStudioUpdate
 from app.schemas.booking import AvailabilityRequest, WebBookingCreate
 from app.services.booking_service import BookingApplicationService
 from app.services.spaces import get_space_by_id, list_spaces, seed_studio_settings
+from app.models.studio import StudioSetting
 
 settings.email_mode = "console"
+settings.calendar_mode = "stub"
 
 
 class StudioSettingsTest(unittest.TestCase):
@@ -45,7 +47,7 @@ class StudioSettingsTest(unittest.TestCase):
             "cover_image": "https://example.com/studio.jpg",
             "opening_time": "10:00",
             "closing_time": "18:00",
-            "min_duration_hours": 1.0,
+            "min_duration_hours": 2.0,
             "max_duration_hours": 4.0,
             "is_active": True,
             "booking_purposes": ["Portrait Session", "Product Campaign", "Workshop"],
@@ -72,7 +74,7 @@ class StudioSettingsTest(unittest.TestCase):
                 space_id="standard_small",
                 booking_date=future_date,
                 start_time=time(9, 30),
-                duration_hours=1,
+                duration_hours=2,
             )
         )
         too_short, _ = service.check_availability(
@@ -91,7 +93,7 @@ class StudioSettingsTest(unittest.TestCase):
                 space_id="standard_small",
                 booking_date=future_date,
                 start_time=time(10, 0),
-                duration_hours=1,
+                duration_hours=2,
                 customer_name="Settings Customer",
                 customer_email="settings@example.com",
                 phone_number="+919999999999",
@@ -101,8 +103,17 @@ class StudioSettingsTest(unittest.TestCase):
             )
         )
         self.assertEqual(booking.space_name, "Standard Creator Space")
-        self.assertEqual(booking.total_amount, 1600)
-        self.assertIn("amount=1600", booking.payment_link or "")
+        self.assertEqual(booking.total_amount, 3200)
+        self.assertIn("amount=3200", booking.payment_link or "")
+
+    def test_seed_migrates_legacy_minimum_duration_to_two_hours(self) -> None:
+        studio = self.db.get(StudioSetting, "standard_small")
+        studio.min_duration_hours = 0.5
+        self.db.commit()
+
+        seed_studio_settings(self.db)
+
+        self.assertEqual(studio.min_duration_hours, 2.0)
 
     def test_inactive_studio_is_hidden_from_public_catalogue(self) -> None:
         admin_update_studio("standard_small", self.payload(is_active=False), self.db)

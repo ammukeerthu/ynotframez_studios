@@ -2,6 +2,8 @@ from datetime import date, time
 
 from pydantic import BaseModel, EmailStr, Field, field_validator
 
+from app.core.booking_rules import MINIMUM_BOOKING_DURATION_HOURS
+
 
 class BookingDetails(BaseModel):
     space_id: str
@@ -68,6 +70,7 @@ class DayAvailabilityResponse(BaseModel):
 
 
 class WebBookingCreate(AvailabilityRequest):
+    duration_hours: float = Field(ge=MINIMUM_BOOKING_DURATION_HOURS, le=12, multiple_of=0.5)
     customer_name: str = Field(min_length=2, max_length=120)
     customer_email: EmailStr
     phone_number: str = Field(min_length=7, max_length=32)
@@ -79,8 +82,8 @@ class WebBookingCreate(AvailabilityRequest):
     @classmethod
     def validate_payment_mode(cls, value: str) -> str:
         normalized = value.strip().lower()
-        if normalized not in {"pay_now", "pay_at_studio"}:
-            raise ValueError("Payment mode must be pay_now or pay_at_studio")
+        if normalized != "pay_now":
+            raise ValueError("Online payment is required for new bookings.")
         return normalized
 
 
@@ -98,7 +101,7 @@ class BookingResponse(BaseModel):
     customer_email: EmailStr
     payment_mode: str
     payment_link: str | None = None
-    calendar_event_id: str
+    calendar_event_id: str | None = None
 
 
 class BookingLookupRequest(BaseModel):

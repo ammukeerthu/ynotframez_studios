@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.core.booking_rules import MINIMUM_BOOKING_DURATION_HOURS
 from app.models.studio import StudioPurposeOption, StudioSetting
 
 
@@ -35,7 +36,7 @@ class StudioSpace:
     cover_image: str
     opening_time: str = "09:00"
     closing_time: str = "20:00"
-    min_duration_hours: float = 0.5
+    min_duration_hours: float = MINIMUM_BOOKING_DURATION_HOURS
     max_duration_hours: float = 12.0
     is_active: bool = True
     booking_purposes: tuple[str, ...] = DEFAULT_BOOKING_PURPOSES
@@ -44,11 +45,11 @@ class StudioSpace:
 SPACES = {
     "1": StudioSpace(
         id="standard_small",
-        slug="standard-small-space",
-        name="Standard Small Space",
+        slug="standard-studio",
+        name="Standard Studio",
         short_description="A compact, thoughtfully equipped studio for portraits, products, reels, and interviews.",
         brochure=(
-            "Standard Small Space: compact studio for portraits, reels, product shoots, and small teams. "
+            "Standard Studio: compact studio for portraits, reels, product shoots, and small teams. "
             "Includes basic lights, backdrop support, changing corner, and seating for 4."
         ),
         rules=(
@@ -67,11 +68,11 @@ SPACES = {
     ),
     "2": StudioSpace(
         id="premium_large",
-        slug="premium-large-space",
-        name="Premium Large Space",
+        slug="premium-studio",
+        name="Premium Studio",
         short_description="A spacious production studio for fashion, campaigns, maternity, video, and larger teams.",
         brochure=(
-            "Premium Large Space: larger studio for fashion, maternity, campaigns, videos, and bigger teams. "
+            "Premium Studio: larger studio for fashion, maternity, campaigns, videos, and bigger teams. "
             "Includes premium lighting setup, multiple backdrops, makeup area, lounge seating, and space for 10."
         ),
         rules=(
@@ -90,6 +91,15 @@ SPACES = {
     ),
 }
 
+LEGACY_SPACE_NAMES = {
+    "standard_small": "Standard Small Space",
+    "premium_large": "Premium Large Space",
+}
+LEGACY_SPACE_SLUGS = {
+    "standard-small-space": "standard-studio",
+    "premium-large-space": "premium-studio",
+}
+
 
 def seed_studio_settings(db: Session, commit: bool = True) -> None:
     existing = {row.id: row for row in db.scalars(select(StudioSetting))}
@@ -97,6 +107,17 @@ def seed_studio_settings(db: Session, commit: bool = True) -> None:
     for sort_order, space in enumerate(SPACES.values(), start=1):
         if space.id in existing:
             row = existing[space.id]
+            if row.min_duration_hours < MINIMUM_BOOKING_DURATION_HOURS:
+                row.min_duration_hours = MINIMUM_BOOKING_DURATION_HOURS
+            if row.max_duration_hours < MINIMUM_BOOKING_DURATION_HOURS:
+                row.max_duration_hours = MINIMUM_BOOKING_DURATION_HOURS
+            legacy_name = LEGACY_SPACE_NAMES.get(space.id)
+            if legacy_name and row.name == legacy_name:
+                row.name = space.name
+            if row.slug in LEGACY_SPACE_SLUGS:
+                row.slug = LEGACY_SPACE_SLUGS[row.slug]
+            if legacy_name and row.brochure.startswith(f"{legacy_name}:"):
+                row.brochure = row.brochure.replace(legacy_name, space.name, 1)
             if (
                 _json_items(row.equipment_json) == space.equipment
                 and _json_items(row.amenities_json) == space.equipment + space.amenities
@@ -184,6 +205,7 @@ def get_space_by_id(
 
 def get_space_by_slug(slug: str, db: Session | None = None) -> StudioSpace | None:
     normalized = slug.strip().lower()
+    normalized = LEGACY_SPACE_SLUGS.get(normalized, normalized)
     return next((space for space in list_spaces(db) if space.slug == normalized), None)
 
 

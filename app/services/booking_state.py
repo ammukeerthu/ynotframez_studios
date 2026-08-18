@@ -3,7 +3,8 @@ from datetime import date, datetime, time
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.models.booking import Booking, BookingState, PaymentMode
+from app.core.booking_rules import MINIMUM_BOOKING_DURATION_HOURS
+from app.models.booking import Booking, BookingState
 from app.schemas.booking import AvailabilityRequest
 from app.services.booking_service import BookingApplicationService
 from app.services.spaces import get_space_by_id, get_space_by_input, list_spaces_message
@@ -13,9 +14,6 @@ class BookingStateMachine:
     def __init__(self, db: Session) -> None:
         self.db = db
         self.booking_service = BookingApplicationService(db)
-        self.calendar = self.booking_service.calendar
-        self.razorpay = self.booking_service.razorpay
-        self.email = self.booking_service.email
 
     def handle_message(self, phone_number: str, message: str) -> str:
         text = message.strip()
@@ -91,7 +89,8 @@ class BookingStateMachine:
         booking.state = BookingState.ASK_SCHEDULE
         return (
             "Please send booking details as: YYYY-MM-DD HH:MM duration_hours\n"
-            "Times and durations can use 30-minute steps. Example: 2026-06-15 14:30 1.5"
+            "Bookings require at least 2 hours and can use 30-minute steps. "
+            "Example: 2026-06-15 14:30 2"
         )
 
     def _handle_schedule(self, booking: Booking, text: str) -> str:
@@ -102,11 +101,15 @@ class BookingStateMachine:
         except ValueError:
             return (
                 "Please use this format: YYYY-MM-DD HH:MM duration_hours\n"
-                "Example: 2026-06-15 14:30 1.5"
+                "Example: 2026-06-15 14:30 2"
             )
 
-        if parsed_start.minute not in {0, 30} or duration_hours < 0.5 or not (duration_hours * 2).is_integer():
-            return "Start time and duration must use 30-minute steps, with a minimum duration of 0.5 hour."
+        if (
+            parsed_start.minute not in {0, 30}
+            or duration_hours < MINIMUM_BOOKING_DURATION_HOURS
+            or not (duration_hours * 2).is_integer()
+        ):
+            return "Start time and duration must use 30-minute steps, with a minimum duration of 2 hours."
 
         booking.booking_date = booking_date
         booking.start_time = start_time
@@ -167,14 +170,13 @@ class BookingStateMachine:
             return "Please reply ACCEPT to confirm that you accept the studio terms and rules."
 
         booking.terms_accepted = "yes"
-        booking.state = BookingState.ASK_PAYMENT_MODE
-        return "Choose payment mode:\n1. Pay Now\n2. Pay at Studio\n\nReply with 1 or 2."
+        return self._finalize_online_booking(booking)
 
     def _handle_payment_mode(self, booking: Booking, text: str) -> str:
-        normalized = text.strip().lower()
-        if normalized not in {"1", "pay now", "pay_now", "2", "pay at studio", "pay_at_studio"}:
-            return "Please choose payment mode:\n1. Pay Now\n2. Pay at Studio"
+        # Complete legacy conversations that reached the former payment-choice step.
+        return self._finalize_online_booking(booking)
 
+    def _finalize_online_booking(self, booking: Booking) -> str:
         available, message = self.booking_service.check_availability(
             AvailabilityRequest(
                 space_id=booking.space_id or "",
@@ -192,47 +194,26 @@ class BookingStateMachine:
                 "YYYY-MM-DD HH:MM duration_hours"
             )
 
-        if normalized in {"1", "pay now", "pay_now"}:
-            booking.payment_mode = PaymentMode.PAY_NOW
-            booking.payment_link = self.razorpay.create_payment_link(booking)
-            booking.state = BookingState.PAYMENT_PENDING
-            self._confirm_booking(booking)
-            return self._confirmation_message(booking)
-
-        if normalized in {"2", "pay at studio", "pay_at_studio"}:
-            booking.payment_mode = PaymentMode.PAY_AT_STUDIO
-            self._confirm_booking(booking)
-            return self._confirmation_message(booking)
-
-        return "Please choose payment mode:\n1. Pay Now\n2. Pay at Studio"
+        self.booking_service.prepare_online_payment(booking)
+        booking.state = BookingState.PAYMENT_PENDING
+        return self._payment_pending_message(booking)
 
     def _handle_payment_pending(self, booking: Booking, text: str) -> str:
-        return self._confirmation_message(booking)
+        return self._payment_pending_message(booking)
 
     def _handle_confirmed(self, booking: Booking, text: str) -> str:
         return "Your booking is already confirmed. Reply RESTART to make a new booking."
 
-    def _confirm_booking(self, booking: Booking) -> None:
-        self.booking_service.payments.ensure(booking)
-        booking.calendar_event_id = self.calendar.create_event(booking)
-        booking.state = BookingState.CONFIRMED
-        self.email.send_booking_confirmation(booking)
-
-    def _confirmation_message(self, booking: Booking) -> str:
-        space = get_space_by_id(booking.space_id, self.db, include_inactive=True)
-        payment_note = (
-            f"\nPayment link: {booking.payment_link}" if booking.payment_mode == PaymentMode.PAY_NOW else "\nPayment: Pay at Studio"
-        )
+    def _payment_pending_message(self, booking: Booking) -> str:
+        if booking.payment_link:
+            return (
+                "Complete payment to reserve your studio time. Your booking is not confirmed yet.\n\n"
+                f"Payment link: {booking.payment_link}\n\n"
+                "The link and temporary time hold expire after two hours."
+            )
         return (
-            "Booking confirmed.\n\n"
-            f"Space: {space.name if space else booking.space_id}\n"
-            f"Date: {booking.booking_date}\n"
-            f"Time: {booking.start_time}\n"
-            f"Duration: {booking.duration_hours:g} hour(s)\n"
-            f"Name: {booking.customer_name}\n"
-            f"Email: {booking.customer_email}"
-            f"{payment_note}\n\n"
-            "A confirmation email has been sent."
+            "We could not create the online payment link, so your booking is not confirmed yet. "
+            "Please contact the studio team within two hours; otherwise, the time may be reopened."
         )
 
     def _is_empty_booking(self, booking: Booking) -> bool:

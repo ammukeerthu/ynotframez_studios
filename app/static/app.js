@@ -1,5 +1,6 @@
 const form = document.querySelector("#booking-form");
 const message = document.querySelector("#global-message");
+document.querySelector("#year").textContent = new Date().getFullYear();
 const state = { step: 1, spaces: [], selectedSpace: null, slots: [], selectedSlots: [], slotChecked: false };
 
 const currency = new Intl.NumberFormat("en-IN", {
@@ -124,7 +125,7 @@ function validateStep(step) {
     return false;
   }
   if (step === 2 && state.selectedSlots.length === 0) {
-    showMessage("Select at least one available 30-minute slot to continue.");
+    showMessage("Select a start time with at least 2 consecutive hours available.");
     return false;
   }
   if (step === 2 && state.selectedSpace) {
@@ -193,24 +194,52 @@ function renderSlots() {
   });
 }
 
+function minimumSelectionFrom(startTime) {
+  const startIndex = state.slots.findIndex((slot) => slot.start_time === startTime);
+  const minimumHours = state.selectedSpace?.min_duration_hours || 2;
+  const requiredSlots = Math.ceil(minimumHours / 0.5);
+  const candidate = state.slots.slice(startIndex, startIndex + requiredSlots);
+  const consecutive = candidate.every(
+    (slot, index) => slot.status === "available"
+      && (index === 0 || candidate[index - 1].end_time === slot.start_time),
+  );
+  return startIndex >= 0 && candidate.length === requiredSlots && consecutive ? candidate : null;
+}
+
+function selectMinimumDuration(startTime) {
+  const candidate = minimumSelectionFrom(startTime);
+  if (!candidate) {
+    const minimumHours = state.selectedSpace?.min_duration_hours || 2;
+    showMessage(`Choose a start time with at least ${minimumHours} consecutive hours available.`);
+    return false;
+  }
+  state.selectedSlots = candidate;
+  return true;
+}
+
 function toggleSlot(startTime) {
   const slot = state.slots.find((item) => item.start_time === startTime);
   if (!slot || slot.status !== "available") return;
+  showMessage();
+  const minimumSlots = Math.ceil((state.selectedSpace?.min_duration_hours || 2) / 0.5);
   const existingIndex = state.selectedSlots.findIndex((item) => item.start_time === startTime);
   if (existingIndex >= 0) {
     if (existingIndex === 0 || existingIndex === state.selectedSlots.length - 1) {
-      state.selectedSlots.splice(existingIndex, 1);
+      if (state.selectedSlots.length > minimumSlots) state.selectedSlots.splice(existingIndex, 1);
+      else showMessage(`The minimum booking duration is ${minimumSlots * 0.5} hours.`);
     } else {
-      state.selectedSlots = [slot];
-      showMessage("To keep the booking continuous, a middle-slot change starts a new selection.");
+      if (selectMinimumDuration(startTime)) {
+        showMessage("A new minimum-duration selection has been started from this time.");
+      }
     }
+  } else if (state.selectedSlots.length === 0) {
+    selectMinimumDuration(startTime);
   } else {
     const candidate = [...state.selectedSlots, slot].sort((a, b) => a.start_time.localeCompare(b.start_time));
     const consecutive = candidate.every((item, index) => index === 0 || candidate[index - 1].end_time === item.start_time);
     if (consecutive && candidate.length * 0.5 <= state.selectedSpace.max_duration_hours) state.selectedSlots = candidate;
     else if (consecutive) showMessage(`This studio allows bookings up to ${state.selectedSpace.max_duration_hours} hours.`);
-    else {
-      state.selectedSlots = [slot];
+    else if (selectMinimumDuration(startTime)) {
       showMessage("Half-hour slots must be consecutive. A new selection has been started.");
     }
   }
@@ -227,8 +256,8 @@ function syncSelectedSlots() {
   const note = document.querySelector("#slot-note");
   note.className = "";
   note.textContent = state.selectedSlots.length
-    ? `${duration} hour${duration === 1 ? "" : "s"} selected. This studio allows ${state.selectedSpace?.min_duration_hours || 0.5}–${state.selectedSpace?.max_duration_hours || 12} hours.`
-    : `Select consecutive slots (${state.selectedSpace?.min_duration_hours || 0.5}–${state.selectedSpace?.max_duration_hours || 12} hours).`;
+    ? `${duration} hour${duration === 1 ? "" : "s"} selected. This studio allows ${state.selectedSpace?.min_duration_hours || 2}–${state.selectedSpace?.max_duration_hours || 12} hours.`
+    : `Select a start time. The minimum ${state.selectedSpace?.min_duration_hours || 2}-hour window will be highlighted automatically.`;
   updatePrice();
   updateLiveSummary();
 }
@@ -362,14 +391,22 @@ function showConfirmation(booking) {
   document.querySelector(".progress").hidden = true;
   const confirmation = document.querySelector("#confirmation");
   confirmation.hidden = false;
-  document.querySelector("#confirmation-copy").textContent =
-    `Thanks, ${booking.customer_name}. We’ve reserved ${booking.space_name} and sent the booking details to ${booking.customer_email}.`;
+  const paymentFailed = booking.payment_mode === "pay_at_studio" || !booking.payment_link;
+  document.querySelector("#confirmation-kicker").textContent = paymentFailed ? "PAYMENT ACTION REQUIRED" : "PAYMENT REQUIRED";
+  document.querySelector("#confirmation-title").textContent = paymentFailed
+    ? "Your booking is not reserved yet."
+    : "Complete payment to reserve.";
+  document.querySelector("#confirmation-copy").textContent = paymentFailed
+    ? `We could not create the Razorpay payment link for ${booking.customer_name}. We sent an email to ${booking.customer_email}; please contact the studio team within two hours to retain this time.`
+    : `Your studio time is temporarily held for two hours. Complete the Razorpay payment below; the reservation, calendar event, and confirmation email are created only after successful payment.`;
   document.querySelector("#confirmation-details").innerHTML = `
     <div><small>REFERENCE</small><strong>${escapeText(booking.reference)}</strong></div>
     <div><small>DATE & TIME</small><strong>${escapeText(formatDate(booking.booking_date))} · ${escapeText(displayTime(booking.start_time))}–${escapeText(displayTime(booking.end_time))}</strong></div>
     <div><small>AMOUNT</small><strong>${escapeText(currency.format(booking.total_amount))}</strong></div>
   `;
   const paymentLink = document.querySelector("#payment-link");
+  paymentLink.hidden = true;
+  paymentLink.removeAttribute("href");
   if (booking.payment_link) {
     paymentLink.href = booking.payment_link;
     paymentLink.hidden = false;

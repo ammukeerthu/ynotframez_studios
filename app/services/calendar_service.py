@@ -37,14 +37,23 @@ class GoogleCalendarService:
 
     def __init__(self, db: Session | None = None) -> None:
         self.db = db
-        self.calendar_id = settings.google_calendar_id
+        self.calendar_id = settings.google_calendar_id.strip()
+        self.calendar_ids = {
+            "standard_small": settings.google_calendar_standard_small_id.strip(),
+            "premium_large": settings.google_calendar_premium_large_id.strip(),
+        }
         self.timezone = ZoneInfo(settings.studio_timezone)
         self.mode = settings.calendar_mode.strip().lower()
         if self.mode not in {"stub", "google"}:
             raise RuntimeError("CALENDAR_MODE must be either 'stub' or 'google'.")
         self.service = self._build_service() if self.mode == "google" else None
 
-    def is_available(self, booking: Booking, ignore_event_id: str | None = None) -> bool:
+    def is_available(
+        self,
+        booking: Booking,
+        ignore_event_id: str | None = None,
+        events: list[dict] | None = None,
+    ) -> bool:
         if not booking.booking_date or not booking.start_time or not booking.duration_hours:
             return False
 
@@ -62,15 +71,43 @@ class GoogleCalendarService:
         if self.mode == "stub":
             return True
 
-        events = [
+        calendar_id = self._calendar_id_for_space(booking.space_id)
+        matching_events = [
             event
-            for event in self._list_events(start, end)
-            if not ignore_event_id or event.get("id") != ignore_event_id
+            for event in (events if events is not None else self._list_events(start, end, calendar_id))
+            if (not ignore_event_id or event.get("id") != ignore_event_id)
+            and self._event_overlaps_slot(event, start, end)
         ]
-        if not self._is_within_business_hours(start, end, events):
+        dedicated_calendar = self._uses_dedicated_calendar(booking.space_id)
+        if not dedicated_calendar and not self._is_within_business_hours(start, end, matching_events):
             return False
 
-        return not any(self._event_blocks_space(event, booking.space_id) for event in events)
+        return not any(
+            self._event_blocks_space(event, booking.space_id, dedicated_calendar)
+            for event in matching_events
+        )
+
+    def events_for_day(
+        self,
+        space_id: str,
+        booking_date: date,
+        opening_time: str,
+        closing_time: str,
+    ) -> list[dict]:
+        """Fetch a studio's events once so all slots for a day can be evaluated locally."""
+        if self.mode == "stub":
+            return []
+        start = datetime.combine(
+            booking_date,
+            time.fromisoformat(opening_time),
+            tzinfo=self.timezone,
+        )
+        end = datetime.combine(
+            booking_date,
+            time.fromisoformat(closing_time),
+            tzinfo=self.timezone,
+        )
+        return self._list_events(start, end, self._calendar_id_for_space(space_id))
 
     def create_event(self, booking: Booking) -> str:
         if not booking.booking_date or not booking.start_time or not booking.duration_hours:
@@ -96,15 +133,16 @@ class GoogleCalendarService:
             return event_id
 
         event = self._event_body(booking, space_name, start, end)
+        calendar_id = self._calendar_id_for_space(booking.space_id)
 
         created_event = (
             self.service.events()
-            .insert(calendarId=self.calendar_id, body=event)
+            .insert(calendarId=calendar_id, body=event)
             .execute()
         )
         return created_event["id"]
 
-    def update_event(self, booking: Booking) -> str:
+    def update_event(self, booking: Booking, previous_space_id: str | None = None) -> str:
         if not booking.booking_date or not booking.start_time or not booking.duration_hours:
             raise ValueError("Booking must have a complete schedule before updating its calendar event.")
 
@@ -121,24 +159,68 @@ class GoogleCalendarService:
             return event_id
 
         body = self._event_body(booking, space_name, start, end)
-        if booking.calendar_event_id:
+        calendar_id = self._calendar_id_for_space(booking.space_id)
+        if booking.calendar_event_id and not booking.calendar_event_id.startswith("gcal_stub_"):
+            previous_calendar_id = self._calendar_id_for_space(previous_space_id or booking.space_id)
+            if previous_calendar_id != calendar_id:
+                self.service.events().delete(
+                    calendarId=previous_calendar_id,
+                    eventId=booking.calendar_event_id,
+                ).execute()
+                created = self.service.events().insert(calendarId=calendar_id, body=body).execute()
+                return created["id"]
             updated = (
                 self.service.events()
-                .update(calendarId=self.calendar_id, eventId=booking.calendar_event_id, body=body)
+                .update(calendarId=calendar_id, eventId=booking.calendar_event_id, body=body)
                 .execute()
             )
             return updated["id"]
 
-        created = self.service.events().insert(calendarId=self.calendar_id, body=body).execute()
+        created = self.service.events().insert(calendarId=calendar_id, body=body).execute()
         return created["id"]
 
-    def delete_event(self, event_id: str | None) -> None:
+    def delete_event(self, event_id: str | None, space_id: str | None = None) -> None:
         if not event_id:
+            return
+        if event_id.startswith("gcal_stub_"):
+            print("Legacy Google Calendar stub event skipped:", {"event_id": event_id})
             return
         if self.mode == "stub":
             print("Google Calendar stub event deleted:", {"event_id": event_id})
             return
-        self.service.events().delete(calendarId=self.calendar_id, eventId=event_id).execute()
+        calendar_id = self._calendar_id_for_space(space_id)
+        self.service.events().delete(calendarId=calendar_id, eventId=event_id).execute()
+
+    def decline_event(self, booking: Booking) -> str:
+        if not booking.booking_date or not booking.start_time or not booking.duration_hours:
+            raise ValueError("Booking must have a complete schedule before declining its calendar event.")
+
+        space = get_space_by_id(booking.space_id, self.db, include_inactive=True)
+        space_name = space.name if space else "Studio Space"
+        start = self._start_datetime(booking)
+        end = start + timedelta(hours=booking.duration_hours)
+        body = self._event_body(booking, space_name, start, end)
+        body["summary"] = f"DECLINED - {body['summary']}"
+        body["description"] = f"Booking status: DECLINED / CANCELLED\n{body['description']}"
+        body["transparency"] = "transparent"
+        body["colorId"] = "11"
+
+        if self.mode == "stub":
+            event_id = booking.calendar_event_id or f"gcal_stub_{uuid4().hex[:12]}"
+            print("Google Calendar stub event declined:", {"event_id": event_id})
+            return event_id
+
+        calendar_id = self._calendar_id_for_space(booking.space_id)
+        if booking.calendar_event_id and not booking.calendar_event_id.startswith("gcal_stub_"):
+            event = (
+                self.service.events()
+                .update(calendarId=calendar_id, eventId=booking.calendar_event_id, body=body)
+                .execute()
+            )
+            return event["id"]
+
+        event = self.service.events().insert(calendarId=calendar_id, body=body).execute()
+        return event["id"]
 
     def _event_body(
         self,
@@ -147,10 +229,13 @@ class GoogleCalendarService:
         start: datetime,
         end: datetime,
     ) -> dict:
+        customer_name = (booking.customer_name or "Customer").strip()
+        contact_number = (booking.phone_number or "No contact number").strip()
         return {
-            "summary": f"{space_name} booking - {booking.customer_name}",
+            "summary": f"Booking - {customer_name} - {contact_number}",
             "description": (
-                f"Customer: {booking.customer_name}\n"
+                f"Studio: {space_name}\n"
+                f"Customer: {customer_name}\n"
                 f"Phone: {booking.phone_number}\n"
                 f"Email: {booking.customer_email}\n"
                 f"Purpose: {booking.purpose}\n"
@@ -170,13 +255,13 @@ class GoogleCalendarService:
         naive_start = datetime.strptime(f"{booking.booking_date} {booking.start_time}", "%Y-%m-%d %H:%M")
         return naive_start.replace(tzinfo=self.timezone)
 
-    def _list_events(self, start: datetime, end: datetime) -> list[dict]:
+    def _list_events(self, start: datetime, end: datetime, calendar_id: str) -> list[dict]:
         if self.service is None:
             return []
         response = (
             self.service.events()
             .list(
-                calendarId=self.calendar_id,
+                calendarId=calendar_id,
                 timeMin=start.isoformat(),
                 timeMax=end.isoformat(),
                 singleEvents=True,
@@ -186,9 +271,19 @@ class GoogleCalendarService:
         )
         return response.get("items", [])
 
-    def _event_blocks_space(self, event: dict, requested_space_id: str | None) -> bool:
+    def _event_blocks_space(
+        self,
+        event: dict,
+        requested_space_id: str | None,
+        dedicated_calendar: bool = False,
+    ) -> bool:
         if event.get("status") == "cancelled":
             return False
+        if event.get("transparency") == "transparent":
+            return False
+
+        if dedicated_calendar:
+            return True
 
         if self._event_blocks_all_spaces(event):
             return True
@@ -228,6 +323,11 @@ class GoogleCalendarService:
         event_end = self._parse_event_datetime(event.get("end", {}), is_end=True)
         return event_start <= start and end <= event_end
 
+    def _event_overlaps_slot(self, event: dict, start: datetime, end: datetime) -> bool:
+        event_start = self._parse_event_datetime(event.get("start", {}), is_end=False)
+        event_end = self._parse_event_datetime(event.get("end", {}), is_end=True)
+        return start < event_end and event_start < end
+
     def _parse_event_datetime(self, value: dict, is_end: bool) -> datetime:
         if "dateTime" in value:
             raw_value = value["dateTime"].replace("Z", "+00:00")
@@ -243,8 +343,10 @@ class GoogleCalendarService:
         return datetime.combine(raw_date, event_time, tzinfo=self.timezone)
 
     def _build_service(self):
-        if not self.calendar_id:
-            raise RuntimeError("GOOGLE_CALENDAR_ID is missing. Add it to your .env file.")
+        if not self.calendar_id and not any(self.calendar_ids.values()):
+            raise RuntimeError(
+                "Google Calendar IDs are missing. Configure the per-studio calendar IDs in your .env file."
+            )
 
         key_path = Path(settings.google_service_account_file)
         if not key_path.exists():
@@ -258,3 +360,12 @@ class GoogleCalendarService:
             scopes=self.scopes,
         )
         return build("calendar", "v3", credentials=credentials)
+
+    def _calendar_id_for_space(self, space_id: str | None) -> str:
+        calendar_id = self.calendar_ids.get(space_id or "") or self.calendar_id
+        if not calendar_id:
+            raise RuntimeError(f"No Google Calendar ID is configured for studio space '{space_id or 'unknown'}'.")
+        return calendar_id
+
+    def _uses_dedicated_calendar(self, space_id: str | None) -> bool:
+        return bool(self.calendar_ids.get(space_id or ""))

@@ -1,5 +1,6 @@
 import csv
 import json
+from math import ceil
 from io import StringIO
 from datetime import UTC, date, datetime, time, timedelta
 from zoneinfo import ZoneInfo
@@ -13,6 +14,7 @@ from app.core.database import get_db
 from app.models.availability import AvailabilityBlock
 from app.models.admin import AdminUser
 from app.models.booking import Booking, BookingState, PaymentMode
+from app.models.notification import AdminNotification
 from app.models.payment import PaymentRecord, PaymentStatus
 from app.models.studio import StudioPurposeOption, StudioSetting
 from app.schemas.admin import (
@@ -24,6 +26,8 @@ from app.schemas.admin import (
     AdminDayAvailabilityResponse,
     AdminChangePasswordRequest,
     AdminLoginRequest,
+    AdminAlertItem,
+    AdminAlertsResponse,
     AdminOverviewResponse,
     AdminPaymentUpdate,
     AdminSessionResponse,
@@ -39,7 +43,7 @@ from app.services.admin_auth import (
     verify_admin_password,
 )
 from app.services.availability_service import interval_for, intervals_overlap, overlapping_block, overlapping_booking
-from app.services.booking_service import BookingApplicationService
+from app.services.booking_service import BookingApplicationService, BookingUnavailableError
 from app.services.payment_service import PaymentLifecycleError, PaymentService
 from app.services.spaces import get_space_by_id, seed_studio_settings
 
@@ -236,6 +240,176 @@ def admin_overview(db: Session = Depends(get_db)) -> AdminOverviewResponse:
     )
 
 
+def _booking_window(booking: Booking, timezone: ZoneInfo) -> tuple[datetime, datetime] | None:
+    if not booking.booking_date or not booking.start_time or not booking.duration_hours:
+        return None
+    start = datetime.combine(
+        date.fromisoformat(booking.booking_date),
+        time.fromisoformat(booking.start_time),
+        tzinfo=timezone,
+    )
+    return start, start + timedelta(hours=booking.duration_hours)
+
+
+def _operational_alerts(db: Session, now: datetime) -> list[AdminAlertItem]:
+    timezone = ZoneInfo(settings.studio_timezone)
+    local_now = now.astimezone(timezone) if now.tzinfo else now.replace(tzinfo=timezone)
+    relevant_dates = {local_now.date().isoformat(), (local_now.date() + timedelta(days=1)).isoformat()}
+    bookings = list(
+        db.scalars(
+            select(Booking)
+            .where(
+                Booking.state == BookingState.CONFIRMED,
+                Booking.booking_date.in_(relevant_dates),
+            )
+            .order_by(Booking.booking_date, Booking.start_time, Booking.id)
+        )
+    )
+    windows = {
+        booking.id: window
+        for booking in bookings
+        if (window := _booking_window(booking, timezone)) is not None
+    }
+    alerts: list[AdminAlertItem] = []
+    for booking in bookings:
+        window = windows.get(booking.id)
+        if window is None:
+            continue
+        start, end = window
+        space = get_space_by_id(booking.space_id, db, include_inactive=True)
+        space_name = space.name if space else booking.space_id or "Studio"
+        customer_name = booking.customer_name or "Customer"
+        reference = f"YNF-{booking.id:06d}"
+        end_time = end.strftime("%H:%M")
+        seconds_to_start = (start - local_now).total_seconds()
+        seconds_to_end = (end - local_now).total_seconds()
+
+        if 0 <= seconds_to_start <= 15 * 60:
+            minutes = max(0, ceil(seconds_to_start / 60))
+            alerts.append(
+                AdminAlertItem(
+                    id=f"starts-{booking.id}-{booking.booking_date}-{booking.start_time}",
+                    kind="starts_soon",
+                    priority="urgent",
+                    title=f"{space_name} starts in {minutes} min",
+                    message=f"Prepare the studio for {customer_name}. Booking begins at {booking.start_time}.",
+                    booking_id=booking.id,
+                    reference=reference,
+                    space_id=booking.space_id or "",
+                    space_name=space_name,
+                    booking_date=booking.booking_date,
+                    start_time=booking.start_time,
+                    end_time=end_time,
+                    minutes_remaining=minutes,
+                )
+            )
+
+        if start <= local_now < end and 0 <= seconds_to_end <= 15 * 60:
+            minutes = max(0, ceil(seconds_to_end / 60))
+            next_booking = next(
+                (
+                    candidate
+                    for candidate in bookings
+                    if candidate.space_id == booking.space_id
+                    and candidate.id != booking.id
+                    and windows.get(candidate.id)
+                    and 0 <= (windows[candidate.id][0] - end).total_seconds() <= 30 * 60
+                ),
+                None,
+            )
+            next_note = (
+                f" Next: {next_booking.customer_name or 'Customer'} at {next_booking.start_time}."
+                if next_booking else ""
+            )
+            alerts.append(
+                AdminAlertItem(
+                    id=f"ends-{booking.id}-{booking.booking_date}-{end_time}",
+                    kind="ends_soon",
+                    priority="warning",
+                    title=f"{space_name} ends in {minutes} min",
+                    message=f"Begin wrap-up and reset the studio after {customer_name}.{next_note}",
+                    booking_id=booking.id,
+                    reference=reference,
+                    space_id=booking.space_id or "",
+                    space_name=space_name,
+                    booking_date=booking.booking_date,
+                    start_time=booking.start_time,
+                    end_time=end_time,
+                    minutes_remaining=minutes,
+                )
+            )
+    return alerts
+
+
+@router.get("/alerts", response_model=AdminAlertsResponse, dependencies=[Depends(require_admin)])
+def admin_alerts(db: Session = Depends(get_db)) -> AdminAlertsResponse:
+    now = datetime.now(ZoneInfo(settings.studio_timezone))
+    rows = db.execute(
+        select(AdminNotification, Booking)
+        .join(Booking, Booking.id == AdminNotification.booking_id)
+        .order_by(AdminNotification.created_at.desc())
+        .limit(30)
+    ).all()
+    new_bookings: list[AdminAlertItem] = []
+    for notification, booking in rows:
+        window = _booking_window(booking, ZoneInfo(settings.studio_timezone))
+        if window is None:
+            continue
+        start, end = window
+        space = get_space_by_id(booking.space_id, db, include_inactive=True)
+        space_name = space.name if space else booking.space_id or "Studio"
+        new_bookings.append(
+            AdminAlertItem(
+                id=f"new-booking-{notification.id}",
+                notification_id=notification.id,
+                kind="new_booking",
+                priority="new",
+                title=f"New booking · {space_name}",
+                message=(
+                    f"{booking.customer_name or 'Customer'} booked {booking.booking_date} at "
+                    f"{booking.start_time} for {booking.duration_hours:g} hour(s)."
+                ),
+                booking_id=booking.id,
+                reference=f"YNF-{booking.id:06d}",
+                space_id=booking.space_id or "",
+                space_name=space_name,
+                booking_date=booking.booking_date or "",
+                start_time=booking.start_time or "",
+                end_time=end.strftime("%H:%M"),
+                created_at=f"{notification.created_at.isoformat()}Z",
+                is_read=notification.read_at is not None,
+            )
+        )
+    return AdminAlertsResponse(
+        unread_count=sum(not alert.is_read for alert in new_bookings),
+        new_bookings=new_bookings,
+        operational=_operational_alerts(db, now),
+        generated_at=now.isoformat(),
+    )
+
+
+@router.post("/alerts/{notification_id}/read", status_code=status.HTTP_204_NO_CONTENT, dependencies=[Depends(require_admin)])
+def admin_read_alert(notification_id: int, db: Session = Depends(get_db)) -> Response:
+    notification = db.get(AdminNotification, notification_id)
+    if notification is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Alert not found.")
+    notification.read_at = datetime.now(UTC).replace(tzinfo=None)
+    db.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.post("/alerts/read-all", status_code=status.HTTP_204_NO_CONTENT, dependencies=[Depends(require_admin)])
+def admin_read_all_alerts(db: Session = Depends(get_db)) -> Response:
+    notifications = list(
+        db.scalars(select(AdminNotification).where(AdminNotification.read_at.is_(None)))
+    )
+    read_at = datetime.now(UTC).replace(tzinfo=None)
+    for notification in notifications:
+        notification.read_at = read_at
+    db.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
 @router.get("/bookings", response_model=list[AdminBookingResponse], dependencies=[Depends(require_admin)])
 def admin_bookings(
     space_id: str | None = None,
@@ -380,6 +554,7 @@ def admin_update_booking(
         booking.start_time,
         booking.duration_hours,
     ) != (payload.space_id, new_date, new_time, payload.duration_hours)
+    previous_space_id = booking.space_id
     service = BookingApplicationService(db)
     if schedule_changed:
         available, message = service.check_availability(
@@ -409,8 +584,9 @@ def admin_update_booking(
         db.rollback()
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(error)) from error
     if booking.payment_mode == PaymentMode.PAY_NOW and payment_record.status == PaymentStatus.PENDING:
-        booking.payment_link = service.razorpay.create_payment_link(booking)
-    booking.calendar_event_id = service.calendar.update_event(booking)
+        service.prepare_online_payment(booking)
+        payment_record.mode = booking.payment_mode
+    booking.calendar_event_id = service.calendar.update_event(booking, previous_space_id=previous_space_id)
     service.email.send_booking_updated(booking)
     db.commit()
     db.refresh(booking)
@@ -436,10 +612,9 @@ def admin_cancel_booking(
         )
 
     service = BookingApplicationService(db)
-    service.calendar.delete_event(booking.calendar_event_id)
     service.payments.handle_cancellation(booking)
     booking.state = BookingState.CANCELLED
-    booking.calendar_event_id = None
+    booking.calendar_event_id = service.calendar.decline_event(booking)
     booking.payment_link = None
     service.email.send_booking_cancelled(booking)
     db.commit()
@@ -460,15 +635,19 @@ def admin_update_payment(
     booking = db.get(Booking, booking_id)
     if booking is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Booking not found.")
-    payments = PaymentService(db)
+    service = BookingApplicationService(db)
+    payments = service.payments
     try:
         if payload.status == PaymentStatus.PAID:
-            if booking.state != BookingState.CONFIRMED:
-                raise PaymentLifecycleError("Only a confirmed booking can be marked as paid.")
-            payments.mark_paid(booking, payload.provider_reference)
+            if booking.state == BookingState.PAYMENT_PENDING:
+                service.confirm_paid_booking(booking, payload.provider_reference)
+            elif booking.state == BookingState.CONFIRMED:
+                payments.mark_paid(booking, payload.provider_reference)
+            else:
+                raise PaymentLifecycleError("Only a pending or confirmed booking can be marked as paid.")
         else:
             payments.mark_refunded(booking, payload.provider_reference)
-    except PaymentLifecycleError as error:
+    except (PaymentLifecycleError, BookingUnavailableError, ValueError) as error:
         db.rollback()
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(error)) from error
     db.commit()
@@ -496,10 +675,18 @@ def admin_availability(
             select(Booking).where(
                 Booking.space_id == space_id,
                 Booking.booking_date == booking_date.isoformat(),
-                Booking.state == BookingState.CONFIRMED,
+                Booking.state.in_([BookingState.CONFIRMED, BookingState.PAYMENT_PENDING]),
             )
         )
     )
+    hold_cutoff = datetime.now(UTC).replace(tzinfo=None) - timedelta(
+        minutes=settings.razorpay_payment_hold_minutes
+    )
+    bookings = [
+        booking
+        for booking in bookings
+        if booking.state == BookingState.CONFIRMED or booking.created_at >= hold_cutoff
+    ]
     blocks = list(
         db.scalars(
             select(AvailabilityBlock).where(

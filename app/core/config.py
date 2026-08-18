@@ -23,9 +23,19 @@ class Settings(BaseSettings):
     admin_session_secret_file: str = ".admin_session_secret"
     admin_session_hours: int = 12
     admin_cookie_secure: bool = False
+    razorpay_mode: str = "stub"
+    razorpay_key_id: str = ""
+    razorpay_key_secret: str = ""
+    razorpay_webhook_secret: str = ""
+    razorpay_api_base_url: str = "https://api.razorpay.com/v1"
     razorpay_payment_link_base_url: str = "https://rzp.io/i/demo"
+    razorpay_callback_base_url: str = ""
+    razorpay_payment_hold_minutes: int = 120
+    razorpay_timeout_seconds: int = 15
     calendar_mode: str = "stub"
     google_calendar_id: str = ""
+    google_calendar_standard_small_id: str = ""
+    google_calendar_premium_large_id: str = ""
     google_service_account_file: str = "./google-service-account.json"
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")

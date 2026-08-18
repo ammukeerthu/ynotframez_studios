@@ -22,7 +22,6 @@
         <label><span>Password</span><input name="password" type="password" autocomplete="current-password" required></label>
         <div id="login-message" class="form-message" role="alert" hidden></div>
         <button id="login-button" type="submit">Sign in <span>→</span></button>
-        <small>Your password is stored as a salted hash in the local SQLite database.</small>
       </form>
       <form id="admin-setup-form" hidden>
         <p class="eyebrow">FIRST-RUN SETUP</p><h2>Create the owner account.</h2><p class="form-copy">Choose the credentials you’ll use to manage studio bookings. This setup is available only once.</p>
@@ -39,11 +38,44 @@
   <div id="dashboard-view" class="admin-shell" hidden>
     <aside>
       <a href="/" class="admin-brand"><b>YNotFramez</b><small>STUDIO DASHBOARD</small></a>
-      <nav><a class="active" href="#overview"><span>01</span>Overview</a><a href="#bookings"><span>02</span>Bookings</a><a href="#availability"><span>03</span>Availability</a><a href="#settings"><span>04</span>Studio settings</a></nav>
-      <div class="admin-user"><p>Signed in as</p><b id="admin-username">admin</b><button id="change-password-button">Change password</button><button id="logout-button">Sign out</button></div>
+      <nav><a class="active" href="#overview">Overview</a><a href="#bookings">Bookings</a><a href="#availability">Availability</a><a href="#settings">Studio settings</a></nav>
+      <div class="admin-user">
+        <div class="admin-user-identity"><p>Signed in as</p><b id="admin-username">admin</b></div>
+        <div class="account-menu">
+          <button id="account-menu-button" class="account-menu-button" type="button" aria-label="Open account settings" aria-expanded="false" aria-controls="account-menu-panel">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06-2.83 2.83-.06-.06a1.7 1.7 0 0 0-1.88-.34 1.7 1.7 0 0 0-1.03 1.56V21h-4v-.08A1.7 1.7 0 0 0 8.97 19.4a1.7 1.7 0 0 0-1.88.34l-.06.06-2.83-2.83.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-1.56-1.03H3v-4h.08A1.7 1.7 0 0 0 4.6 8.94a1.7 1.7 0 0 0-.34-1.88L4.2 7l2.83-2.83.06.06a1.7 1.7 0 0 0 1.88.34A1.7 1.7 0 0 0 10 3.01V3h4v.08a1.7 1.7 0 0 0 1.03 1.56 1.7 1.7 0 0 0 1.88-.34l.06-.06L19.8 7l-.06.06a1.7 1.7 0 0 0-.34 1.88A1.7 1.7 0 0 0 20.96 10H21v4h-.08A1.7 1.7 0 0 0 19.4 15z"></path></svg>
+          </button>
+          <div id="account-menu-panel" class="account-menu-panel" hidden>
+            <button id="change-password-button" type="button">Change password</button>
+            <button id="logout-button" class="account-signout" type="button">Sign out</button>
+          </div>
+        </div>
+      </div>
     </aside>
     <main>
-      <header><div><p class="eyebrow">OWNER DASHBOARD</p><h1>Studio overview</h1></div><div class="today"><span></span><p>Live data<small id="current-date"></small></p></div></header>
+      <header class="dashboard-toolbar">
+        <div class="dashboard-header-tools">
+          <div class="today"><span></span><p>Live data<small id="current-date"></small></p></div>
+          <div class="alert-menu">
+            <button id="alert-bell" class="alert-bell" type="button" aria-label="Open notifications" aria-expanded="false" aria-controls="alert-center">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4"/></svg>
+              <span id="alert-count" hidden>0</span>
+            </button>
+            <section id="alert-center" class="alert-center" aria-live="polite" hidden>
+              <div class="alert-center-head">
+                <h2>Notifications</h2>
+                <button id="read-all-alerts" type="button" hidden>Mark all as read</button>
+              </div>
+              <div class="alert-tabs" role="tablist" aria-label="Notification filters">
+                <button class="active" type="button" role="tab" aria-selected="true" data-alert-filter="all">All</button>
+                <button type="button" role="tab" aria-selected="false" data-alert-filter="unread">Unread</button>
+              </div>
+              <div id="alert-list" class="alert-list"><p class="alerts-clear">Checking for notifications&hellip;</p></div>
+              <div class="alert-footer"><button id="desktop-alerts-button" type="button">Enable desktop alerts</button><p class="alert-footnote">Live while this dashboard is open · refreshes every 30 seconds</p></div>
+            </section>
+          </div>
+        </div>
+      </header>
 
       <div id="dashboard-message" class="dashboard-message" hidden></div>
 
@@ -58,9 +90,9 @@
       </section>
 
       <section id="bookings" class="bookings-section">
-        <div class="section-heading"><div><p class="eyebrow">BOOKING DIRECTORY</p><h2>Bookings by studio</h2></div><p>Select a studio space to view its bookings.</p></div>
+        <div class="section-heading"><div><p class="eyebrow">BOOKING DIRECTORY</p></div><p>Select a studio space to view its bookings.</p></div>
         <form id="booking-filters" class="filters">
-          <label><span>STUDIO SPACE</span><select name="space_id"><option value="standard_small">Standard Small Space</option><option value="premium_large">Premium Large Space</option></select></label>
+          <label><span>STUDIO SPACE</span><select name="space_id"><option value="standard_small">Standard Studio</option><option value="premium_large">Premium Studio</option></select></label>
           <label><span>SEARCH</span><input name="q" placeholder="Name, email, or phone"></label>
           <label><span>STATUS</span><select name="status"><option value="">All statuses</option><option value="confirmed">Confirmed</option><option value="payment_pending">Payment pending</option><option value="cancelled">Cancelled</option></select></label>
           <label><span>FROM DATE</span><input name="date_from" type="date"></label>
@@ -74,21 +106,21 @@
       </section>
 
       <section id="availability" class="availability-section">
-        <div class="section-heading"><div><p class="eyebrow">STUDIO CALENDAR</p><h2>Availability control</h2></div><p>Block private use, maintenance, or time off.</p></div>
+        <div class="section-heading"><div><p class="eyebrow">STUDIO CALENDAR</p></div><p>Block private use, maintenance, or time off.</p></div>
         <form id="availability-filters" class="availability-toolbar">
-          <label><span>STUDIO SPACE</span><select name="space_id"><option value="standard_small">Standard Small Space</option><option value="premium_large">Premium Large Space</option></select></label>
+          <label><span>STUDIO SPACE</span><select name="space_id"><option value="standard_small">Standard Studio</option><option value="premium_large">Premium Studio</option></select></label>
           <label><span>DATE</span><input name="booking_date" type="date" required></label>
           <button type="submit">View schedule</button>
         </form>
         <div id="availability-message" class="dashboard-message" hidden></div>
         <div class="availability-layout">
           <div class="schedule-card">
-            <div class="schedule-head"><div><p id="schedule-space">Standard Small Space</p><h3 id="schedule-date">Choose a date</h3></div><div class="schedule-legend"><span><i class="available"></i>Available</span><span><i class="booked"></i>Booked</span><span><i class="blocked"></i>Blocked</span></div></div>
+            <div class="schedule-head"><div><p id="schedule-space">Standard Studio</p><h3 id="schedule-date">Choose a date</h3></div><div class="schedule-legend"><span><i class="available"></i>Available</span><span><i class="booked"></i>Booked</span><span><i class="blocked"></i>Blocked</span></div></div>
             <div class="admin-slot-heading"><span>AVAILABLE TIMES</span><small>Click an available time to block it, or a blocked time to reopen it.</small></div>
             <div id="availability-slots" class="availability-slots"><p class="availability-empty">Loading schedule…</p></div>
           </div>
           <form id="availability-block-form" class="block-card">
-            <p class="eyebrow">CLOSE A TIME WINDOW</p><h3>Block studio time</h3><p>Customers will immediately see this period as unavailable.</p>
+            <p class="eyebrow">CLOSE A TIME WINDOW</p><h3>Block studio time</h3><p>Customers will immediately see this period as unavailable. Minimum block: 2 hours.</p>
             <label><span>START TIME</span><select name="start_time" required></select></label>
             <label><span>DURATION</span><select name="duration_hours" required></select></label>
             <label><span>REASON</span><input name="reason" maxlength="240" placeholder="Maintenance, private use…"></label>
@@ -98,7 +130,7 @@
       </section>
 
       <section id="settings" class="settings-section">
-        <div class="section-heading"><div><p class="eyebrow">STUDIO CATALOGUE</p><h2>Studio settings</h2></div><p>Changes apply immediately to new bookings and public studio pages.</p></div>
+        <div class="section-heading"><div><p class="eyebrow">STUDIO CATALOGUE</p></div><p>Changes apply immediately to new bookings and public studio pages.</p></div>
         <div id="studio-settings-message" class="dashboard-message" hidden></div>
         <div id="studio-settings-list" class="studio-settings-list"><p class="settings-empty">Loading studio settings…</p></div>
       </section>
@@ -111,7 +143,7 @@
       <p class="eyebrow">MANAGE BOOKING</p><h2 id="booking-modal-reference">Booking details</h2>
       <input name="booking_id" type="hidden">
       <div class="edit-grid">
-        <label><span>STUDIO SPACE</span><select name="space_id" required><option value="standard_small">Standard Small Space</option><option value="premium_large">Premium Large Space</option></select></label>
+        <label><span>STUDIO SPACE</span><select name="space_id" required><option value="standard_small">Standard Studio</option><option value="premium_large">Premium Studio</option></select></label>
         <label><span>DATE</span><input name="booking_date" type="date" required></label>
         <label><span>START TIME</span><select name="start_time" required></select></label>
         <label><span>DURATION</span><select name="duration_hours" required></select></label>

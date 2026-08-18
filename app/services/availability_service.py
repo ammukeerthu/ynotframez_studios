@@ -1,10 +1,11 @@
-from datetime import date, datetime, time, timedelta
+from datetime import UTC, date, datetime, time, timedelta
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models.availability import AvailabilityBlock
 from app.models.booking import Booking, BookingState
+from app.core.config import settings
 
 
 def interval_for(booking_date: date, start_time: time, duration_hours: float) -> tuple[datetime, datetime]:
@@ -54,10 +55,15 @@ def overlapping_booking(
     statement = select(Booking).where(
         Booking.space_id == space_id,
         Booking.booking_date == booking_date.isoformat(),
-        Booking.state == BookingState.CONFIRMED,
+        Booking.state.in_([BookingState.CONFIRMED, BookingState.PAYMENT_PENDING]),
+    )
+    hold_cutoff = datetime.now(UTC).replace(tzinfo=None) - timedelta(
+        minutes=settings.razorpay_payment_hold_minutes
     )
     for booking in db.scalars(statement):
         if booking.id == exclude_booking_id:
+            continue
+        if booking.state == BookingState.PAYMENT_PENDING and booking.created_at < hold_cutoff:
             continue
         if not booking.start_time or not booking.duration_hours:
             continue
