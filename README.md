@@ -316,17 +316,41 @@ Emails contain both plain-text and HTML versions, including the booking referenc
 
 Never commit `.env` or `google-service-account.json`. If a service-account key was committed previously, removing the file from the current branch is not enough: disable/delete that key in Google Cloud, create a replacement, and consider purging the old file from Git history before sharing the repository further.
 
-## Team-testing deployment on Render
+## Free team-testing deployment
 
-The repository includes `render.yaml` for a single-instance Render deployment in Singapore. It uses a paid Starter web service and a 1 GB persistent disk because an ephemeral or free service would lose the SQLite database whenever the service is redeployed or restarted.
+The repository includes `render.yaml` for a Render Free web service in Singapore. Deployed data is stored in Neon PostgreSQL because Render Free's local filesystem is ephemeral and would discard a SQLite database whenever the service sleeps, restarts, or redeploys.
 
-### Create the service
+This setup has no required hosting charge within the providers' free allowances, but it is a testing environment rather than a production SLA. Render Free sleeps after 15 minutes without inbound traffic, so the first visit after an idle period can take about a minute. Neon Free suspends idle compute and wakes it automatically when the app reconnects.
+
+### 1. Create the free Neon database
+
+1. Create a Neon account and a project named **YNotFramez Studios Testing**.
+2. Open the project and select **Connect**.
+3. Copy the PostgreSQL connection string. Keep the included `sslmode=require` and `channel_binding=require` parameters.
+4. Treat the complete connection string as a password. Never commit it or paste it into `.env.example`.
+
+The application automatically selects Psycopg 3 for both `postgresql://` and legacy `postgres://` URLs. Tables and initial studio settings are created on the first successful application startup.
+
+### 2. Create free transactional email credentials
+
+Render Free blocks outbound SMTP ports 25, 465, and 587. Brevo supports port 2525 as an alternative and its Free plan includes transactional email.
+
+1. Create a Brevo account.
+2. Add `ynotframezstudios@gmail.com` as a transactional sender and complete the verification message sent to that address.
+3. Open **Settings > SMTP & API** and create an SMTP key.
+4. Copy the Brevo SMTP **Login** and the newly created SMTP key. The login is not necessarily the Brevo account email, and the SMTP key is not the account password or an API key.
+
+The Blueprint already supplies `smtp-relay.brevo.com` and port `2525`. Brevo's Free plan adds its branding to sent email.
+
+### 3. Create the Render Blueprint
 
 1. Push the deployment commit to GitHub.
 2. Sign in to Render and choose **New > Blueprint**.
 3. Connect the `ammukeerthu/ynotframez_studios` repository and select the branch containing `render.yaml`.
-4. During the initial Blueprint setup, provide these protected values when prompted:
-   - `SMTP_PASSWORD`: the Google App Password for `ynotframezstudios@gmail.com`.
+4. During the initial Blueprint setup, provide these protected values:
+   - `DATABASE_URL`: the complete Neon connection string.
+   - `SMTP_USERNAME`: the Brevo SMTP Login.
+   - `SMTP_PASSWORD`: the Brevo SMTP key.
    - `GOOGLE_CALENDAR_STANDARD_SMALL_ID`: the Standard Studio calendar ID.
    - `GOOGLE_CALENDAR_PREMIUM_LARGE_ID`: the Premium Studio calendar ID.
 5. In the new service's **Environment > Secret Files**, add a file named `google-service-account.json` and paste the complete contents of the local ignored file. It is exposed to the app at `/etc/secrets/google-service-account.json`.
@@ -336,9 +360,7 @@ The repository includes `render.yaml` for a single-instance Render deployment in
    - `https://<service-name>.onrender.com/dashboard`
 7. The deployed database starts empty. Open `/dashboard` and create the deployment's admin account. This does not change the local admin account.
 
-The Blueprint sets `ADMIN_COOKIE_SECURE=true`, generates a stable admin-session signing secret, runs one Uvicorn worker, and stores `studio_bookings.db` on `/opt/render/project/src/data`. Do not scale this SQLite deployment beyond one instance. Move to PostgreSQL before a larger public launch or multi-instance deployment.
-
-Razorpay remains in stub mode for this testing release. A submitted booking stays payment-pending and holds its slot; use **Mark paid** in the Studio Dashboard to complete the test booking, create its live Google Calendar event, and send its confirmation email.
+The Blueprint sets `ADMIN_COOKIE_SECURE=true`, generates a stable admin-session signing secret, and runs one Uvicorn worker. Razorpay remains in stub mode for this testing release. A submitted booking stays payment-pending and holds its slot; use **Mark paid** in the Studio Dashboard to complete the test booking, create its live Google Calendar event, and send its confirmation email.
 
 ### Use `ynotframezstudios.in`
 
