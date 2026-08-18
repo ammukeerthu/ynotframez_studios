@@ -315,3 +315,40 @@ Emails contain both plain-text and HTML versions, including the booking referenc
 ## Security note
 
 Never commit `.env` or `google-service-account.json`. If a service-account key was committed previously, removing the file from the current branch is not enough: disable/delete that key in Google Cloud, create a replacement, and consider purging the old file from Git history before sharing the repository further.
+
+## Team-testing deployment on Render
+
+The repository includes `render.yaml` for a single-instance Render deployment in Singapore. It uses a paid Starter web service and a 1 GB persistent disk because an ephemeral or free service would lose the SQLite database whenever the service is redeployed or restarted.
+
+### Create the service
+
+1. Push the deployment commit to GitHub.
+2. Sign in to Render and choose **New > Blueprint**.
+3. Connect the `ammukeerthu/ynotframez_studios` repository and select the branch containing `render.yaml`.
+4. During the initial Blueprint setup, provide these protected values when prompted:
+   - `SMTP_PASSWORD`: the Google App Password for `ynotframezstudios@gmail.com`.
+   - `GOOGLE_CALENDAR_STANDARD_SMALL_ID`: the Standard Studio calendar ID.
+   - `GOOGLE_CALENDAR_PREMIUM_LARGE_ID`: the Premium Studio calendar ID.
+5. In the new service's **Environment > Secret Files**, add a file named `google-service-account.json` and paste the complete contents of the local ignored file. It is exposed to the app at `/etc/secrets/google-service-account.json`.
+6. Deploy and verify these addresses before inviting testers:
+   - `https://<service-name>.onrender.com/health`
+   - `https://<service-name>.onrender.com/`
+   - `https://<service-name>.onrender.com/dashboard`
+7. The deployed database starts empty. Open `/dashboard` and create the deployment's admin account. This does not change the local admin account.
+
+The Blueprint sets `ADMIN_COOKIE_SECURE=true`, generates a stable admin-session signing secret, runs one Uvicorn worker, and stores `studio_bookings.db` on `/opt/render/project/src/data`. Do not scale this SQLite deployment beyond one instance. Move to PostgreSQL before a larger public launch or multi-instance deployment.
+
+Razorpay remains in stub mode for this testing release. A submitted booking stays payment-pending and holds its slot; use **Mark paid** in the Studio Dashboard to complete the test booking, create its live Google Calendar event, and send its confirmation email.
+
+### Use `ynotframezstudios.in`
+
+`ynotframezstudios.in` is the recommended public domain spelling: it matches the registered brand, contains no hyphen, and is easy to say. Domain registration is separate from deploying the application, so first confirm availability and buy it from an accredited `.in` registrar.
+
+After the Render URL is working:
+
+1. Open the Render service's **Settings > Custom Domains** and add `ynotframezstudios.in`.
+2. Add the DNS records Render displays at the registrar/DNS provider.
+3. Verify the domain in Render. Render will also configure the `www` redirect and automatically issue and renew HTTPS certificates.
+4. When Razorpay API mode is enabled later, set `RAZORPAY_CALLBACK_BASE_URL=https://ynotframezstudios.in` and configure its webhook as `https://ynotframezstudios.in/api/payments/razorpay/webhook`.
+
+Do not advertise the domain until both the root address and `www.ynotframezstudios.in` load successfully over HTTPS.

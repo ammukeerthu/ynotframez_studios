@@ -1,0 +1,68 @@
+services:
+  - type: web
+    name: ynotframez-studios
+    runtime: python
+    region: singapore
+    plan: starter
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT --workers 1
+    healthCheckPath: /health
+    autoDeployTrigger: commit
+
+    # SQLite is suitable for this single-instance team-testing release only
+    # when its file is stored on a persistent disk.
+    disk:
+      name: booking-data
+      mountPath: /opt/render/project/src/data
+      sizeGB: 1
+
+    envVars:
+      - key: APP_NAME
+        value: YNotFramez Studios Booking
+      - key: DATABASE_URL
+        value: sqlite:////opt/render/project/src/data/studio_bookings.db
+      - key: STUDIO_EMAIL
+        value: ynotframezstudios@gmail.com
+      - key: STUDIO_TIMEZONE
+        value: Asia/Kolkata
+
+      - key: EMAIL_MODE
+        value: smtp
+      - key: EMAIL_FROM_NAME
+        value: YNotFramez Studios
+      - key: EMAIL_REPLY_TO
+        value: ynotframezstudios@gmail.com
+      - key: SMTP_HOST
+        value: smtp.gmail.com
+      - key: SMTP_PORT
+        value: 587
+      - key: SMTP_USERNAME
+        value: ynotframezstudios@gmail.com
+      - key: SMTP_PASSWORD
+        sync: false
+      - key: SMTP_USE_TLS
+        value: true
+      - key: SMTP_USE_SSL
+        value: false
+
+      - key: ADMIN_SESSION_SECRET
+        generateValue: true
+      - key: ADMIN_COOKIE_SECURE
+        value: true
+
+      # Keep payment links in stub mode until Razorpay API access is ready.
+      - key: RAZORPAY_MODE
+        value: stub
+      - key: RAZORPAY_PAYMENT_LINK_BASE_URL
+        value: https://rzp.io/i/demo
+      - key: RAZORPAY_PAYMENT_HOLD_MINUTES
+        value: 120
+
+      - key: CALENDAR_MODE
+        value: google
+      - key: GOOGLE_CALENDAR_STANDARD_SMALL_ID
+        sync: false
+      - key: GOOGLE_CALENDAR_PREMIUM_LARGE_ID
+        sync: false
+      - key: GOOGLE_SERVICE_ACCOUNT_FILE
+        value: /etc/secrets/google-service-account.json
