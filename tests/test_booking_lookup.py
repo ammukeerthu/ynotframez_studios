@@ -61,7 +61,7 @@ class CustomerBookingLookupTest(unittest.TestCase):
         self.assertEqual(result.payment_status, "pending")
         self.assertEqual(result.start_time, "14:30")
         self.assertEqual(result.end_time, "16:30")
-        self.assertEqual(result.total_amount, 2400)
+        self.assertEqual(result.total_amount, 2000)
         self.assertIsNotNone(result.payment_link)
 
     def test_wrong_email_returns_same_private_not_found_response(self) -> None:

@@ -143,7 +143,7 @@ class BookingStateMachineTest(unittest.TestCase):
 
         response = BookingStateMachine(self.db).handle_message("917777777777", "1")
 
-        self.assertEqual(booking.purpose, "Fashion Shoot")
+        self.assertEqual(booking.purpose, "Portrait Shoot")
         self.assertEqual(booking.state, BookingState.ASK_TERMS)
         self.assertIn("accept", response.lower())
 

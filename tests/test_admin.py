@@ -366,7 +366,7 @@ class AdminAuthenticationTest(unittest.TestCase):
             self.assertEqual(updated.start_time, "13:00")
             self.assertEqual(updated.end_time, "15:00")
             self.assertEqual(updated.customer_name, "Updated Customer")
-            self.assertEqual(updated.total_amount, 2400)
+            self.assertEqual(updated.total_amount, 2000)
             self.assertEqual(updated.payment_status, "pending")
             self.assertTrue(old_slot)
 
@@ -378,8 +378,8 @@ class AdminAuthenticationTest(unittest.TestCase):
             overview = admin_overview(db)
             self.assertEqual(paid.payment_status, "paid")
             self.assertEqual(paid.payment_reference, "UPI-TEST-001")
-            self.assertEqual(overview.collected_value, 2400)
-            self.assertEqual(overview.outstanding_value, 2400)
+            self.assertEqual(overview.collected_value, 2000)
+            self.assertEqual(overview.outstanding_value, 2000)
 
             with self.assertRaises(HTTPException) as paid_price_change:
                 admin_update_booking(
@@ -452,7 +452,7 @@ class AdminAuthenticationTest(unittest.TestCase):
                         customer_name=customer_name,
                         customer_email=email,
                         phone_number="+919999999999",
-                        purpose="E-commerce",
+                        purpose="Product Shoot",
                         terms_accepted=True,
                         payment_mode="pay_now",
                     )
@@ -486,7 +486,7 @@ class AdminAuthenticationTest(unittest.TestCase):
             self.assertEqual(len(rows), 2)
             self.assertEqual(rows[0][0], "Booking reference")
             self.assertEqual(rows[1][8], "'=Formula Customer")
-            self.assertEqual(rows[1][13], "2400")
+            self.assertEqual(rows[1][13], "2000")
             self.assertIn("attachment", response.headers["content-disposition"])
 
 

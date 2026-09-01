@@ -57,7 +57,7 @@ class DatabaseConfigurationTests(unittest.TestCase):
             with Session(engine) as db:
                 seed_studio_settings(db)
                 self.assertEqual(db.scalar(select(func.count()).select_from(StudioSetting)), 2)
-                self.assertEqual(db.scalar(select(func.count()).select_from(StudioPurposeOption)), 16)
+                self.assertEqual(db.scalar(select(func.count()).select_from(StudioPurposeOption)), 22)
         finally:
             engine.dispose()
 

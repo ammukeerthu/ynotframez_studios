@@ -35,7 +35,7 @@ class RazorpayServiceTest(unittest.TestCase):
         self.assertEqual(link.url, "https://rzp.io/i/test42")
         request = post.call_args.kwargs
         self.assertEqual(request["auth"], ("rzp_test_key", "test_secret"))
-        self.assertEqual(request["json"]["amount"], 240000)
+        self.assertEqual(request["json"]["amount"], 200000)
         self.assertEqual(request["json"]["currency"], "INR")
         self.assertEqual(request["json"]["reference_id"], "YNF-000042")
         self.assertIn("/payment/return/YNF-000042", request["json"]["callback_url"])

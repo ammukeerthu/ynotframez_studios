@@ -136,7 +136,7 @@ class BookingApplicationServiceTest(unittest.TestCase):
         result = self.service.create_booking(self.booking())
 
         self.assertEqual(result.status, "payment_pending")
-        self.assertEqual(result.total_amount, 2400)
+        self.assertEqual(result.total_amount, 2000)
         self.assertIn("booking_id=1", result.payment_link or "")
         self.assertIsNone(result.calendar_event_id)
         payment = PaymentService(self.db).get(result.id)
@@ -144,7 +144,7 @@ class BookingApplicationServiceTest(unittest.TestCase):
         self.assertIsNotNone(payment)
         self.assertIsNone(notification)
         self.assertEqual(payment.status.value, "pending")
-        self.assertEqual(payment.amount, 2400)
+        self.assertEqual(payment.amount, 2000)
 
     def test_payment_link_failure_stays_unconfirmed_for_studio_follow_up(self) -> None:
         self.service.razorpay.create_payment_link = MagicMock(side_effect=OSError("provider unavailable"))

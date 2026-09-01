@@ -47,46 +47,120 @@ SPACES = {
         id="standard_small",
         slug="cube",
         name="Cube",
-        short_description="A compact, thoughtfully equipped studio for portraits, products, reels, and interviews.",
+        short_description=(
+            "A versatile, character-rich studio designed for portraits, fashion, beauty, baby shoots, "
+            "products, reels and creative concepts."
+        ),
         brochure=(
-            "Cube: compact studio for portraits, reels, product shoots, and small teams. "
-            "Includes basic lights, backdrop support, changing corner, and seating for 4."
+            "Cube is a 35 × 17 ft studio designed to give photographers and creators a flexible space "
+            "for a wide range of shoots. With a movable backdrop system, natural daylight through a "
+            "French door and a distinctive mural wall, Cube combines a clean shooting environment with "
+            "its own visual character. Ideal for portraits, fashion, beauty, baby, product, lifestyle "
+            "and content shoots."
         ),
         rules=(
-            "Rules: arrive on time, no smoking, no wall damage, clean up props, keep music moderate, "
-            "and overtime is charged hourly if available."
+            "Please arrive on time and use the studio, equipment, backdrops and props with care.\n"
+            "No smoking or wall damage.\n"
+            "Keep the space clean and return movable items after use.\n"
+            "Any damage or excessive cleaning may attract additional charges."
         ),
-        hourly_rate=1200,
-        capacity=4,
-        dimensions="Compact studio · seating for 4",
-        equipment=("Basic lighting kit", "Backdrop support"),
-        amenities=("Changing corner", "Wi-Fi", "Client seating"),
+        hourly_rate=1000,
+        capacity=5,
+        dimensions="35 × 17 ft · Approx. 595 sq. ft. · Ideal for small to medium-sized teams",
+        equipment=(
+            "Movable backdrop system",
+            "Studio lighting equipment",
+            "Light stands & modifiers",
+            "Backdrop support system",
+        ),
+        amenities=(
+            "Natural Daylight French Door",
+            "Movable Backdrop System",
+            "Changing Corner",
+            "Client Seating",
+            "Wi-Fi",
+            "Signature Mural Wall",
+        ),
         cover_image=(
             "https://images.unsplash.com/photo-1615458509633-f15b61bdacb8"
             "?auto=format&fit=crop&w=1400&q=85"
+        ),
+        max_duration_hours=10.0,
+        booking_purposes=(
+            "Portrait Shoot",
+            "Fashion Shoot",
+            "Beauty / Makeup Shoot",
+            "Baby Shoot",
+            "Family Portraits",
+            "Product Shoot",
+            "Lifestyle Shoot",
+            "Reels & Content Creation",
+            "Creative / Conceptual Shoot",
+            "Couple / Pre-wedding Shoot",
         ),
     ),
     "2": StudioSpace(
         id="premium_large",
         slug="arena",
         name="Arena",
-        short_description="A spacious production studio for fashion, campaigns, maternity, video, and larger teams.",
+        short_description=(
+            "A spacious, production-ready studio built for larger concepts, fashion, campaigns, "
+            "lifestyle shoots, content creation and creative productions."
+        ),
         brochure=(
-            "Arena: larger studio for fashion, maternity, campaigns, videos, and bigger teams. "
-            "Includes premium lighting setup, multiple backdrops, makeup area, lounge seating, and space for 10."
+            "Arena is a 45 × 17 ft studio created for creators who need more room to build, move and "
+            "experiment. Featuring an approximately 150 sq. ft. cyclorama, lifestyle arch wall, movable "
+            "backdrop system, natural daylight through a French door and a Marshall Tufton Bluetooth "
+            "speaker, Arena offers the flexibility required for larger shoots and productions while "
+            "retaining the character of a creative studio."
         ),
         rules=(
-            "Rules: prior approval needed for heavy props, confetti, smoke, pets, or food setups. "
-            "No drilling, painting, unsafe electricals, or unmanaged crowding."
+            "Please arrive on time and use the studio, cyclorama, equipment, backdrops and props with care.\n"
+            "No smoking or wall damage.\n"
+            "The cyclorama must be treated with extra care.\n"
+            "Keep the space clean and return movable items after use.\n"
+            "Any damage or excessive cleaning may attract additional charges."
         ),
-        hourly_rate=2500,
+        hourly_rate=1500,
         capacity=10,
-        dimensions="Large studio · seating for 10",
-        equipment=("Premium lighting setup", "Multiple backdrops"),
-        amenities=("Makeup area", "Lounge seating", "Wi-Fi"),
+        dimensions="45 × 17 ft · Approx. 765 sq. ft. · Ideal for medium to large teams and productions",
+        equipment=(
+            "Approx. 150 sq. ft. Cyclorama",
+            "Movable Backdrop System",
+            "Studio Lighting Equipment",
+            "Light Stands & Modifiers",
+            "Backdrop Support System",
+            "Marshall Tufton Bluetooth Speaker",
+        ),
+        amenities=(
+            "Approx. 150 sq. ft. Cyclorama",
+            "Lifestyle Arch Wall",
+            "Natural Daylight French Door",
+            "Movable Backdrop System",
+            "Changing Corner",
+            "Client Seating",
+            "Wi-Fi",
+            "Marshall Tufton Bluetooth Speaker",
+            "Signature Mural Wall",
+        ),
         cover_image=(
             "https://images.unsplash.com/photo-1664817550969-5e76adc4a3fe"
             "?auto=format&fit=crop&w=1400&q=85"
+        ),
+        max_duration_hours=10.0,
+        booking_purposes=(
+            "Fashion Shoot",
+            "Editorial Shoot",
+            "Campaign Shoot",
+            "Beauty Shoot",
+            "Product Shoot",
+            "Lifestyle Shoot",
+            "Baby Shoot",
+            "Reels & Content Creation",
+            "Music / Video Production",
+            "Creative / Conceptual Shoot",
+            "Couple / Pre-wedding Shoot",
+            "Larger Productions",
         ),
     ),
 }
