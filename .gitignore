@@ -7,3 +7,4 @@ __pycache__/
 .pytest_cache/
 google-service-account.json
 .admin_session_secret
+.deploy_secret

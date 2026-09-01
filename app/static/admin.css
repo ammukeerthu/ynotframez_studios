@@ -1,7 +1,7 @@
-:root { --ink:#11110f; --paper:#f5f3ed; --white:#fffefb; --muted:#716e66; --line:#ddd8cd; --orange:#ff5b35; --green:#416b53; }
+:root { --ink:#11110f; --paper:#f5f3ed; --white:#fffefb; --muted:#716e66; --line:#ddd8cd; --orange:#ff5b35; --green:#416b53; --admin-font:"Montserrat","Segoe UI",Arial,sans-serif; --admin-caption:11px; --admin-small:12px; --admin-body:14px; }
 * { box-sizing:border-box; }
-body { margin:0; background:var(--paper); color:var(--ink); font-family:Inter,"Segoe UI",Arial,sans-serif; }
-button,input,select { font:inherit; }
+body { margin:0; background:var(--paper); color:var(--ink); font:var(--admin-body)/1.5 var(--admin-font); }
+button,input,select,textarea { font:inherit; }
 .bookings-section .filters { grid-template-columns:minmax(190px,.9fr) minmax(210px,1.2fr) minmax(145px,.65fr) minmax(145px,.65fr) minmax(145px,.65fr) auto; }
 .filter-actions { display:flex; gap:8px; align-items:stretch; }
 .filter-actions button { height:47px; }
@@ -49,8 +49,9 @@ button,input,select { font:inherit; }
 .admin-user .account-menu-button { display:grid; width:35px; height:35px; place-items:center; margin:0; padding:0; border:1px solid var(--line); background:transparent; color:var(--ink); text-decoration:none; cursor:pointer; }
 .admin-user .account-menu-button:hover,.admin-user .account-menu-button[aria-expanded="true"] { border-color:var(--ink); background:var(--ink); color:white; }
 .account-menu-button svg { width:17px; height:17px; fill:none; stroke:currentColor; stroke-width:1.6; stroke-linecap:round; stroke-linejoin:round; }
-.account-menu-panel { position:absolute; z-index:45; right:0; bottom:calc(100% + 8px); width:175px; padding:6px; border:1px solid var(--line); background:var(--white); box-shadow:0 15px 35px rgba(25,23,18,.18); }
-.admin-user .account-menu-panel button { display:flex; align-items:center; width:100%; min-height:38px; margin:0; padding:0 11px; border:0; background:transparent; color:var(--ink); text-align:left; text-decoration:none; font-size:8px; font-weight:800; letter-spacing:.1em; text-transform:uppercase; cursor:pointer; }
+.account-menu-panel { position:absolute; z-index:45; left:calc(100% + 10px); bottom:0; width:175px; padding:6px; border:1px solid var(--line); background:var(--white); box-shadow:0 15px 35px rgba(25,23,18,.18); transform-origin:left bottom; animation:account-menu-in .16s ease-out; }
+@keyframes account-menu-in { from{opacity:0;transform:translateX(-7px) scale(.98)} to{opacity:1;transform:translateX(0) scale(1)} }
+.admin-user .account-menu-panel button { display:flex; align-items:center; justify-content:flex-end; width:100%; min-height:38px; margin:0; padding:0 11px; border:0; background:transparent; color:var(--ink); text-align:right; text-decoration:none; font-size:8px; font-weight:800; letter-spacing:.1em; text-transform:uppercase; cursor:pointer; }
 .admin-user .account-menu-panel button:hover { background:var(--ink); color:white; }
 .admin-user .account-menu-panel .account-signout { border-top:1px solid var(--line); color:#a43826; }
 .admin-user .account-menu-panel .account-signout:hover { color:white; background:#a43826; }
@@ -95,7 +96,7 @@ button,input,select { font:inherit; }
 .availability-section { margin-top:42px; padding-bottom:40px; }.availability-toolbar { display:grid; grid-template-columns:minmax(230px,1fr) 210px auto; gap:12px; align-items:end; margin-top:25px; padding:17px; border:1px solid var(--line); background:var(--white); }.availability-toolbar label span,.block-card label span { display:block; margin-bottom:8px; color:#555149; font-size:8px; font-weight:800; letter-spacing:.14em; }.availability-toolbar input,.availability-toolbar select,.block-card input,.block-card select { width:100%; min-height:47px; padding:0 14px; border:1px solid var(--line); background:#fbfaf6; outline:none; }.availability-toolbar button,.block-card > button { min-height:47px; padding:0 21px; border:0; background:var(--ink); color:white; text-transform:uppercase; font-size:8px; font-weight:800; letter-spacing:.13em; cursor:pointer; }.availability-toolbar button:hover,.block-card > button:hover { background:var(--orange); }.availability-layout { display:grid; grid-template-columns:minmax(0,1.6fr) minmax(280px,.7fr); gap:15px; margin-top:15px; }.schedule-card,.block-card { border:1px solid var(--line); background:var(--white); }.schedule-card { padding:23px; }.schedule-head { display:flex; justify-content:space-between; gap:20px; align-items:start; padding-bottom:18px; border-bottom:1px solid var(--line); }.schedule-head p { margin:0; color:var(--orange); font-size:8px; font-weight:800; letter-spacing:.13em; text-transform:uppercase; }.schedule-head h3,.block-card h3 { margin:7px 0 0; font:27px Georgia,serif; }.schedule-legend { display:flex; flex-wrap:wrap; justify-content:end; gap:12px; color:var(--muted); font-size:7px; text-transform:uppercase; letter-spacing:.08em; }.schedule-legend span { display:flex; align-items:center; gap:5px; }.schedule-legend i { width:8px; height:8px; border-radius:50%; }.schedule-legend .available { background:#5b9b70; }.schedule-legend .booked { background:var(--orange); }.schedule-legend .blocked { background:var(--ink); }.availability-slots { display:grid; gap:6px; margin-top:17px; }.availability-slot { display:grid; grid-template-columns:85px 1fr auto; align-items:center; gap:12px; min-height:58px; padding:9px 12px; border:1px solid var(--line); border-left:4px solid #5b9b70; background:#fbfaf6; }.availability-slot.booked { border-left-color:var(--orange); }.availability-slot.blocked { border-left-color:var(--ink); background:#efede7; }.availability-slot.past,.availability-slot.unavailable { border-left-color:#c8c3b9; opacity:.55; }.availability-slot time { font:15px Georgia,serif; }.availability-slot time small,.availability-slot p small { display:block; margin-top:3px; color:var(--muted); font:7px Inter,"Segoe UI",sans-serif; }.availability-slot p { margin:0; }.availability-slot p b { font-size:8px; text-transform:uppercase; letter-spacing:.1em; }.availability-slot button { padding:7px 9px; border:1px solid var(--ink); background:transparent; color:var(--ink); font-size:7px; font-weight:800; text-transform:uppercase; letter-spacing:.1em; cursor:pointer; }.availability-slot button:hover { color:white; background:var(--ink); }.availability-empty { padding:35px; color:var(--muted); text-align:center; font-size:10px; }.block-card { align-self:start; padding:25px; }.block-card > p:not(.eyebrow) { margin:10px 0 23px; color:var(--muted); font:12px/1.5 Georgia,serif; }.block-card label { display:block; margin-top:15px; }.block-card > button { display:flex; justify-content:space-between; align-items:center; width:100%; margin-top:22px; }.block-card > button:disabled { opacity:.55; cursor:wait; }
 .password-modal { position:fixed; inset:0; z-index:50; display:grid; place-items:center; padding:20px; background:rgba(10,10,9,.72); backdrop-filter:blur(5px); }.password-modal form { position:relative; width:min(100%,470px); max-height:90vh; overflow:auto; padding:35px; background:var(--white); }.password-modal h2 { margin:10px 0 28px; font:38px Georgia,serif; }.password-modal label { display:block; margin-top:16px; }.password-modal label span { display:block; margin-bottom:7px; color:var(--muted); font-size:8px; font-weight:800; letter-spacing:.12em; text-transform:uppercase; }.password-modal input { width:100%; height:46px; padding:0 13px; border:1px solid var(--line); background:#fbfaf6; outline:none; }.password-modal input:focus { border-color:var(--ink); }.password-modal .modal-close { position:absolute; top:20px; right:22px; padding:0; border:0; background:none; font-size:27px; cursor:pointer; }.password-modal .save-password { display:flex; justify-content:space-between; align-items:center; width:100%; height:50px; margin-top:24px; padding:0 17px; border:0; background:var(--ink); color:white; text-transform:uppercase; font-size:8px; font-weight:800; letter-spacing:.13em; cursor:pointer; }.password-modal .save-password:hover { background:var(--orange); }.password-modal .save-password:disabled { opacity:.55; cursor:wait; }
 @media(max-width:1000px){.stats{grid-template-columns:repeat(2,1fr)}.login-view{grid-template-columns:1fr}.login-visual{display:none}.login-panel{min-height:100vh}.admin-shell{grid-template-columns:1fr}.admin-shell>aside{position:static;width:100%;height:auto;display:grid;grid-template-columns:1fr auto;align-items:center}.admin-shell aside nav{grid-column:1/-1;display:flex;margin-top:25px;overflow:auto}.admin-user{position:absolute;right:25px;top:20px;margin:0;padding:0;border:0}.admin-user p,.admin-user b{display:none}.admin-shell aside nav a{white-space:nowrap}.availability-layout{grid-template-columns:1fr}}
-@media(max-width:1000px){.account-menu-panel{top:calc(100% + 8px);bottom:auto}}
+@media(max-width:1000px){.account-menu-panel{top:calc(100% + 8px);right:0;bottom:auto;left:auto;transform-origin:right top;animation-name:account-menu-in-mobile}@keyframes account-menu-in-mobile{from{opacity:0;transform:translateY(-5px) scale(.98)}to{opacity:1;transform:translateY(0) scale(1)}}}
 @media(max-width:620px){.admin-shell>main{padding:35px 18px}.admin-shell main>header{display:block}.dashboard-header-tools{justify-content:space-between;margin-top:20px}.today{margin-top:0}.alert-center{position:fixed;top:72px;right:12px;left:12px;width:auto;max-height:calc(100vh - 88px)}.stats{grid-template-columns:1fr 1fr}.stats article{min-height:125px;padding:16px}.stats strong{font-size:27px}.section-heading{display:block}.section-heading>p{margin-top:8px}.filters,.availability-toolbar{grid-template-columns:1fr}.login-panel{padding:25px}.admin-shell>aside{padding:25px 18px}.admin-user{right:18px}.admin-shell aside nav{margin-left:-18px;margin-right:-18px;padding:0 18px}.bookings-section{margin-top:50px}.schedule-head{display:block}.schedule-legend{justify-content:start;margin-top:15px}.availability-slot{grid-template-columns:70px 1fr}.availability-slot button{grid-column:2}.alert-center-head{align-items:flex-start;flex-direction:column}.alert-actions{justify-content:flex-start}.alert-card footer{align-items:flex-start;flex-direction:column}}
 @media(max-width:620px){.alert-center-head{align-items:center;flex-direction:row}.alert-footer{align-items:flex-start;flex-direction:column}.alert-footnote{text-align:left}}
 
@@ -116,7 +117,7 @@ button,input,select { font:inherit; }
 .studio-settings-fields input:not([type="checkbox"]),.studio-settings-fields select,.studio-settings-fields textarea { width:100%; min-height:45px; padding:0 13px; border:1px solid var(--line); background:#fbfaf6; outline:none; }
 .studio-settings-fields textarea { min-height:92px; padding-top:12px; resize:vertical; font:inherit; line-height:1.45; }
 .studio-settings-fields input:focus,.studio-settings-fields select:focus,.studio-settings-fields textarea:focus { border-color:var(--ink); }
-.studio-settings-actions { display:flex; justify-content:space-between; align-items:center; gap:15px; padding:0 23px 23px; }
+.studio-settings-actions { display:flex; justify-content:flex-end; align-items:center; gap:15px; padding:0 23px 23px; }
 .studio-settings-actions p { margin:0; color:var(--muted); font-size:9px; }
 .studio-settings-actions button { min-height:47px; padding:0 22px; border:0; background:var(--ink); color:white; font-size:8px; font-weight:800; letter-spacing:.13em; text-transform:uppercase; cursor:pointer; }
 .studio-settings-actions button:hover { background:var(--orange); }
@@ -147,3 +148,253 @@ button,input,select { font:inherit; }
 .admin-slot-button.past small,.admin-slot-button.unavailable small { color:#aaa69e; }
 .admin-slot-button:disabled { pointer-events:none; }
 @media(max-width:620px){.availability-slots{grid-template-columns:repeat(3,minmax(0,1fr))}.admin-slot-heading{display:block}.admin-slot-heading small{display:block;margin-top:6px}}
+
+/* Montserrat readability pass for the operational dashboard. */
+.login-visual h1,
+.login-panel h2,
+.form-copy,
+.payment-control strong,
+.admin-user b,
+.admin-shell header h1,
+.stats strong,
+.alert-center-head h2,
+.alert-card h3,
+.alerts-clear,
+.section-heading h2,
+td b,
+.schedule-head h3,
+.block-card h3,
+.availability-slot time,
+.block-card > p:not(.eyebrow),
+.password-modal h2,
+.studio-settings-head h3 {
+  font-family:var(--admin-font);
+}
+
+.login-visual h1,
+.login-panel h2,
+.admin-shell header h1,
+.alert-center-head h2,
+.section-heading h2,
+.schedule-head h3,
+.block-card h3,
+.password-modal h2,
+.studio-settings-head h3 {
+  font-weight:600;
+  letter-spacing:-.025em;
+}
+
+.stats strong,
+.payment-control strong,
+.admin-user b,
+.alert-card h3,
+td b,
+.availability-slot time {
+  font-weight:600;
+}
+
+.filter-actions a,
+.manage-booking,
+.booking-modal-actions .cancel-booking,
+.payment-control button,
+.login-panel button,
+.filters button,
+.availability-toolbar button,
+.block-card > button,
+.alert-center-head button,
+.alert-tabs button,
+.alert-card button,
+.alert-footer button,
+.availability-slot button,
+.password-modal .save-password,
+.studio-settings-actions button {
+  font-size:var(--admin-caption);
+  letter-spacing:.07em;
+}
+
+.eyebrow,
+.admin-brand small,
+.login-visual p,
+.login-panel label span,
+.filters label span,
+.payment-control p,
+.payment-control small,
+.admin-user p,
+.stats p,
+.alert-card-kicker,
+.alert-footnote,
+th,
+.status,
+.booking-count,
+.availability-toolbar label span,
+.block-card label span,
+.schedule-head p,
+.schedule-legend,
+.availability-slot p b,
+.password-modal label span,
+.studio-settings-head p,
+.studio-settings-head small,
+.studio-active,
+.studio-settings-fields label > span,
+.admin-slot-heading > span,
+.admin-slot-button small {
+  font-size:var(--admin-caption);
+  letter-spacing:.075em;
+  line-height:1.35;
+}
+
+.admin-shell aside nav a {
+  min-height:46px;
+  font-size:var(--admin-body);
+  font-weight:500;
+}
+
+.admin-shell aside nav a small,
+.alert-bell > span {
+  font-size:10px;
+}
+
+.admin-user b {
+  font-size:15px;
+}
+
+.admin-user .account-menu-panel button {
+  min-height:42px;
+  font-size:var(--admin-caption);
+  letter-spacing:.06em;
+}
+
+.today p {
+  font-size:var(--admin-small);
+}
+
+.today small,
+.stats small,
+.login-panel form > small,
+.alert-card footer small,
+.admin-slot-heading small,
+.admin-slot-button em {
+  font-size:var(--admin-caption);
+  line-height:1.4;
+}
+
+.form-message,
+.dashboard-message,
+.alert-card > p,
+.section-heading > p,
+td,
+.availability-empty,
+.block-card > p:not(.eyebrow),
+.studio-settings-actions p,
+.settings-empty {
+  font-size:13px;
+  line-height:1.55;
+}
+
+td b {
+  font-size:14px;
+  line-height:1.35;
+}
+
+td small {
+  font-size:var(--admin-caption);
+  line-height:1.45;
+}
+
+.availability-slot time {
+  font-size:16px;
+}
+
+.availability-slot time small,
+.availability-slot p small {
+  font:var(--admin-caption)/1.4 var(--admin-font);
+}
+
+.admin-slot-button {
+  min-height:76px;
+  padding:10px 8px;
+}
+
+.admin-slot-button span {
+  font-size:14px;
+}
+
+.login-panel input,
+.filters input,
+.filters select,
+.booking-modal select,
+.booking-modal textarea,
+.availability-toolbar input,
+.availability-toolbar select,
+.block-card input,
+.block-card select,
+.password-modal input,
+.studio-settings-fields input:not([type="checkbox"]),
+.studio-settings-fields select,
+.studio-settings-fields textarea {
+  font-size:var(--admin-body);
+}
+
+.stats article {
+  min-height:158px;
+}
+
+.overview-section {
+  margin-top:42px;
+}
+
+.overview-section .stats {
+  margin-top:25px;
+}
+
+.stats article.dark p {
+  color:#b8b3aa;
+}
+
+.stats article.dark small {
+  color:#aaa59c;
+}
+
+.stats p {
+  min-height:30px;
+}
+
+.account-menu-panel {
+  width:205px;
+}
+
+.admin-shell > aside {
+  z-index:30;
+}
+
+.manage-booking,
+.availability-slot button {
+  min-height:36px;
+}
+
+.alert-center-head button,
+.alert-tabs button,
+.alert-card button,
+.alert-footer button {
+  min-height:40px;
+}
+
+.admin-slot-button.past,
+.admin-slot-button.unavailable {
+  opacity:.78;
+}
+
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline:3px solid rgba(255,91,53,.42);
+  outline-offset:2px;
+}
+
+@media(max-width:620px) {
+  .availability-slots { grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .stats article { min-height:145px; }
+  .stats p { min-height:44px; }
+}

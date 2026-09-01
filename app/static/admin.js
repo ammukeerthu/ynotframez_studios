@@ -14,6 +14,7 @@ const alertList = document.querySelector("#alert-list");
 const desktopAlertsButton = document.querySelector("#desktop-alerts-button");
 const accountMenuButton = document.querySelector("#account-menu-button");
 const accountMenuPanel = document.querySelector("#account-menu-panel");
+const dashboardHomeLink = document.querySelector("#dashboard-home-link");
 let adminBookings = [];
 let studioSettings = [];
 let alertPollTimer = null;
@@ -125,6 +126,10 @@ adminNavLinks.forEach((link) => {
     event.preventDefault();
     navigateToAdminSection(link.getAttribute("href").slice(1));
   });
+});
+dashboardHomeLink.addEventListener("click", (event) => {
+  event.preventDefault();
+  navigateToAdminSection("overview");
 });
 window.addEventListener("popstate", () => {
   const activeSection = showAdminSection(window.location.hash.slice(1), true);
@@ -395,7 +400,7 @@ function renderStudioSettings() {
         <label><span>Minimum duration</span><select name="min_duration_hours" required>${durationOptions(studio.min_duration_hours)}</select></label>
         <label><span>Maximum duration</span><select name="max_duration_hours" required>${durationOptions(studio.max_duration_hours)}</select></label>
       </div>
-      <div class="studio-settings-actions"><p>Saved values are used by the website, dashboard, and WhatsApp flow.</p><button type="submit">Save studio settings</button></div>
+        <div class="studio-settings-actions"><button type="submit">Save studio settings</button></div>
     </form>
   `).join("");
 }
