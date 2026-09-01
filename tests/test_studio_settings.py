@@ -11,7 +11,12 @@ from app.core.config import settings
 from app.schemas.admin import AdminStudioUpdate
 from app.schemas.booking import AvailabilityRequest, WebBookingCreate
 from app.services.booking_service import BookingApplicationService
-from app.services.spaces import get_space_by_id, list_spaces, seed_studio_settings
+from app.services.spaces import (
+    get_space_by_id,
+    list_spaces,
+    overwrite_studio_settings_with_defaults,
+    seed_studio_settings,
+)
 from app.models.studio import StudioSetting
 
 settings.email_mode = "console"
@@ -132,6 +137,18 @@ class StudioSettingsTest(unittest.TestCase):
         self.assertEqual((premium.name, premium.slug), ("Arena", "arena"))
         self.assertTrue(standard.brochure.startswith("Cube:"))
         self.assertTrue(premium.brochure.startswith("Arena:"))
+
+    def test_explicit_default_sync_overwrites_saved_profiles_and_purposes(self) -> None:
+        admin_update_studio("standard_small", self.payload(), self.db)
+
+        overwrite_studio_settings_with_defaults(self.db)
+
+        standard = get_space_by_id("standard_small", self.db)
+        premium = get_space_by_id("premium_large", self.db)
+        self.assertEqual((standard.name, standard.hourly_rate, standard.capacity), ("Cube", 1000, 5))
+        self.assertEqual(standard.booking_purposes[0], "Portrait Shoot")
+        self.assertEqual((premium.name, premium.hourly_rate, premium.capacity), ("Arena", 1500, 10))
+        self.assertEqual(premium.booking_purposes[-1], "Larger Productions")
 
     def test_inactive_studio_is_hidden_from_public_catalogue(self) -> None:
         admin_update_studio("standard_small", self.payload(is_active=False), self.db)

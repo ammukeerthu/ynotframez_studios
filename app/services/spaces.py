@@ -1,7 +1,7 @@
 import json
 from dataclasses import dataclass
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from app.core.booking_rules import MINIMUM_BOOKING_DURATION_HOURS
@@ -236,6 +236,46 @@ def seed_studio_settings(db: Session, commit: bool = True) -> None:
         if space.id not in purpose_space_ids:
             for purpose_order, label in enumerate(space.booking_purposes, start=1):
                 db.add(StudioPurposeOption(space_id=space.id, label=label, sort_order=purpose_order))
+    if commit:
+        db.commit()
+    else:
+        db.flush()
+
+
+def overwrite_studio_settings_with_defaults(db: Session, commit: bool = True) -> None:
+    """Explicitly replace saved studio profiles with the code defaults.
+
+    Normal application startup only seeds missing values. This maintenance helper
+    is intentionally separate so an owner must opt in before saved settings are
+    overwritten in an existing database.
+    """
+    seed_studio_settings(db, commit=False)
+    rows = {row.id: row for row in db.scalars(select(StudioSetting))}
+
+    for sort_order, space in enumerate(SPACES.values(), start=1):
+        row = rows[space.id]
+        row.slug = space.slug
+        row.sort_order = sort_order
+        row.name = space.name
+        row.short_description = space.short_description
+        row.brochure = space.brochure
+        row.rules = space.rules
+        row.hourly_rate = space.hourly_rate
+        row.capacity = space.capacity
+        row.dimensions = space.dimensions
+        row.equipment_json = json.dumps(space.equipment)
+        row.amenities_json = json.dumps(space.amenities)
+        row.cover_image = space.cover_image
+        row.opening_time = space.opening_time
+        row.closing_time = space.closing_time
+        row.min_duration_hours = space.min_duration_hours
+        row.max_duration_hours = space.max_duration_hours
+        row.is_active = space.is_active
+
+        db.execute(delete(StudioPurposeOption).where(StudioPurposeOption.space_id == space.id))
+        for purpose_order, label in enumerate(space.booking_purposes, start=1):
+            db.add(StudioPurposeOption(space_id=space.id, label=label, sort_order=purpose_order))
+
     if commit:
         db.commit()
     else:
