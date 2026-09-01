@@ -1,6 +1,6 @@
 # YNotFramez Studios Booking MVP
 
-A minimal FastAPI booking application for a two-space photography studio. Customers can book through the new responsive web interface or through the existing WhatsApp-style webhook. Both channels store bookings in the same SQLite database.
+A minimal FastAPI booking application for a two-space photography studio. Customers can book through the responsive web interface or through the existing WhatsApp-style webhook. Both channels share the same relational database: SQLite for local development and Neon PostgreSQL for the deployed testing environment.
 
 ## What is included
 
@@ -14,7 +14,7 @@ A minimal FastAPI booking application for a two-space photography studio. Custom
 - Owner-managed studio details, rates, hours, booking limits, equipment, amenities, booking purposes, and active status
 - JSON APIs for spaces, availability, and bookings
 - WhatsApp conversation state machine at `/webhooks/whatsapp`
-- SQLite booking persistence and overlapping-slot protection
+- SQLAlchemy persistence with SQLite locally or PostgreSQL in deployment
 - Half-hour start times, durations, and proportional pricing
 - Two studio spaces with individual details, rules, and hourly rates
 - Google Calendar integration with a local stub mode
@@ -157,9 +157,38 @@ Every booking has a local payment record. New customer requests remain in `payme
 
 The booking directory supports customer search, booking-status filtering, and inclusive from/to date filters. **Export CSV** downloads the currently filtered records with schedule, customer, payment, and value columns for Excel or reconciliation. The export requires an authenticated admin session and neutralizes spreadsheet-formula prefixes in customer-entered text.
 
-The **Availability** section shows a studio's schedule in 30-minute intervals. Available time can be blocked with a reason and reopened later. Blocks are stored in SQLite and immediately affect availability checks in both the web and WhatsApp booking flows.
+The **Availability** section shows a studio's schedule in 30-minute intervals. Available time can be blocked with a reason and reopened later. Blocks are stored in the configured database and immediately affect availability checks in both the web and WhatsApp booking flows.
 
-The **Studio settings** section stores the two studio profiles in SQLite. The owner can update public descriptions, rules, rates, capacity, equipment, amenities, customer booking-purpose dropdown options, cover images, operating hours, booking-duration limits, and whether a studio accepts new bookings. Saved values are immediately shared by the public website, web booking flow, dashboard, and WhatsApp state machine. Existing payment records retain their recorded amounts; new bookings use the latest hourly rate.
+The **Studio settings** section stores the two studio profiles in the configured database. The owner can update public descriptions, rules, rates, capacity, equipment, amenities, customer booking-purpose dropdown options, cover images, operating hours, booking-duration limits, and whether a studio accepts new bookings. Saved values are immediately shared by the public website, web booking flow, dashboard, and WhatsApp state machine. Existing payment records retain their recorded amounts; new bookings use the latest hourly rate.
+
+### Synchronize committed studio defaults
+
+The committed Cube and Arena defaults live in `app/services/spaces.py`. Normal application startup seeds missing studio rows but deliberately does not overwrite owner-managed settings in an existing database.
+
+Use the guarded maintenance command when an existing database must be explicitly reset to the committed profiles and purpose options. Running it without `--apply` opens a transaction and rolls it back:
+
+```powershell
+.\.venv\Scripts\python.exe -m scripts.sync_studio_defaults
+```
+
+Confirm that the masked `Database:` line identifies the intended database. Then commit the synchronization:
+
+```powershell
+.\.venv\Scripts\python.exe -m scripts.sync_studio_defaults --apply
+```
+
+For the deployed Neon database, copy `DATABASE_URL` from Render and load it into only the current PowerShell process before running the commands:
+
+```powershell
+$env:DATABASE_URL = (Get-Clipboard).Trim()
+if ($env:DATABASE_URL -match "neon\.tech") { "Neon DATABASE_URL loaded" } else { "Neon URL was not loaded" }
+.\.venv\Scripts\python.exe -m scripts.sync_studio_defaults
+.\.venv\Scripts\python.exe -m scripts.sync_studio_defaults --apply
+Remove-Item Env:DATABASE_URL
+Set-Clipboard -Value "cleared"
+```
+
+Never paste the connection string into chat, source files, or a command that will be retained in shell history. The synchronization replaces studio profiles and purpose options only; it does not alter bookings, payments, calendar events, availability blocks, or admin credentials.
 
 Owner-created blocks are currently application-managed: they prevent bookings even when Google Calendar mode is enabled, but they are not exported as separate Google Calendar events.
 
@@ -362,15 +391,22 @@ The Blueprint already supplies `smtp-relay.brevo.com` and port `2525`. Brevo's F
 
 The Blueprint sets `ADMIN_COOKIE_SECURE=true`, generates a stable admin-session signing secret, and runs one Uvicorn worker. Razorpay remains in stub mode for this testing release. A submitted booking stays payment-pending and holds its slot; use **Mark paid** in the Studio Dashboard to complete the test booking, create its live Google Calendar event, and send its confirmation email.
 
-### Use `ynotframezstudios.in`
+### Production domains
 
-`ynotframezstudios.in` is the recommended public domain spelling: it matches the registered brand, contains no hyphen, and is easy to say. Domain registration is separate from deploying the application, so first confirm availability and buy it from an accredited `.in` registrar.
+The public domain arrangement is:
 
-After the Render URL is working:
+- Primary application: `https://ynotframezstudios.com`
+- Secondary brand domain: `https://ynotframezstudios.in`, permanently redirected to the `.com`
+- Render fallback: `https://ynotframez-studios.onrender.com`
 
-1. Open the Render service's **Settings > Custom Domains** and add `ynotframezstudios.in`.
-2. Add the DNS records Render displays at the registrar/DNS provider.
-3. Verify the domain in Render. Render will also configure the `www` redirect and automatically issue and renew HTTPS certificates.
-4. When Razorpay API mode is enabled later, set `RAZORPAY_CALLBACK_BASE_URL=https://ynotframezstudios.in` and configure its webhook as `https://ynotframezstudios.in/api/payments/razorpay/webhook`.
+The `.com` root domain is attached to the Render web service as a custom domain. Its root A record and `www` CNAME must use the values shown by Render. Render verifies both names, redirects `www` to the root domain, and automatically issues the managed HTTPS certificates.
 
-Do not advertise the domain until both the root address and `www.ynotframezstudios.in` load successfully over HTTPS.
+The `.in` domain is not added to Render. In GoDaddy it uses an unmasked **Permanent (301)** forwarding rule whose destination is `https://ynotframezstudios.com`; its `www` CNAME points to `@`. GoDaddy forwarding requires completed WHOIS verification and can take several hours to provision HTTPS or up to 48 hours to propagate globally.
+
+When Razorpay API mode is enabled, set:
+
+```env
+RAZORPAY_CALLBACK_BASE_URL="https://ynotframezstudios.com"
+```
+
+Configure the Razorpay webhook as `https://ynotframezstudios.com/api/payments/razorpay/webhook`. Do not advertise either domain until its root and `www` addresses work over HTTPS and the `.in` addresses redirect to `.com` without masking.
