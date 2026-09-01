@@ -18,9 +18,8 @@ button, a { -webkit-tap-highlight-color: transparent; }
 footer a { color:inherit; text-underline-offset:3px; }
 
 .site-header { height: 86px; display: flex; align-items: center; justify-content: space-between; padding: 0 clamp(24px, 6vw, 90px); border-bottom: 1px solid var(--line); }
-.brand { display: flex; align-items: center; gap: 11px; color: var(--ink); text-decoration: none; font-weight: 800; letter-spacing: .13em; font-size: 13px; line-height: 1.1; }
-.brand small { display: block; color: var(--muted); font-size: 8px; letter-spacing: .35em; margin-top: 4px; }
-.brand-mark { display: grid; place-items: center; width: 38px; height: 38px; color: var(--white); background: var(--ink); font-family: Georgia, serif; font-size: 25px; font-style: italic; letter-spacing: 0; }
+.brand { display: flex; align-items: center; color: var(--ink); text-decoration: none; }
+.brand-logo { display: block; width: auto; height: 38px; }
 .header-note { color: var(--muted); font-size: 12px; letter-spacing: .08em; text-transform: uppercase; }
 .header-note span { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: #5ca470; margin-right: 8px; box-shadow: 0 0 0 4px rgba(92, 164, 112, .12); }
 .header-link { text-decoration: none; border-bottom: 1px solid var(--line); padding-bottom: 5px; }
@@ -123,7 +122,7 @@ footer { min-height: 57px; display: flex; align-items: center; justify-content: 
   .booking-shell { grid-template-columns: 1fr; }.intro-panel { padding: 48px 28px; }.intro-panel h1 br { display: none; }.intro-copy { margin-bottom: 30px; }.progress { grid-template-columns: repeat(4, 1fr); gap: 8px; }.progress li { display: block; }.progress li div { display: none; }.trust-note { display: none; }.live-summary { margin-top: 30px; }.live-summary dl { grid-template-columns: repeat(4, 1fr); }.form-panel { padding: 48px 28px 65px; }.header-note { display: none; }
 }
 @media (max-width: 620px) {
-  .site-header { height: 72px; }.intro-panel { padding: 38px 22px; }.intro-panel h1 { font-size: 42px; }.intro-copy { font-size: 14px; }.live-summary dl { grid-template-columns: 1fr 1fr; }.form-panel { padding: 40px 20px 55px; }.space-grid, .two-columns { grid-template-columns: 1fr; }.slot-grid { grid-template-columns: repeat(3, 1fr); }.slot-heading { display: block; }.slot-heading small { display: block; margin-top: 6px; }.step-heading { display: block; }.step-heading > p { margin-top: 10px; }.field.full { grid-column: auto; }.form-actions .button { flex: 1; padding: 0 14px; gap: 12px; }.summary-card { grid-template-columns: 1fr 1fr; }.summary-card div:nth-child(3) { border-left: 0; padding-left: 0; }.confirmation-details { grid-template-columns: 1fr; text-align: center; } footer span:last-child { display: none; }
+  .site-header { height: 72px; }.brand-logo { height: 26px; }.intro-panel { padding: 38px 22px; }.intro-panel h1 { font-size: 42px; }.intro-copy { font-size: 14px; }.live-summary dl { grid-template-columns: 1fr 1fr; }.form-panel { padding: 40px 20px 55px; }.space-grid, .two-columns { grid-template-columns: 1fr; }.slot-grid { grid-template-columns: repeat(3, 1fr); }.slot-heading { display: block; }.slot-heading small { display: block; margin-top: 6px; }.step-heading { display: block; }.step-heading > p { margin-top: 10px; }.field.full { grid-column: auto; }.form-actions .button { flex: 1; padding: 0 14px; gap: 12px; }.summary-card { grid-template-columns: 1fr 1fr; }.summary-card div:nth-child(3) { border-left: 0; padding-left: 0; }.confirmation-details { grid-template-columns: 1fr; text-align: center; } footer span:last-child { display: none; }
 }
 
 @media print { .site-header,.intro-panel,footer,.confirmation .button,.arrival-note { display:none!important; }.booking-shell { display:block; }.form-panel { padding:30px; }.confirmation { display:block!important; }.confirmation-details { border:1px solid var(--line); } }
