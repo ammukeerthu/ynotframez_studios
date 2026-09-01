@@ -184,7 +184,7 @@ class BookingApplicationServiceTest(unittest.TestCase):
             self.booking(space_id="premium_large")
         )
 
-        self.assertEqual(result.space_name, "Premium Studio")
+        self.assertEqual(result.space_name, "Arena")
         self.assertIsNotNone(result.payment_link)
 
     def test_owner_block_prevents_booking_for_only_the_selected_space(self) -> None:

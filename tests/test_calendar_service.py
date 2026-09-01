@@ -53,13 +53,13 @@ class GoogleCalendarServiceTest(unittest.TestCase):
 
         body = service._event_body(
             booking,
-            "Standard Studio",
+            "Cube",
             datetime(2026, 9, 20, 14, 30, tzinfo=service.timezone),
             datetime(2026, 9, 20, 15, 30, tzinfo=service.timezone),
         )
 
         self.assertEqual(body["summary"], "Booking - Keerthana - +919876543210")
-        self.assertIn("Studio: Standard Studio", body["description"])
+        self.assertIn("Studio: Cube", body["description"])
         self.assertFalse(
             service._event_blocks_space(
                 {"summary": "Removed", "status": "cancelled"},

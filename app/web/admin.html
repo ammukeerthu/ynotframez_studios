@@ -92,7 +92,7 @@
       <section id="bookings" class="bookings-section">
         <div class="section-heading"><div><p class="eyebrow">BOOKING DIRECTORY</p></div><p>Select a studio space to view its bookings.</p></div>
         <form id="booking-filters" class="filters">
-          <label><span>STUDIO SPACE</span><select name="space_id"><option value="standard_small">Standard Studio</option><option value="premium_large">Premium Studio</option></select></label>
+          <label><span>STUDIO SPACE</span><select name="space_id"><option value="standard_small">Cube</option><option value="premium_large">Arena</option></select></label>
           <label><span>SEARCH</span><input name="q" placeholder="Name, email, or phone"></label>
           <label><span>STATUS</span><select name="status"><option value="">All statuses</option><option value="confirmed">Confirmed</option><option value="payment_pending">Payment pending</option><option value="cancelled">Cancelled</option></select></label>
           <label><span>FROM DATE</span><input name="date_from" type="date"></label>
@@ -108,14 +108,14 @@
       <section id="availability" class="availability-section">
         <div class="section-heading"><div><p class="eyebrow">STUDIO CALENDAR</p></div><p>Block private use, maintenance, or time off.</p></div>
         <form id="availability-filters" class="availability-toolbar">
-          <label><span>STUDIO SPACE</span><select name="space_id"><option value="standard_small">Standard Studio</option><option value="premium_large">Premium Studio</option></select></label>
+          <label><span>STUDIO SPACE</span><select name="space_id"><option value="standard_small">Cube</option><option value="premium_large">Arena</option></select></label>
           <label><span>DATE</span><input name="booking_date" type="date" required></label>
           <button type="submit">View schedule</button>
         </form>
         <div id="availability-message" class="dashboard-message" hidden></div>
         <div class="availability-layout">
           <div class="schedule-card">
-            <div class="schedule-head"><div><p id="schedule-space">Standard Studio</p><h3 id="schedule-date">Choose a date</h3></div><div class="schedule-legend"><span><i class="available"></i>Available</span><span><i class="booked"></i>Booked</span><span><i class="blocked"></i>Blocked</span></div></div>
+            <div class="schedule-head"><div><p id="schedule-space">Cube</p><h3 id="schedule-date">Choose a date</h3></div><div class="schedule-legend"><span><i class="available"></i>Available</span><span><i class="booked"></i>Booked</span><span><i class="blocked"></i>Blocked</span></div></div>
             <div class="admin-slot-heading"><span>AVAILABLE TIMES</span><small>Click an available time to block it, or a blocked time to reopen it.</small></div>
             <div id="availability-slots" class="availability-slots"><p class="availability-empty">Loading schedule…</p></div>
           </div>
@@ -143,7 +143,7 @@
       <p class="eyebrow">MANAGE BOOKING</p><h2 id="booking-modal-reference">Booking details</h2>
       <input name="booking_id" type="hidden">
       <div class="edit-grid">
-        <label><span>STUDIO SPACE</span><select name="space_id" required><option value="standard_small">Standard Studio</option><option value="premium_large">Premium Studio</option></select></label>
+        <label><span>STUDIO SPACE</span><select name="space_id" required><option value="standard_small">Cube</option><option value="premium_large">Arena</option></select></label>
         <label><span>DATE</span><input name="booking_date" type="date" required></label>
         <label><span>START TIME</span><select name="start_time" required></select></label>
         <label><span>DURATION</span><select name="duration_hours" required></select></label>

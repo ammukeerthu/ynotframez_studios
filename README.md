@@ -5,7 +5,7 @@ A minimal FastAPI booking application for a two-space photography studio. Custom
 ## What is included
 
 - Editorial public website at `/`
-- Dedicated studio pages at `/studios/standard-studio` and `/studios/premium-studio`
+- Dedicated studio pages at `/studios/cube` and `/studios/arena`
 - Customer web booking flow at `/book`
 - Customer booking retrieval at `/my-booking` using reference plus email
 - Protected studio-owner dashboard at `/dashboard` (`/admin` redirects there)
@@ -202,8 +202,8 @@ GET /api/spaces
 Rich studio details are also available by public slug:
 
 ```http
-GET /api/spaces/standard-studio
-GET /api/spaces/premium-studio
+GET /api/spaces/cube
+GET /api/spaces/arena
 ```
 
 ### Check availability
@@ -351,8 +351,8 @@ The Blueprint already supplies `smtp-relay.brevo.com` and port `2525`. Brevo's F
    - `DATABASE_URL`: the complete Neon connection string.
    - `SMTP_USERNAME`: the Brevo SMTP Login.
    - `SMTP_PASSWORD`: the Brevo SMTP key.
-   - `GOOGLE_CALENDAR_STANDARD_SMALL_ID`: the Standard Studio calendar ID.
-   - `GOOGLE_CALENDAR_PREMIUM_LARGE_ID`: the Premium Studio calendar ID.
+   - `GOOGLE_CALENDAR_STANDARD_SMALL_ID`: the Cube calendar ID.
+   - `GOOGLE_CALENDAR_PREMIUM_LARGE_ID`: the Arena calendar ID.
 5. In the new service's **Environment > Secret Files**, add a file named `google-service-account.json` and paste the complete contents of the local ignored file. It is exposed to the app at `/etc/secrets/google-service-account.json`.
 6. Deploy and verify these addresses before inviting testers:
    - `https://<service-name>.onrender.com/health`

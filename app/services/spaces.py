@@ -45,11 +45,11 @@ class StudioSpace:
 SPACES = {
     "1": StudioSpace(
         id="standard_small",
-        slug="standard-studio",
-        name="Standard Studio",
+        slug="cube",
+        name="Cube",
         short_description="A compact, thoughtfully equipped studio for portraits, products, reels, and interviews.",
         brochure=(
-            "Standard Studio: compact studio for portraits, reels, product shoots, and small teams. "
+            "Cube: compact studio for portraits, reels, product shoots, and small teams. "
             "Includes basic lights, backdrop support, changing corner, and seating for 4."
         ),
         rules=(
@@ -68,11 +68,11 @@ SPACES = {
     ),
     "2": StudioSpace(
         id="premium_large",
-        slug="premium-studio",
-        name="Premium Studio",
+        slug="arena",
+        name="Arena",
         short_description="A spacious production studio for fashion, campaigns, maternity, video, and larger teams.",
         brochure=(
-            "Premium Studio: larger studio for fashion, maternity, campaigns, videos, and bigger teams. "
+            "Arena: larger studio for fashion, maternity, campaigns, videos, and bigger teams. "
             "Includes premium lighting setup, multiple backdrops, makeup area, lounge seating, and space for 10."
         ),
         rules=(
@@ -92,12 +92,16 @@ SPACES = {
 }
 
 LEGACY_SPACE_NAMES = {
-    "standard_small": "Standard Small Space",
-    "premium_large": "Premium Large Space",
+    "standard_small": ("Standard Small Space", "Standard Space", "Standard Studio"),
+    "premium_large": ("Premium Large Space", "Premium Space", "Premium Studio"),
 }
 LEGACY_SPACE_SLUGS = {
-    "standard-small-space": "standard-studio",
-    "premium-large-space": "premium-studio",
+    "standard-small-space": "cube",
+    "standard-space": "cube",
+    "standard-studio": "cube",
+    "premium-large-space": "arena",
+    "premium-space": "arena",
+    "premium-studio": "arena",
 }
 
 
@@ -111,13 +115,15 @@ def seed_studio_settings(db: Session, commit: bool = True) -> None:
                 row.min_duration_hours = MINIMUM_BOOKING_DURATION_HOURS
             if row.max_duration_hours < MINIMUM_BOOKING_DURATION_HOURS:
                 row.max_duration_hours = MINIMUM_BOOKING_DURATION_HOURS
-            legacy_name = LEGACY_SPACE_NAMES.get(space.id)
-            if legacy_name and row.name == legacy_name:
+            legacy_names = LEGACY_SPACE_NAMES.get(space.id, ())
+            if row.name in legacy_names:
                 row.name = space.name
             if row.slug in LEGACY_SPACE_SLUGS:
                 row.slug = LEGACY_SPACE_SLUGS[row.slug]
-            if legacy_name and row.brochure.startswith(f"{legacy_name}:"):
-                row.brochure = row.brochure.replace(legacy_name, space.name, 1)
+            for legacy_name in legacy_names:
+                if row.brochure.startswith(f"{legacy_name}:"):
+                    row.brochure = row.brochure.replace(legacy_name, space.name, 1)
+                    break
             if (
                 _json_items(row.equipment_json) == space.equipment
                 and _json_items(row.amenities_json) == space.equipment + space.amenities

@@ -115,6 +115,24 @@ class StudioSettingsTest(unittest.TestCase):
 
         self.assertEqual(studio.min_duration_hours, 2.0)
 
+    def test_seed_migrates_previous_public_studio_names_and_slugs(self) -> None:
+        standard = self.db.get(StudioSetting, "standard_small")
+        premium = self.db.get(StudioSetting, "premium_large")
+        standard.name = "Standard Studio"
+        standard.slug = "standard-studio"
+        standard.brochure = "Standard Studio: previous brochure copy."
+        premium.name = "Premium Studio"
+        premium.slug = "premium-studio"
+        premium.brochure = "Premium Studio: previous brochure copy."
+        self.db.commit()
+
+        seed_studio_settings(self.db)
+
+        self.assertEqual((standard.name, standard.slug), ("Cube", "cube"))
+        self.assertEqual((premium.name, premium.slug), ("Arena", "arena"))
+        self.assertTrue(standard.brochure.startswith("Cube:"))
+        self.assertTrue(premium.brochure.startswith("Arena:"))
+
     def test_inactive_studio_is_hidden_from_public_catalogue(self) -> None:
         admin_update_studio("standard_small", self.payload(is_active=False), self.db)
 

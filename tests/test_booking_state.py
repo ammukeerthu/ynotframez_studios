@@ -32,8 +32,8 @@ class BookingStateMachineTest(unittest.TestCase):
     def test_conversation_starts_in_calendar_stub_mode(self) -> None:
         response = BookingStateMachine(self.db).handle_message("919999999999", "hi")
 
-        self.assertIn("Standard Studio", response)
-        self.assertIn("Premium Studio", response)
+        self.assertIn("Cube", response)
+        self.assertIn("Arena", response)
 
     def test_availability_is_rechecked_before_whatsapp_confirmation(self) -> None:
         booking_date = date.today() + timedelta(days=30)

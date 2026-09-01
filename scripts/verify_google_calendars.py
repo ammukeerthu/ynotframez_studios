@@ -9,8 +9,8 @@ from app.services.calendar_service import GoogleCalendarService
 
 
 STUDIOS = (
-    ("standard_small", "Standard Studio"),
-    ("premium_large", "Premium Studio"),
+    ("standard_small", "Cube"),
+    ("premium_large", "Arena"),
 )
 
 
