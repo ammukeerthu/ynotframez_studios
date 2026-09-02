@@ -103,8 +103,11 @@ function goToStep(step) {
   });
   document.querySelectorAll("[data-progress]").forEach((item) => {
     const progressStep = Number(item.dataset.progress);
-    item.classList.toggle("active", progressStep === step);
+    const active = progressStep === step;
+    item.classList.toggle("active", active);
     item.classList.toggle("complete", progressStep < step);
+    if (active) item.setAttribute("aria-current", "step");
+    else item.removeAttribute("aria-current");
     const circle = item.querySelector(":scope > span");
     circle.textContent = progressStep < step ? "✓" : String(progressStep).padStart(2, "0");
   });

@@ -38,7 +38,10 @@ fetch(`/api/spaces/${encodeURIComponent(slug)}`)
       item.querySelector("p").textContent = "Included in your hourly studio reservation.";
     });
 
-    const rules = space.rules.split(/,\s+|\.\s+/).map((rule) => rule.trim()).filter(Boolean);
+    const rules = space.rules
+      .split(/\r?\n+|\.\s+(?=[A-Z])/)
+      .map((rule) => rule.trim())
+      .filter(Boolean);
     document.querySelector("#detail-rules").innerHTML = rules.map(() => "<li></li>").join("");
     document.querySelectorAll("#detail-rules li").forEach((item, index) => {
       item.textContent = rules[index].replace(/^Rules:\s*/i, "").replace(/\.$/, "");
