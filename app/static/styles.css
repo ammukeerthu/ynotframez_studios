@@ -127,3 +127,40 @@ footer { min-height: 57px; display: flex; align-items: center; justify-content: 
 }
 
 @media print { .site-header,.intro-panel,footer,.confirmation .button,.arrival-note { display:none!important; }.booking-shell { display:block; }.form-panel { padding:30px; }.confirmation { display:block!important; }.confirmation-details { border:1px solid var(--line); } }
+
+/* Preserve the compact editorial hierarchy without sacrificing readability. */
+.live-summary > p,
+.live-summary dt,
+.rules-card span,
+.price-strip small,
+.slot-heading > span,
+.slot-heading small,
+.slot-legend,
+.summary-card small,
+.confirmation-details small,
+footer {
+  font-size:10px;
+  line-height:1.4;
+}
+
+.live-summary dd,
+.summary-card strong,
+.confirmation-details strong,
+.space-card h3,
+.space-card p,
+.rules-card p {
+  overflow-wrap:anywhere;
+}
+
+@media (max-width:620px) {
+  .field input,
+  .field select,
+  .field textarea {
+    font-size:16px;
+  }
+
+  .slot-button,
+  .button {
+    min-height:48px;
+  }
+}

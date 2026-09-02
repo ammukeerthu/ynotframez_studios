@@ -24,3 +24,80 @@ a { color:inherit; }
 footer { padding:60px clamp(22px,7vw,110px) 30px; display:grid; grid-template-columns:1fr 1fr auto; gap:40px; align-items:start; background:var(--ink); color:white; border-top:1px solid #33322e; }.inverse small { color:#77736c; }footer > p { max-width:340px; margin:0; color:#88847c; font:13px/1.65 Georgia,serif; }footer > div:nth-of-type(2) { display:flex; gap:25px; }footer > div a { color:#b5b1a9; text-decoration:none; font-size:10px; }footer > small { grid-column:1/-1; margin-top:35px; padding-top:20px; border-top:1px solid #2d2c28; color:#68655f; font-size:8px; letter-spacing:.12em; }
 @media(max-width:850px){.nav-shell nav a:not(.nav-cta){display:none}.hero-index{display:none}.manifesto,.process,.faq,.detail-intro,.equipment-section,.rules-section{grid-template-columns:1fr}.manifesto-copy>p{margin-top:0}.editorial-grid{gap:25px}.studio-story.offset,.image-skeleton.offset{margin-top:70px}.section-title{display:block}.section-title>p{margin-top:20px}.process,.equipment-section,.rules-section{gap:55px}.detail-booking-cta{align-items:start;flex-direction:column}.detail-booking-cta>div:last-child{text-align:left}footer{grid-template-columns:1fr 1fr}footer>p{display:none}}
 @media(max-width:580px){.nav-shell{height:68px}.nav-shell .brand-logo{height:22px}.nav-cta{gap:15px;padding:12px}.hero{height:calc(100svh - 68px);min-height:570px}.hero-content{left:22px;right:22px;bottom:55px}.hero h1{font-size:55px}.hero-content>p:not(.overline){font-size:14px}.hero-actions{align-items:flex-start;flex-direction:column}.section-pad{padding:75px 22px}.manifesto h2,.section-title h2,.process h2,.faq h2,.detail-intro h2,.equipment-section h2,.rules-section h2,.detail-booking-cta h2{font-size:44px}.manifesto-copy>p,.detail-copy>p{font-size:17px}.feature-row{grid-template-columns:1fr}.feature-row article{display:grid;grid-template-columns:28px 1fr;align-items:center}.feature-row article span{margin:0}.feature-row article small{grid-column:2}.editorial-grid{grid-template-columns:1fr;margin-top:50px}.studio-story.offset,.image-skeleton.offset{margin-top:25px}.studio-meta{display:block}.studio-rate{text-align:left;margin-top:18px}.studio-actions{grid-template-columns:1fr}.quick-book{border-left:0;border-top:1px solid #bfb9ad;padding-left:0}.process li b{font-size:21px}.faq{gap:45px}.detail-hero{height:68vh;min-height:500px}.detail-title h1{font-size:52px}.detail-copy dl{grid-template-columns:1fr}.detail-copy dl div:nth-child(even){padding-left:0;border-left:0}.equipment-list li{grid-template-columns:35px 1fr}.equipment-list p{display:none}footer{grid-template-columns:1fr}footer>div:nth-of-type(2){flex-wrap:wrap}}
+
+/* Small editorial labels remain legible on high-density phone screens. */
+.overline,
+.feature-row article b,
+.image-tag,
+.studio-rate small,
+.studio-rate span,
+.amenities span,
+.studio-facts,
+.studio-link,
+.quick-book,
+.process li > span,
+.back-link,
+.detail-copy dt,
+.equipment-list span,
+.rules-section li::before,
+footer > small {
+  font-size:10px;
+  line-height:1.4;
+}
+
+.button,
+.nav-cta {
+  font-size:10px!important;
+}
+
+.hero-index small {
+  font-size:9px;
+}
+
+.studio-meta p:not(.overline),
+.process li p,
+.faq details p,
+.equipment-list p {
+  font-size:12px;
+}
+
+.studio-meta,
+.studio-actions,
+.detail-copy,
+.equipment-list,
+.rules-section,
+.detail-booking-cta,
+footer {
+  min-width:0;
+}
+
+.studio-meta h3,
+.studio-meta p,
+.studio-facts span,
+.detail-title h1,
+.detail-title p,
+.detail-copy dd,
+.equipment-list b,
+.detail-booking-cta h2,
+footer p,
+footer a,
+footer small {
+  overflow-wrap:anywhere;
+}
+
+@media(max-width:580px) {
+  .button,
+  .nav-cta,
+  .studio-link,
+  .quick-book {
+    min-height:44px;
+  }
+
+  .studio-facts {
+    flex-wrap:wrap;
+  }
+
+  footer > small {
+    font-size:10px;
+  }
+}

@@ -359,6 +359,51 @@ td small {
   min-height:30px;
 }
 
+/* Keep the studio identity visible when the desktop login artwork is hidden. */
+.login-panel-brand {
+  display:none;
+}
+
+@media(max-width:1000px) {
+  .login-panel {
+    align-content:center;
+  }
+
+  .login-panel-brand {
+    display:flex;
+    position:absolute;
+    top:32px;
+    left:32px;
+  }
+
+  .login-panel-brand .brand-logo {
+    height:30px;
+  }
+}
+
+@media(max-width:620px) {
+  .login-panel-brand {
+    top:24px;
+    left:25px;
+  }
+
+  .login-panel input,
+  .filters input,
+  .filters select,
+  .booking-modal select,
+  .booking-modal textarea,
+  .availability-toolbar input,
+  .availability-toolbar select,
+  .block-card input,
+  .block-card select,
+  .password-modal input,
+  .studio-settings-fields input:not([type="checkbox"]),
+  .studio-settings-fields select,
+  .studio-settings-fields textarea {
+    font-size:16px;
+  }
+}
+
 .account-menu-panel {
   width:205px;
 }

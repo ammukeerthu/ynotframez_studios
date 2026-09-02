@@ -18,7 +18,7 @@ function studioCard(space, index) {
   return `
     <article class="studio-story ${index % 2 ? "offset" : ""}">
       <a class="studio-image" href="/studios/${encodeURIComponent(space.slug)}">
-        <img src="${safeAttr(space.cover_image)}" alt="${safeAttr(space.name)}" loading="lazy">
+        <img src="${safeAttr(space.cover_image)}" alt="${safeAttr(space.name)}" loading="lazy" decoding="async">
         <span class="image-tag">${index === 0 ? "INTIMATE" : "EXPANSIVE"}</span>
       </a>
       <div class="studio-meta">

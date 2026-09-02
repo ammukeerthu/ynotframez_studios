@@ -16,3 +16,38 @@ footer { min-height:48px; display:flex; justify-content:space-between; align-ite
 @media(max-width:900px){main{grid-template-columns:1fr}.lookup-intro{display:none}.lookup-panel{min-height:calc(100vh - 126px)}}
 @media(max-width:560px){header{height:70px}.brand-logo{height:22px}header nav a:first-child{display:none}.lookup-panel{padding:45px 22px}.result-heading{display:block}.badges{justify-content:start;margin-top:15px}#booking-result dl{grid-template-columns:1fr}#booking-result dl div,#booking-result dl div:nth-child(odd){border-right:0;border-bottom:1px solid var(--line)}#booking-result dl div:last-child{border-bottom:0}.result-actions>*{width:100%}footer span:last-child{display:none}}
 @media print{header,.lookup-intro,footer,.result-actions,#lookup-view{display:none!important}main{display:block}.lookup-panel{min-height:0;padding:20px}.lookup-panel>article{width:100%;max-width:none}}
+
+/* Customer-facing booking details must remain readable on every screen size. */
+header nav a,
+.intro-copy p,
+.eyebrow,
+.lookup-panel label span,
+.lookup-panel form button,
+.lookup-panel > div > small,
+.badges span,
+dt,
+.result-actions a,
+.result-actions button,
+footer {
+  font-size:10px;
+  line-height:1.4;
+}
+
+dd,
+.result-note,
+.panel-copy,
+.message {
+  overflow-wrap:anywhere;
+}
+
+@media(max-width:560px) {
+  .lookup-panel input {
+    font-size:16px;
+  }
+
+  .lookup-panel form button,
+  .result-actions a,
+  .result-actions button {
+    min-height:48px;
+  }
+}

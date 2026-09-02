@@ -61,7 +61,7 @@ function renderSpaces() {
   list.innerHTML = state.spaces.map((space) => `
     <label class="space-card" data-space-id="${escapeAttribute(space.id)}">
       <input type="radio" name="space_id" value="${escapeAttribute(space.id)}" required>
-      <div class="space-visual"><img src="${escapeAttribute(space.cover_image)}" alt="" loading="lazy"></div>
+      <div class="space-visual"><img src="${escapeAttribute(space.cover_image)}" alt="${escapeAttribute(space.name)} photography studio" loading="lazy" decoding="async"></div>
       <div class="card-top"><h3>${escapeText(space.name)}</h3><span class="selector">✓</span></div>
       <p>${escapeText(space.brochure)}</p>
       <div class="rate">${currency.format(space.hourly_rate)} <small>/ hour</small></div>
