@@ -1,6 +1,7 @@
 from collections.abc import Generator
 
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, inspect, text
+from sqlalchemy.engine import Engine
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 
 from app.core.config import settings
@@ -29,6 +30,36 @@ SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 class Base(DeclarativeBase):
     pass
+
+
+def apply_schema_compatibility_updates(target_engine: Engine | None = None) -> None:
+    """Apply the small additive migrations required by existing MVP databases."""
+    migration_engine = target_engine or engine
+    inspector = inspect(migration_engine)
+    if "payment_records" not in inspector.get_table_names():
+        return
+    columns = {column["name"] for column in inspector.get_columns("payment_records")}
+    additions = {
+        "razorpay_order_id": "VARCHAR(180)",
+        "razorpay_payment_id": "VARCHAR(180)",
+        "razorpay_method": "VARCHAR(40)",
+    }
+    with migration_engine.begin() as connection:
+        for name, sql_type in additions.items():
+            if name not in columns:
+                connection.execute(text(f"ALTER TABLE payment_records ADD COLUMN {name} {sql_type}"))
+        connection.execute(
+            text(
+                "CREATE UNIQUE INDEX IF NOT EXISTS ix_payment_records_razorpay_order_id "
+                "ON payment_records (razorpay_order_id)"
+            )
+        )
+        connection.execute(
+            text(
+                "CREATE UNIQUE INDEX IF NOT EXISTS ix_payment_records_razorpay_payment_id "
+                "ON payment_records (razorpay_payment_id)"
+            )
+        )
 
 
 def get_db() -> Generator[Session, None, None]:

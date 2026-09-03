@@ -1,5 +1,6 @@
 import unittest
 from datetime import date, time, timedelta
+from unittest.mock import patch
 
 from fastapi import HTTPException
 from sqlalchemy import create_engine
@@ -13,9 +14,11 @@ from app.core.config import settings
 from app.schemas.admin import AdminPaymentUpdate
 from app.schemas.booking import BookingLookupRequest, WebBookingCreate
 from app.services.booking_service import BookingApplicationService
+from app.services.payment_service import PaymentService
 
 settings.email_mode = "console"
 settings.calendar_mode = "stub"
+settings.razorpay_mode = "stub"
 
 
 class CustomerBookingLookupTest(unittest.TestCase):
@@ -62,7 +65,10 @@ class CustomerBookingLookupTest(unittest.TestCase):
         self.assertEqual(result.start_time, "14:30")
         self.assertEqual(result.end_time, "16:30")
         self.assertEqual(result.total_amount, 2000)
-        self.assertIsNotNone(result.payment_link)
+        self.assertEqual(result.payment_method, "pending")
+        self.assertIsNone(result.payment_link)
+        self.assertIsNotNone(result.checkout)
+        self.assertEqual(result.checkout.order_id, "order_stub_1")
 
     def test_wrong_email_returns_same_private_not_found_response(self) -> None:
         with self.assertRaises(HTTPException) as not_found:
@@ -80,13 +86,49 @@ class CustomerBookingLookupTest(unittest.TestCase):
         paid_result = self.lookup()
         self.assertEqual(paid.payment_status, "paid")
         self.assertEqual(paid_result.payment_status, "paid")
+        self.assertEqual(paid_result.payment_method, "recorded_by_studio")
         self.assertIsNone(paid_result.payment_link)
+        self.assertIsNone(paid_result.checkout)
 
         admin_cancel_booking(self.created.id, self.db)
         cancelled_result = self.lookup()
         self.assertEqual(cancelled_result.booking_status, "cancelled")
         self.assertEqual(cancelled_result.payment_status, "refund_due")
+        self.assertEqual(cancelled_result.payment_method, "recorded_by_studio")
         self.assertIsNone(cancelled_result.payment_link)
+        self.assertIsNone(cancelled_result.checkout)
+
+    def test_existing_razorpay_payment_method_is_backfilled(self) -> None:
+        admin_update_payment(
+            self.created.id,
+            AdminPaymentUpdate(status="paid", provider_reference="pay_existing"),
+            self.db,
+        )
+        payment = PaymentService(self.db).get(self.created.id)
+        payment.razorpay_order_id = "order_existing"
+        payment.razorpay_payment_id = "pay_existing"
+        payment.razorpay_method = None
+        self.db.commit()
+        provider_payment = {
+            "id": "pay_existing",
+            "order_id": "order_existing",
+            "amount": payment.amount * 100,
+            "currency": "INR",
+            "status": "captured",
+            "method": "upi",
+        }
+
+        with (
+            patch.object(settings, "razorpay_mode", "api"),
+            patch(
+                "app.services.razorpay_service.RazorpayService.fetch_payment",
+                return_value=provider_payment,
+            ),
+        ):
+            result = self.lookup()
+
+        self.assertEqual(result.payment_method, "upi")
+        self.assertEqual(payment.razorpay_method, "upi")
 
 
 if __name__ == "__main__":

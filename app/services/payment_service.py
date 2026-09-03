@@ -49,13 +49,50 @@ class PaymentService:
         record.amount = new_amount
         return record
 
-    def mark_paid(self, booking: Booking, provider_reference: str | None = None) -> PaymentRecord:
+    def mark_paid(
+        self,
+        booking: Booking,
+        provider_reference: str | None = None,
+        *,
+        razorpay_order_id: str | None = None,
+        razorpay_payment_id: str | None = None,
+        razorpay_method: str | None = None,
+    ) -> PaymentRecord:
         record = self.ensure(booking)
         if record.status != PaymentStatus.PENDING:
             raise PaymentLifecycleError("Only a pending payment can be marked as paid.")
         record.status = PaymentStatus.PAID
         record.provider_reference = provider_reference.strip() if provider_reference else None
+        if razorpay_order_id:
+            record.razorpay_order_id = razorpay_order_id.strip()
+        if razorpay_payment_id:
+            record.razorpay_payment_id = razorpay_payment_id.strip()
+        if razorpay_method:
+            record.razorpay_method = razorpay_method.strip().lower()
         record.paid_at = datetime.now(UTC).replace(tzinfo=None)
+        return record
+
+    def mark_refund_due(
+        self,
+        booking: Booking,
+        *,
+        razorpay_order_id: str | None = None,
+        razorpay_payment_id: str | None = None,
+        razorpay_method: str | None = None,
+    ) -> PaymentRecord:
+        """Record captured money that cannot safely confirm its studio booking."""
+        record = self.ensure(booking)
+        if record.status != PaymentStatus.REFUNDED:
+            record.status = PaymentStatus.REFUND_DUE
+        if razorpay_order_id:
+            record.razorpay_order_id = razorpay_order_id.strip()
+        if razorpay_payment_id:
+            record.razorpay_payment_id = razorpay_payment_id.strip()
+            record.provider_reference = razorpay_payment_id.strip()
+        if razorpay_method:
+            record.razorpay_method = razorpay_method.strip().lower()
+        if record.paid_at is None:
+            record.paid_at = datetime.now(UTC).replace(tzinfo=None)
         return record
 
     def handle_cancellation(self, booking: Booking) -> PaymentRecord:

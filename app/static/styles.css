@@ -11,6 +11,7 @@
 }
 
 * { box-sizing: border-box; }
+[hidden] { display: none !important; }
 html { scroll-behavior: smooth; }
 body { margin: 0; color: var(--ink); background: var(--paper); font-family: Inter, "Segoe UI", Arial, sans-serif; }
 button, input, select, textarea { font: inherit; }
@@ -115,6 +116,7 @@ footer a { color:inherit; text-underline-offset:3px; }
 .payment-options input { accent-color: var(--accent); }.payment-options span { flex: 1; }.payment-options b, .payment-options small { display: block; }.payment-options b { font: 400 14px Georgia, serif; }.payment-options small { margin-top: 3px; color: var(--muted); font-size: 10px; }.payment-options em { font-style: normal; color: var(--muted); }
 
 .confirmation { padding-top: 25px; text-align: center; }.success-mark { display: grid; place-items: center; width: 70px; height: 70px; margin: 0 auto 27px; border-radius: 50%; color: white; background: var(--green); font-size: 27px; }.confirmation .step-kicker { margin-bottom: 13px; }.confirmation > p:not(.step-kicker) { max-width: 520px; margin: 20px auto; color: var(--muted); line-height: 1.6; }.confirmation-details { max-width: 600px; margin: 30px auto; padding: 25px; background: #f3f0e8; display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; text-align: left; }.confirmation-details small, .confirmation-details strong { display: block; }.confirmation-details small { color: var(--muted); font-size: 8px; letter-spacing: .14em; margin-bottom: 6px; }.confirmation-details strong { font: 400 14px Georgia, serif; }.confirmation .button { margin: 5px; }
+.success-mark.pending { color:var(--accent); background:#f3e8df; }
 .arrival-note { max-width: 600px; margin: 30px auto; padding: 20px; border-left: 3px solid var(--accent); background: #f3f0e8; text-align: left; }.arrival-note b { font: 18px Georgia, serif; }.arrival-note p { margin: 7px 0 0; color: var(--muted); font-size: 11px; line-height: 1.6; }
 
 footer { min-height: 57px; display: flex; align-items: center; justify-content: space-between; padding: 0 clamp(24px, 6vw, 90px); color: var(--muted); border-top: 1px solid var(--line); font-size: 9px; letter-spacing: .12em; }

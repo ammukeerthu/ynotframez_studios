@@ -7,6 +7,8 @@
   <title>Book a Studio | YNotFramez Studios</title>
   <link rel="icon" type="image/svg+xml" href="/static/brand/ynotframez-y.svg">
   <link rel="stylesheet" href="/static/styles.css">
+  <script src="https://checkout.razorpay.com/v1/checkout.js" defer></script>
+  <script src="/static/razorpay_checkout.js" defer></script>
   <script src="/static/app.js" defer></script>
 </head>
 <body>
@@ -96,9 +98,9 @@
           <div id="booking-summary" class="summary-card"></div>
           <fieldset class="payment-options">
             <legend>Payment</legend>
-            <label><input type="radio" name="payment_mode" value="pay_now" checked><span><b>Online payment required</b><small>Receive a secure Razorpay payment link after confirming the booking</small></span><em>→</em></label>
+            <label><input type="radio" name="payment_mode" value="pay_now" checked><span><b>Online payment required</b><small>Pay securely through Razorpay Checkout to confirm the booking</small></span><em>→</em></label>
           </fieldset>
-          <div class="form-actions"><button class="button secondary" type="button" data-back>← Back</button><button id="submit-booking" class="button primary" type="submit">Confirm booking <span>→</span></button></div>
+          <div class="form-actions"><button class="button secondary" type="button" data-back>← Back</button><button id="submit-booking" class="button primary" type="submit">Proceed to payment <span>→</span></button></div>
         </section>
       </form>
 
@@ -108,7 +110,7 @@
         <h2 id="confirmation-title">Complete payment to reserve.</h2>
         <p id="confirmation-copy"></p>
         <div id="confirmation-details" class="confirmation-details"></div>
-        <a id="payment-link" class="button primary" href="#" target="_blank" rel="noopener" hidden>Open payment link <span>→</span></a>
+        <button id="payment-button" class="button primary" type="button" hidden>Complete payment <span>→</span></button>
         <a id="calendar-link" class="button secondary" href="#" download>Add to calendar</a>
         <a id="whatsapp-share" class="button secondary" href="#" target="_blank" rel="noopener">Share via WhatsApp</a>
         <button id="print-booking" class="button secondary" type="button">Print confirmation</button>

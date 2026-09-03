@@ -358,16 +358,26 @@ def admin_alerts(db: Session = Depends(get_db)) -> AdminAlertsResponse:
         start, end = window
         space = get_space_by_id(booking.space_id, db, include_inactive=True)
         space_name = space.name if space else booking.space_id or "Studio"
+        is_payment_issue = notification.kind == "payment_issue"
         new_bookings.append(
             AdminAlertItem(
-                id=f"new-booking-{notification.id}",
+                id=f"{notification.kind.replace('_', '-')}-{notification.id}",
                 notification_id=notification.id,
-                kind="new_booking",
-                priority="new",
-                title=f"New booking · {space_name}",
+                kind=notification.kind,
+                priority="urgent" if is_payment_issue else "new",
+                title=(
+                    f"Payment needs review · {space_name}"
+                    if is_payment_issue
+                    else f"New booking · {space_name}"
+                ),
                 message=(
-                    f"{booking.customer_name or 'Customer'} booked {booking.booking_date} at "
-                    f"{booking.start_time} for {booking.duration_hours:g} hour(s)."
+                    "Payment was captured, but the studio could not be reserved. "
+                    "Review this booking and arrange a refund or contact the customer."
+                    if is_payment_issue
+                    else (
+                        f"{booking.customer_name or 'Customer'} booked {booking.booking_date} at "
+                        f"{booking.start_time} for {booking.duration_hours:g} hour(s)."
+                    )
                 ),
                 booking_id=booking.id,
                 reference=f"YNF-{booking.id:06d}",

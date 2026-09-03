@@ -25,6 +25,13 @@ class PaymentRecord(Base):
     amount: Mapped[int] = mapped_column(Integer)
     status: Mapped[PaymentStatus] = mapped_column(Enum(PaymentStatus), default=PaymentStatus.PENDING)
     provider_reference: Mapped[str | None] = mapped_column(String(180), nullable=True)
+    razorpay_order_id: Mapped[str | None] = mapped_column(
+        String(180), nullable=True, unique=True, index=True
+    )
+    razorpay_payment_id: Mapped[str | None] = mapped_column(
+        String(180), nullable=True, unique=True, index=True
+    )
+    razorpay_method: Mapped[str | None] = mapped_column(String(40), nullable=True)
     paid_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, onupdate=utc_now)

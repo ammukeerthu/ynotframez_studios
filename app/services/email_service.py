@@ -3,7 +3,8 @@ import smtplib
 import ssl
 from datetime import datetime, timedelta
 from email.message import EmailMessage
-from email.utils import formataddr
+from email.utils import formataddr, make_msgid
+from pathlib import Path
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -16,6 +17,8 @@ from app.services.spaces import get_space_by_id
 
 class EmailService:
     """Build and deliver customer booking emails through console or SMTP mode."""
+
+    logo_path = Path(__file__).resolve().parents[1] / "static" / "brand" / "ynotframez-logo.png"
 
     subjects = {
         "confirmation": "Booking confirmed",
@@ -100,8 +103,31 @@ class EmailService:
         message["To"] = booking.customer_email or ""
         if settings.email_reply_to.strip():
             message["Reply-To"] = settings.email_reply_to.strip()
+        try:
+            logo_bytes = self.logo_path.read_bytes()
+        except OSError:
+            logo_bytes = None
+        logo_content_id = make_msgid(domain="ynotframezstudios.com") if logo_bytes else None
+
         message.set_content(self._plain_body(details, message_type))
-        message.add_alternative(self._html_body(details, message_type), subtype="html")
+        message.add_alternative(
+            self._html_body(
+                details,
+                message_type,
+                logo_content_id[1:-1] if logo_content_id else None,
+            ),
+            subtype="html",
+        )
+        if logo_bytes and logo_content_id:
+            html_part = message.get_payload()[-1]
+            html_part.add_related(
+                logo_bytes,
+                maintype="image",
+                subtype="png",
+                cid=logo_content_id,
+                filename="ynotframez-studios.png",
+                disposition="inline",
+            )
         return message
 
     def _deliver_smtp(self, message: EmailMessage) -> None:
@@ -175,7 +201,9 @@ class EmailService:
         if message_type != "cancellation" and details["payment_link"]:
             payment_line = f"\nPayment link: {details['payment_link']}"
         payment_failure_line = ""
-        if message_type != "cancellation" and details["payment_failed"]:
+        if message_type == "payment_failure" or (
+            message_type != "cancellation" and details["payment_failed"]
+        ):
             payment_failure_line = (
                 f"\n\nImportant: Your payment of {details['amount']} has failed. "
                 "Kindly contact the studio team to reserve your booking; otherwise, "
@@ -202,7 +230,12 @@ class EmailService:
             f"YNotFramez Studios"
         )
 
-    def _html_body(self, details: dict[str, str], message_type: str) -> str:
+    def _html_body(
+        self,
+        details: dict[str, str],
+        message_type: str,
+        logo_content_id: str | None = None,
+    ) -> str:
         introductions = {
             "confirmation": "Your booking has been scheduled.",
             "update": "Your booking has been rescheduled.",
@@ -216,6 +249,24 @@ class EmailService:
             "payment_failure": "Dear",
         }
         escaped = {key: html.escape(value) for key, value in details.items()}
+        brand_header = (
+            '<table role="presentation" width="100%" cellspacing="0" cellpadding="0" '
+            'border="0" bgcolor="#FFFFFF" style="width:100%;background-color:#FFFFFF!important">'
+            '<tr><td bgcolor="#FFFFFF" '
+            'style="padding:22px 28px;background-color:#FFFFFF!important">'
+            f'<img src="cid:{logo_content_id}" width="300" alt="YNotFramez Studios" '
+            'style="display:block;width:300px;max-width:100%;height:auto;border:0;'
+            'background-color:#FFFFFF!important;color:#111111">'
+            "</td></tr></table>"
+            if logo_content_id
+            else (
+                '<table role="presentation" width="100%" cellspacing="0" cellpadding="0" '
+                'border="0" bgcolor="#FFFFFF" style="width:100%;background-color:#FFFFFF!important">'
+                '<tr><td bgcolor="#FFFFFF" style="padding:22px 28px;background-color:#FFFFFF!important;'
+                'color:#111111;font:700 15px Arial;letter-spacing:.12em">'
+                "YNotFramez Studios</td></tr></table>"
+            )
+        )
         rules_section = ""
         if message_type != "cancellation":
             rules_section = (
@@ -232,7 +283,9 @@ class EmailService:
                 'text-decoration:none;font:700 12px Arial;letter-spacing:.08em">COMPLETE PAYMENT</a></p>'
             )
         payment_failure_notice = ""
-        if message_type != "cancellation" and details["payment_failed"]:
+        if message_type == "payment_failure" or (
+            message_type != "cancellation" and details["payment_failed"]
+        ):
             payment_failure_notice = (
                 '<div style="margin-top:28px;padding:18px 20px;background:#fdeaea;'
                 'border-left:4px solid #c62828;color:#8f1d1d">'
@@ -255,12 +308,17 @@ class EmailService:
             )
         )
         return f"""<!doctype html>
-<html><body style="margin:0;background:#f5f3ed;color:#111">
+<html>
+<head>
+  <meta name="color-scheme" content="light only">
+  <meta name="supported-color-schemes" content="light only">
+</head>
+<body style="margin:0;background:#f5f3ed;background-color:#f5f3ed;color:#111;color-scheme:light only">
   <div style="max-width:620px;margin:0 auto;padding:38px 20px">
+    {brand_header}
     <div style="padding:28px;background:#111;color:#fff">
-      <div style="font:700 15px Arial;letter-spacing:.12em">YNotFramez Studios</div>
-      <div style="margin-top:5px;color:#aaa;font:8px Arial;letter-spacing:.3em">AVADI</div>
-      <h1 style="margin:36px 0 0;font:38px Georgia">{introductions[message_type]}</h1>
+      <div style="color:#aaa;font:8px Arial;letter-spacing:.3em">AVADI</div>
+      <h1 style="margin:30px 0 0;font:38px Georgia">{introductions[message_type]}</h1>
     </div>
     <div style="padding:30px;background:#fff">
       <p style="margin:0 0 24px;font:17px Georgia">{salutations[message_type]} {escaped['customer_name']},</p>

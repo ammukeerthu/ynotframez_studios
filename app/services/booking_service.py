@@ -1,4 +1,4 @@
-from datetime import date, datetime, time, timedelta
+from datetime import UTC, date, datetime, time, timedelta
 from zoneinfo import ZoneInfo
 
 from sqlalchemy.orm import Session
@@ -11,13 +11,14 @@ from app.schemas.booking import (
     AvailabilitySlot,
     BookingResponse,
     DayAvailabilityResponse,
+    RazorpayCheckoutResponse,
     WebBookingCreate,
 )
 from app.services.calendar_service import GoogleCalendarService
 from app.services.availability_service import overlapping_block, overlapping_booking
 from app.services.email_service import EmailService
 from app.services.payment_service import PaymentService
-from app.services.notification_service import notify_new_booking
+from app.services.notification_service import notify_new_booking, notify_payment_issue
 from app.services.razorpay_service import RazorpayService
 from app.services.spaces import get_space_by_id
 
@@ -36,8 +37,8 @@ class BookingApplicationService:
         self.email = EmailService(db)
         self.payments = PaymentService(db)
 
-    def prepare_online_payment(self, booking: Booking) -> bool:
-        """Create a payment link while leaving the booking unconfirmed."""
+    def prepare_payment_link(self, booking: Booking) -> bool:
+        """Create a hosted link for WhatsApp while leaving the booking unconfirmed."""
         booking.payment_mode = PaymentMode.PAY_NOW
         booking.payment_link = None
         payment = self.payments.ensure(booking)
@@ -59,9 +60,67 @@ class BookingApplicationService:
         payment.provider_reference = payment_link.id
         return True
 
-    def confirm_paid_booking(self, booking: Booking, provider_reference: str | None = None) -> None:
+    def prepare_standard_checkout(
+        self,
+        booking: Booking,
+        *,
+        notify_failure: bool = False,
+    ) -> RazorpayCheckoutResponse | None:
+        """Create or reuse the server-owned order for the website checkout modal."""
+        booking.payment_mode = PaymentMode.PAY_NOW
+        booking.payment_link = None
+        payment = self.payments.ensure(booking)
+        payment.mode = PaymentMode.PAY_NOW
+        if payment.razorpay_order_id and not (
+            settings.razorpay_mode.strip().lower() == "api"
+            and payment.razorpay_order_id.startswith("order_stub_")
+        ):
+            return RazorpayCheckoutResponse(
+                key_id=settings.razorpay_key_id.strip(),
+                order_id=payment.razorpay_order_id,
+                amount=payment.amount * 100,
+                currency="INR",
+            )
+        try:
+            order = self.razorpay.create_order(booking, payment.amount)
+        except Exception as error:
+            print(
+                "Razorpay order creation failed; booking remains payment pending:",
+                {"booking_id": booking.id, "error": f"{type(error).__name__}: {error}"},
+            )
+            if notify_failure:
+                self.email.send_payment_failed(booking)
+            return None
+        payment.razorpay_order_id = order.id
+        return RazorpayCheckoutResponse(
+            key_id=order.key_id,
+            order_id=order.id,
+            amount=order.amount,
+            currency=order.currency,
+        )
+
+    # Backward-compatible name for callers that still use hosted Payment Links.
+    prepare_online_payment = prepare_payment_link
+
+    def confirm_paid_booking(
+        self,
+        booking: Booking,
+        provider_reference: str | None = None,
+        *,
+        razorpay_order_id: str | None = None,
+        razorpay_payment_id: str | None = None,
+        razorpay_method: str | None = None,
+    ) -> None:
         """Reserve the studio only after a verified or owner-recorded payment."""
         if booking.state == BookingState.CONFIRMED:
+            payment = self.payments.get(booking.id)
+            if payment is not None:
+                if razorpay_order_id:
+                    payment.razorpay_order_id = razorpay_order_id
+                if razorpay_payment_id:
+                    payment.razorpay_payment_id = razorpay_payment_id
+                if razorpay_method:
+                    payment.razorpay_method = razorpay_method.strip().lower()
             return
         if booking.state != BookingState.PAYMENT_PENDING:
             raise ValueError("Only a payment-pending booking can be confirmed.")
@@ -79,7 +138,13 @@ class BookingApplicationService:
         payment = self.payments.get(booking.id)
         if payment is None or payment.status.value != "pending":
             raise ValueError("The booking does not have a pending payment.")
-        self.payments.mark_paid(booking, provider_reference)
+        self.payments.mark_paid(
+            booking,
+            provider_reference,
+            razorpay_order_id=razorpay_order_id,
+            razorpay_payment_id=razorpay_payment_id,
+            razorpay_method=razorpay_method,
+        )
         booking.calendar_event_id = self.calendar.create_event(booking)
         booking.state = BookingState.CONFIRMED
         notify_new_booking(self.db, booking)
@@ -95,6 +160,44 @@ class BookingApplicationService:
         payment.mode = PaymentMode.PAY_AT_STUDIO
         if first_failure:
             self.email.send_payment_failed(booking)
+
+    def record_checkout_attempt_failure(
+        self,
+        booking: Booking,
+        provider_reference: str | None = None,
+    ) -> None:
+        """Keep the order retryable while its temporary booking hold is active."""
+        if booking.state == BookingState.PAYMENT_PENDING:
+            payment = self.payments.ensure(booking)
+            payment.mode = PaymentMode.PAY_NOW
+            reference = provider_reference.strip() if provider_reference else None
+            if not reference or payment.provider_reference != reference:
+                payment.provider_reference = reference
+                self.email.send_payment_failed(booking)
+
+    def record_unreservable_payment(
+        self,
+        booking: Booking,
+        order_id: str,
+        payment_id: str,
+        razorpay_method: str | None = None,
+    ) -> None:
+        """Release a stale hold and alert the owner when captured money needs review."""
+        booking.state = BookingState.CANCELLED
+        booking.payment_link = None
+        self.payments.mark_refund_due(
+            booking,
+            razorpay_order_id=order_id,
+            razorpay_payment_id=payment_id,
+            razorpay_method=razorpay_method,
+        )
+        notify_payment_issue(self.db, booking)
+
+    def payment_hold_active(self, booking: Booking) -> bool:
+        cutoff = datetime.now(UTC).replace(tzinfo=None) - timedelta(
+            minutes=settings.razorpay_payment_hold_minutes
+        )
+        return booking.created_at >= cutoff
 
     def check_availability(
         self,
@@ -258,27 +361,41 @@ class BookingApplicationService:
         self.db.flush()
 
         self.payments.ensure(booking)
-        self.prepare_online_payment(booking)
+        checkout = self.prepare_standard_checkout(booking, notify_failure=True)
         booking.state = BookingState.PAYMENT_PENDING
         self.db.commit()
         self.db.refresh(booking)
 
+        return self.booking_response(booking, checkout=checkout)
+
+    def booking_response(
+        self,
+        booking: Booking,
+        *,
+        checkout: RazorpayCheckoutResponse | None = None,
+    ) -> BookingResponse:
+        space = get_space_by_id(booking.space_id or "", self.db, include_inactive=True)
+        payment = self.payments.get(booking.id)
+        booking_date = date.fromisoformat(booking.booking_date or "")
+        start_time = time.fromisoformat(booking.start_time or "")
         return BookingResponse(
             id=booking.id,
             reference=f"YNF-{booking.id:06d}",
             status=booking.state.value,
-            space_name=space.name,
-            booking_date=booking.booking_date,
-            start_time=booking.start_time,
+            space_name=space.name if space else "Studio Space",
+            booking_date=booking.booking_date or "",
+            start_time=booking.start_time or "",
             end_time=(
-                datetime.combine(request.booking_date, request.start_time)
-                + timedelta(hours=booking.duration_hours)
+                datetime.combine(booking_date, start_time)
+                + timedelta(hours=booking.duration_hours or 0)
             ).strftime("%H:%M"),
-            duration_hours=booking.duration_hours,
-            total_amount=int(round(space.hourly_rate * booking.duration_hours)),
-            customer_name=booking.customer_name,
-            customer_email=booking.customer_email,
-            payment_mode=booking.payment_mode.value,
+            duration_hours=booking.duration_hours or 0,
+            total_amount=payment.amount if payment else 0,
+            customer_name=booking.customer_name or "Customer",
+            customer_email=booking.customer_email or "unknown@example.com",
+            phone_number=booking.phone_number,
+            payment_mode=(booking.payment_mode or PaymentMode.PAY_NOW).value,
             payment_link=booking.payment_link,
+            checkout=checkout,
             calendar_event_id=booking.calendar_event_id,
         )

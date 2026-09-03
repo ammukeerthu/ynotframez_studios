@@ -7,6 +7,8 @@
   <title>Find My Booking | YNotFramez Studios</title>
   <link rel="icon" type="image/svg+xml" href="/static/brand/ynotframez-y.svg">
   <link rel="stylesheet" href="/static/customer_booking.css">
+  <script src="https://checkout.razorpay.com/v1/checkout.js" defer></script>
+  <script src="/static/razorpay_checkout.js" defer></script>
   <script src="/static/my_booking.js" defer></script>
 </head>
 <body>
@@ -42,10 +44,11 @@
           <div><dt>TIME</dt><dd id="result-time"></dd></div>
           <div><dt>DURATION</dt><dd id="result-duration"></dd></div>
           <div><dt>TOTAL</dt><dd id="result-total"></dd></div>
-          <div><dt>PAYMENT MODE</dt><dd id="result-payment-mode"></dd></div>
+          <div><dt>PAYMENT METHOD</dt><dd id="result-payment-mode"></dd></div>
         </dl>
         <div id="result-note" class="result-note"></div>
         <div class="result-actions">
+          <button id="result-payment-button" class="primary" type="button" hidden>Complete payment <span>→</span></button>
           <a id="result-payment-link" class="primary" href="#" target="_blank" rel="noopener" hidden>Open payment link <span>→</span></a>
           <a id="result-calendar" href="#" download hidden>Add to calendar</a>
           <button id="result-print" type="button">Print</button>

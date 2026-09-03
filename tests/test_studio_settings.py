@@ -21,6 +21,7 @@ from app.models.studio import StudioSetting
 
 settings.email_mode = "console"
 settings.calendar_mode = "stub"
+settings.razorpay_mode = "stub"
 
 
 class StudioSettingsTest(unittest.TestCase):
@@ -109,7 +110,8 @@ class StudioSettingsTest(unittest.TestCase):
         )
         self.assertEqual(booking.space_name, "Standard Creator Space")
         self.assertEqual(booking.total_amount, 3200)
-        self.assertIn("amount=3200", booking.payment_link or "")
+        self.assertIsNotNone(booking.checkout)
+        self.assertEqual(booking.checkout.amount, 320000)
 
     def test_seed_migrates_legacy_minimum_duration_to_two_hours(self) -> None:
         studio = self.db.get(StudioSetting, "standard_small")

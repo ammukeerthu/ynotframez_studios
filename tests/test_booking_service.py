@@ -17,6 +17,7 @@ from app.services.payment_service import PaymentService
 
 settings.email_mode = "console"
 settings.calendar_mode = "stub"
+settings.razorpay_mode = "stub"
 
 
 class BookingApplicationServiceTest(unittest.TestCase):
@@ -132,12 +133,15 @@ class BookingApplicationServiceTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "valid booking purpose"):
             self.service.create_booking(self.booking(purpose="Unlisted custom purpose"))
 
-    def test_create_booking_returns_payment_hold_and_link(self) -> None:
+    def test_create_booking_returns_payment_hold_and_checkout_order(self) -> None:
         result = self.service.create_booking(self.booking())
 
         self.assertEqual(result.status, "payment_pending")
         self.assertEqual(result.total_amount, 2000)
-        self.assertIn("booking_id=1", result.payment_link or "")
+        self.assertIsNone(result.payment_link)
+        self.assertIsNotNone(result.checkout)
+        self.assertEqual(result.checkout.order_id, "order_stub_1")
+        self.assertEqual(result.checkout.amount, 200000)
         self.assertIsNone(result.calendar_event_id)
         payment = PaymentService(self.db).get(result.id)
         notification = self.db.query(AdminNotification).filter_by(booking_id=result.id).one_or_none()
@@ -145,18 +149,20 @@ class BookingApplicationServiceTest(unittest.TestCase):
         self.assertIsNone(notification)
         self.assertEqual(payment.status.value, "pending")
         self.assertEqual(payment.amount, 2000)
+        self.assertEqual(payment.razorpay_order_id, "order_stub_1")
 
-    def test_payment_link_failure_stays_unconfirmed_for_studio_follow_up(self) -> None:
-        self.service.razorpay.create_payment_link = MagicMock(side_effect=OSError("provider unavailable"))
+    def test_checkout_order_failure_stays_pending_and_retryable(self) -> None:
+        self.service.razorpay.create_order = MagicMock(side_effect=OSError("provider unavailable"))
 
         result = self.service.create_booking(self.booking())
 
         self.assertEqual(result.status, "payment_pending")
-        self.assertEqual(result.payment_mode, "pay_at_studio")
+        self.assertEqual(result.payment_mode, "pay_now")
         self.assertIsNone(result.payment_link)
+        self.assertIsNone(result.checkout)
         payment = PaymentService(self.db).get(result.id)
         self.assertIsNotNone(payment)
-        self.assertEqual(payment.mode.value, "pay_at_studio")
+        self.assertEqual(payment.mode.value, "pay_now")
         self.assertEqual(payment.status.value, "pending")
 
     def test_paid_booking_is_confirmed_and_creates_calendar_and_notification(self) -> None:
@@ -185,7 +191,7 @@ class BookingApplicationServiceTest(unittest.TestCase):
         )
 
         self.assertEqual(result.space_name, "Arena")
-        self.assertIsNotNone(result.payment_link)
+        self.assertIsNotNone(result.checkout)
 
     def test_owner_block_prevents_booking_for_only_the_selected_space(self) -> None:
         self.db.add(

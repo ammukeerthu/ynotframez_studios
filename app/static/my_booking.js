@@ -5,8 +5,8 @@ document.querySelector("#year").textContent = new Date().getFullYear();
 const currency = new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 });
 let currentBooking = null;
 
-async function lookupBooking(payload) {
-  const response = await fetch("/api/bookings/lookup", {
+async function bookingApi(url, payload) {
+  const response = await fetch(url, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
@@ -21,6 +21,10 @@ async function lookupBooking(payload) {
   return body;
 }
 
+async function lookupBooking(payload) {
+  return bookingApi("/api/bookings/lookup", payload);
+}
+
 function displayTime(value) {
   const [hours, minutes] = value.split(":").map(Number);
   return `${hours % 12 || 12}:${String(minutes).padStart(2, "0")} ${hours >= 12 ? "PM" : "AM"}`;
@@ -29,6 +33,23 @@ function displayTime(value) {
 function formatDate(value) {
   return new Intl.DateTimeFormat("en-IN", { weekday: "short", day: "numeric", month: "long", year: "numeric" })
     .format(new Date(`${value}T12:00:00`));
+}
+
+function paymentMethodLabel(method) {
+  const labels = {
+    upi: "UPI",
+    netbanking: "Netbanking",
+    card: "Card",
+    emi: "EMI",
+    wallet: "Wallet",
+    paylater: "Pay Later",
+    cardless_emi: "Cardless EMI",
+    pay_at_studio: "Pay at studio",
+    recorded_by_studio: "Recorded by studio",
+    pending: "Online payment pending",
+    online: "Online payment",
+  };
+  return labels[method] || method.replaceAll("_", " ");
 }
 
 function showBooking(booking) {
@@ -48,16 +69,23 @@ function showBooking(booking) {
   document.querySelector("#result-time").textContent = `${displayTime(booking.start_time)}–${displayTime(booking.end_time)}`;
   document.querySelector("#result-duration").textContent = `${booking.duration_hours} hour${booking.duration_hours === 1 ? "" : "s"}`;
   document.querySelector("#result-total").textContent = currency.format(booking.total_amount);
-  document.querySelector("#result-payment-mode").textContent = booking.payment_mode.replaceAll("_", " ");
+  document.querySelector("#result-payment-mode").textContent = paymentMethodLabel(booking.payment_method);
 
   const note = document.querySelector("#result-note");
   if (booking.booking_status === "cancelled") note.textContent = "This booking has been cancelled. Contact the studio if you need help with a refund or a new session.";
-  else if (booking.payment_status === "pending") note.textContent = "Your studio time is reserved and the payment is still pending.";
+  else if (booking.payment_status === "pending") note.textContent = "Your studio time is temporarily held while payment is pending.";
   else note.textContent = "Your booking is confirmed and the recorded payment is complete.";
 
   const paymentLink = document.querySelector("#result-payment-link");
   paymentLink.hidden = !booking.payment_link;
   if (booking.payment_link) paymentLink.href = booking.payment_link;
+  const paymentButton = document.querySelector("#result-payment-button");
+  paymentButton.hidden = !(
+    booking.booking_status === "payment_pending"
+    && booking.payment_status === "pending"
+    && booking.payment_mode === "pay_now"
+    && !booking.payment_link
+  );
   const calendarLink = document.querySelector("#result-calendar");
   calendarLink.hidden = booking.booking_status !== "confirmed";
   if (!calendarLink.hidden) {
@@ -73,6 +101,67 @@ function showBooking(booking) {
     calendarLink.download = `${booking.reference}.ics`;
   }
 }
+
+async function refreshCurrentBooking() {
+  if (!currentBooking) return;
+  const refreshed = await lookupBooking({
+    reference: currentBooking.reference,
+    customer_email: currentBooking.customer_email,
+  });
+  showBooking(refreshed);
+}
+
+document.querySelector("#result-payment-button").addEventListener("click", async () => {
+  if (!currentBooking) return;
+  const note = document.querySelector("#result-note");
+  const paymentButton = document.querySelector("#result-payment-button");
+  if (!currentBooking.checkout?.key_id) {
+    paymentButton.disabled = true;
+    note.textContent = "Preparing secure checkout…";
+    try {
+      currentBooking = await bookingApi("/api/bookings/checkout", {
+        reference: currentBooking.reference,
+        customer_email: currentBooking.customer_email,
+      });
+      showBooking(currentBooking);
+    } catch (error) {
+      note.textContent = error.message;
+      paymentButton.disabled = false;
+      return;
+    }
+    paymentButton.disabled = false;
+  }
+  window.YNFPayments.open(currentBooking, {
+    onVerifying: () => {
+      paymentButton.hidden = true;
+      note.textContent = "Payment received. We are confirming it securely. Please wait and do not pay again.";
+    },
+    onVerified: async () => {
+      try {
+        await refreshCurrentBooking();
+      } catch (error) {
+        note.textContent = error.message;
+      }
+    },
+    onProcessing: () => {
+      paymentButton.hidden = true;
+      note.textContent = "Your payment is authorised and awaiting confirmation. Please do not pay again. This can take a few minutes.";
+    },
+    onFailure: (detail) => {
+      note.textContent = `${detail} Your temporary studio hold remains active, so you can retry safely.`;
+    },
+    onDismiss: () => {
+      note.textContent = "Checkout was closed before payment. Your temporary studio hold remains active.";
+    },
+    onVerificationError: (detail) => {
+      paymentButton.hidden = true;
+      note.textContent = `${detail} Please do not pay again. Check this booking again shortly or contact the studio team.`;
+    },
+    onError: (detail) => {
+      note.textContent = detail;
+    },
+  });
+});
 
 form.addEventListener("submit", async (event) => {
   event.preventDefault();

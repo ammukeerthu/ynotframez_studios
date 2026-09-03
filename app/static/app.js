@@ -1,7 +1,16 @@
 const form = document.querySelector("#booking-form");
 const message = document.querySelector("#global-message");
 document.querySelector("#year").textContent = new Date().getFullYear();
-const state = { step: 1, spaces: [], selectedSpace: null, slots: [], selectedSlots: [], slotChecked: false };
+const state = {
+  step: 1,
+  spaces: [],
+  selectedSpace: null,
+  slots: [],
+  selectedSlots: [],
+  slotChecked: false,
+  currentBooking: null,
+  paymentNotice: "",
+};
 
 const currency = new Intl.NumberFormat("en-IN", {
   style: "currency",
@@ -377,43 +386,105 @@ form.addEventListener("submit", async (event) => {
   };
 
   submitButton.disabled = true;
-  submitButton.firstChild.textContent = "Reserving… ";
+  submitButton.firstChild.textContent = "Preparing checkout… ";
   try {
     const booking = await request("/api/bookings", { method: "POST", body: JSON.stringify(payload) });
     showConfirmation(booking);
+    if (booking.checkout?.key_id) openStandardCheckout(booking);
   } catch (error) {
     showMessage(error.message);
   } finally {
     submitButton.disabled = false;
-    submitButton.firstChild.textContent = "Confirm booking ";
+    submitButton.firstChild.textContent = "Proceed to payment ";
   }
 });
 
-function showConfirmation(booking) {
+async function prepareCheckout() {
+  const booking = state.currentBooking;
+  if (!booking) return;
+  if (booking.checkout?.key_id) {
+    openStandardCheckout(booking);
+    return;
+  }
+  const paymentButton = document.querySelector("#payment-button");
+  paymentButton.disabled = true;
+  paymentButton.firstChild.textContent = "Preparing checkout… ";
+  try {
+    const updated = await request("/api/bookings/checkout", {
+      method: "POST",
+      body: JSON.stringify({ reference: booking.reference, customer_email: booking.customer_email }),
+    });
+    state.currentBooking = updated;
+    showConfirmation(updated);
+    openStandardCheckout(updated);
+  } catch (error) {
+    showConfirmation(booking, error.message);
+  } finally {
+    paymentButton.disabled = false;
+    paymentButton.firstChild.textContent = "Complete payment ";
+  }
+}
+
+function openStandardCheckout(booking) {
+  state.paymentNotice = "";
+  window.YNFPayments.open(booking, {
+    onVerifying: () => showConfirmation(
+      state.currentBooking,
+      "Payment received. We are confirming it securely. Please wait and do not pay again.",
+      true,
+    ),
+    onVerified: (updated) => showConfirmation(updated),
+    onProcessing: (updated) => showConfirmation(
+      updated,
+      "Your payment is authorised and awaiting confirmation. Please do not pay again. This can take a few minutes.",
+      true,
+    ),
+    onFailure: (detail) => {
+      state.paymentNotice = `${detail} Your temporary studio hold remains active, so you can retry payment.`;
+    },
+    onDismiss: () => showConfirmation(
+      state.currentBooking,
+      state.paymentNotice || "Checkout was closed before payment. Your temporary studio hold remains active, and you can retry below.",
+    ),
+    onVerificationError: (detail) => showConfirmation(
+      state.currentBooking,
+      `${detail} Please do not pay again. Check Find My Booking shortly or contact the studio team with your reference.`,
+      true,
+    ),
+    onError: (detail) => showConfirmation(state.currentBooking, detail),
+  });
+}
+
+function showConfirmation(booking, notice = "", paymentProcessing = false) {
+  state.currentBooking = booking;
   form.hidden = true;
   document.querySelector(".progress").hidden = true;
   const confirmation = document.querySelector("#confirmation");
   confirmation.hidden = false;
-  const paymentFailed = booking.payment_mode === "pay_at_studio" || !booking.payment_link;
-  document.querySelector("#confirmation-kicker").textContent = paymentFailed ? "PAYMENT ACTION REQUIRED" : "PAYMENT REQUIRED";
-  document.querySelector("#confirmation-title").textContent = paymentFailed
-    ? "Your booking is not reserved yet."
-    : "Complete payment to reserve.";
-  document.querySelector("#confirmation-copy").textContent = paymentFailed
-    ? `We could not create the Razorpay payment link for ${booking.customer_name}. We sent an email to ${booking.customer_email}; please contact the studio team within two hours to retain this time.`
-    : `Your studio time is temporarily held for two hours. Complete the Razorpay payment below; the reservation, calendar event, and confirmation email are created only after successful payment.`;
+  const confirmed = booking.status === "confirmed";
+  const checkoutReady = Boolean(booking.checkout?.key_id);
+  const successMark = document.querySelector(".success-mark");
+  successMark.textContent = confirmed ? "✓" : "…";
+  successMark.classList.toggle("pending", !confirmed);
+  document.querySelector("#confirmation-kicker").textContent = confirmed
+    ? "BOOKING CONFIRMED"
+    : paymentProcessing ? "PAYMENT CONFIRMING" : "PAYMENT REQUIRED";
+  document.querySelector("#confirmation-title").textContent = confirmed
+    ? "Your booking has been confirmed."
+    : paymentProcessing ? "Confirming your payment…" : "Complete payment to reserve.";
+  document.querySelector("#confirmation-copy").textContent = notice || (confirmed
+    ? `Your confirmation has been emailed to ${booking.customer_email}. Your studio time is now reserved.`
+    : checkoutReady
+      ? "Your studio time is temporarily held for two hours. Complete Razorpay Checkout below to confirm it."
+      : `Online checkout could not be prepared. Your booking is not confirmed; retry shortly or contact the studio team with ${booking.reference}.`);
   document.querySelector("#confirmation-details").innerHTML = `
     <div><small>REFERENCE</small><strong>${escapeText(booking.reference)}</strong></div>
     <div><small>DATE & TIME</small><strong>${escapeText(formatDate(booking.booking_date))} · ${escapeText(displayTime(booking.start_time))}–${escapeText(displayTime(booking.end_time))}</strong></div>
     <div><small>AMOUNT</small><strong>${escapeText(currency.format(booking.total_amount))}</strong></div>
   `;
-  const paymentLink = document.querySelector("#payment-link");
-  paymentLink.hidden = true;
-  paymentLink.removeAttribute("href");
-  if (booking.payment_link) {
-    paymentLink.href = booking.payment_link;
-    paymentLink.hidden = false;
-  }
+  const paymentButton = document.querySelector("#payment-button");
+  paymentButton.hidden = confirmed || paymentProcessing;
+  paymentButton.disabled = paymentProcessing;
   const calendarContent = [
     "BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//YNotFramez Studios//Studio Booking//EN",
     "BEGIN:VEVENT", `UID:${booking.reference}@ynotframez`,
@@ -423,14 +494,20 @@ function showConfirmation(booking) {
     `DESCRIPTION:Studio booking for ${booking.customer_name}`,
     "END:VEVENT", "END:VCALENDAR",
   ].join("\r\n");
-  document.querySelector("#calendar-link").href = `data:text/calendar;charset=utf-8,${encodeURIComponent(calendarContent)}`;
-  document.querySelector("#calendar-link").download = `${booking.reference}.ics`;
+  const calendarLink = document.querySelector("#calendar-link");
+  calendarLink.hidden = !confirmed;
+  calendarLink.href = `data:text/calendar;charset=utf-8,${encodeURIComponent(calendarContent)}`;
+  calendarLink.download = `${booking.reference}.ics`;
   const shareText = `My YNotFramez Studios booking ${booking.reference} is confirmed: ${booking.space_name}, ${formatDate(booking.booking_date)}, ${displayTime(booking.start_time)}–${displayTime(booking.end_time)}.`;
-  document.querySelector("#whatsapp-share").href = `https://wa.me/?text=${encodeURIComponent(shareText)}`;
+  const whatsappShare = document.querySelector("#whatsapp-share");
+  whatsappShare.hidden = !confirmed;
+  whatsappShare.href = `https://wa.me/?text=${encodeURIComponent(shareText)}`;
+  document.querySelector("#print-booking").hidden = !confirmed;
   document.querySelector("#retrieve-booking").href = `/my-booking?reference=${encodeURIComponent(booking.reference)}`;
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
 
+document.querySelector("#payment-button").addEventListener("click", prepareCheckout);
 document.querySelector("#new-booking").addEventListener("click", () => window.location.reload());
 document.querySelector("#print-booking").addEventListener("click", () => window.print());
 

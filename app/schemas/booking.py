@@ -5,6 +5,14 @@ from pydantic import BaseModel, EmailStr, Field, field_validator
 from app.core.booking_rules import MINIMUM_BOOKING_DURATION_HOURS
 
 
+def normalize_booking_reference(value: str) -> str:
+    normalized = value.strip().upper()
+    numeric_id = normalized.removeprefix("YNF-")
+    if not normalized.startswith("YNF-") or len(numeric_id) < 6 or not numeric_id.isdigit():
+        raise ValueError("Enter a valid booking reference such as YNF-000123.")
+    return normalized
+
+
 class BookingDetails(BaseModel):
     space_id: str
     booking_date: str
@@ -87,6 +95,13 @@ class WebBookingCreate(AvailabilityRequest):
         return normalized
 
 
+class RazorpayCheckoutResponse(BaseModel):
+    key_id: str
+    order_id: str
+    amount: int
+    currency: str = "INR"
+
+
 class BookingResponse(BaseModel):
     id: int
     reference: str
@@ -99,8 +114,10 @@ class BookingResponse(BaseModel):
     total_amount: int
     customer_name: str
     customer_email: EmailStr
+    phone_number: str
     payment_mode: str
     payment_link: str | None = None
+    checkout: RazorpayCheckoutResponse | None = None
     calendar_event_id: str | None = None
 
 
@@ -111,11 +128,23 @@ class BookingLookupRequest(BaseModel):
     @field_validator("reference")
     @classmethod
     def validate_reference(cls, value: str) -> str:
-        normalized = value.strip().upper()
-        numeric_id = normalized.removeprefix("YNF-")
-        if not normalized.startswith("YNF-") or len(numeric_id) < 6 or not numeric_id.isdigit():
-            raise ValueError("Enter a valid booking reference such as YNF-000123.")
-        return normalized
+        return normalize_booking_reference(value)
+
+
+class PaymentCheckoutRequest(BookingLookupRequest):
+    pass
+
+
+class RazorpayPaymentVerification(BaseModel):
+    reference: str = Field(min_length=10, max_length=32)
+    razorpay_payment_id: str = Field(min_length=1, max_length=180)
+    razorpay_order_id: str = Field(min_length=1, max_length=180)
+    razorpay_signature: str = Field(min_length=1, max_length=256)
+
+    @field_validator("reference")
+    @classmethod
+    def validate_reference(cls, value: str) -> str:
+        return normalize_booking_reference(value)
 
 
 class CustomerBookingStatusResponse(BaseModel):
@@ -131,5 +160,7 @@ class CustomerBookingStatusResponse(BaseModel):
     customer_name: str
     customer_email: EmailStr
     payment_mode: str
+    payment_method: str
     payment_link: str | None = None
+    checkout: RazorpayCheckoutResponse | None = None
 

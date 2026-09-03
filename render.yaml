@@ -43,13 +43,25 @@ services:
       - key: ADMIN_COOKIE_SECURE
         value: true
 
-      # Keep payment links in stub mode until Razorpay API access is ready.
+      # Keep stub mode until the deployed Test Mode checkout is intentionally enabled.
       - key: RAZORPAY_MODE
         value: stub
+      - key: RAZORPAY_KEY_ID
+        sync: false
+      - key: RAZORPAY_KEY_SECRET
+        sync: false
+      - key: RAZORPAY_WEBHOOK_SECRET
+        sync: false
+      - key: RAZORPAY_API_BASE_URL
+        value: https://api.razorpay.com/v1
+      - key: RAZORPAY_CALLBACK_BASE_URL
+        value: https://ynotframezstudios.com
       - key: RAZORPAY_PAYMENT_LINK_BASE_URL
         value: https://rzp.io/i/demo
       - key: RAZORPAY_PAYMENT_HOLD_MINUTES
         value: 120
+      - key: RAZORPAY_TIMEOUT_SECONDS
+        value: 15
 
       - key: CALENDAR_MODE
         value: google

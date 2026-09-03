@@ -204,7 +204,9 @@ function alertCard(alert) {
   const kindClass = alert.kind.replaceAll("_", "-");
   const label = alert.kind === "new_booking"
     ? "New booking"
-    : alert.kind === "starts_soon" ? "Starting soon" : "Session ending";
+    : alert.kind === "payment_issue"
+      ? "Payment issue"
+      : alert.kind === "starts_soon" ? "Starting soon" : "Session ending";
   const seenButton = alert.notification_id && !alert.is_read
     ? `<button type="button" data-read-alert="${alert.notification_id}">Mark seen</button>`
     : "";

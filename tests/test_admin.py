@@ -55,6 +55,7 @@ from app.services.booking_service import BookingApplicationService
 
 settings.email_mode = "console"
 settings.calendar_mode = "stub"
+settings.razorpay_mode = "stub"
 
 
 def cookie_value(response: Response) -> str:

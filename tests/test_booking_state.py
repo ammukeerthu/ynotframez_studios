@@ -13,6 +13,7 @@ from app.services.booking_state import BookingStateMachine
 
 settings.email_mode = "console"
 settings.calendar_mode = "stub"
+settings.razorpay_mode = "stub"
 
 
 class BookingStateMachineTest(unittest.TestCase):

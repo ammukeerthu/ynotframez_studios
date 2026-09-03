@@ -1,12 +1,12 @@
 import unittest
 
-from sqlalchemy import create_engine, event, func, select
+from sqlalchemy import create_engine, event, func, inspect, select, text
 from sqlalchemy.dialects import postgresql
 from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
 from sqlalchemy.schema import CreateTable
 
-from app.core.database import Base, normalize_database_url
+from app.core.database import Base, apply_schema_compatibility_updates, normalize_database_url
 from app.models import admin, availability, booking, notification, payment, studio  # noqa: F401
 from app.models.studio import StudioPurposeOption, StudioSetting
 from app.services.spaces import seed_studio_settings
@@ -38,6 +38,35 @@ class DatabaseConfigurationTests(unittest.TestCase):
         for table in Base.metadata.sorted_tables:
             statement = str(CreateTable(table).compile(dialect=dialect))
             self.assertIn("CREATE TABLE", statement)
+
+    def test_payment_columns_are_added_to_an_existing_database(self) -> None:
+        engine = create_engine(
+            "sqlite://",
+            connect_args={"check_same_thread": False},
+            poolclass=StaticPool,
+        )
+        try:
+            with engine.begin() as connection:
+                connection.execute(
+                    text(
+                        "CREATE TABLE payment_records ("
+                        "id INTEGER PRIMARY KEY, booking_id INTEGER, amount INTEGER)"
+                    )
+                )
+
+            apply_schema_compatibility_updates(engine)
+            apply_schema_compatibility_updates(engine)
+
+            inspector = inspect(engine)
+            columns = {column["name"] for column in inspector.get_columns("payment_records")}
+            indexes = {index["name"]: index for index in inspector.get_indexes("payment_records")}
+            self.assertIn("razorpay_order_id", columns)
+            self.assertIn("razorpay_payment_id", columns)
+            self.assertIn("razorpay_method", columns)
+            self.assertTrue(indexes["ix_payment_records_razorpay_order_id"]["unique"])
+            self.assertTrue(indexes["ix_payment_records_razorpay_payment_id"]["unique"])
+        finally:
+            engine.dispose()
 
     def test_seed_orders_studios_before_foreign_key_purpose_options(self) -> None:
         engine = create_engine(

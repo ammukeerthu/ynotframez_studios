@@ -39,11 +39,20 @@ class EmailServiceTest(unittest.TestCase):
         self.assertIn("arrive on time", plain.lower())
         self.assertIn("COMPLETE PAYMENT", html)
         self.assertIn("YNotFramez Studios", html)
+        self.assertIn('src="cid:', html)
+        self.assertIn('bgcolor="#FFFFFF"', html)
+        self.assertIn("background-color:#FFFFFF!important", html)
+        self.assertIn('content="light only"', html)
         self.assertIn("AVADI", html)
         self.assertIn("Your booking has been scheduled.", html)
         self.assertIn("Dear Email Customer,", html)
         self.assertIn("Studio rules", html)
         self.assertIn("arrive on time", html.lower())
+        logo_parts = [part for part in message.walk() if part.get_content_type() == "image/png"]
+        self.assertEqual(len(logo_parts), 1)
+        self.assertEqual(logo_parts[0].get_filename(), "ynotframez-studios.png")
+        self.assertEqual(logo_parts[0].get_content_disposition(), "inline")
+        self.assertTrue(logo_parts[0]["Content-ID"])
 
     def test_cancellation_omits_payment_action(self) -> None:
         message = EmailService()._build_message(self.booking(), "cancellation")
@@ -71,9 +80,9 @@ class EmailServiceTest(unittest.TestCase):
         self.assertIn("Your booking has been rescheduled.", html)
         self.assertIn("Dear Email Customer,", html)
 
-    def test_payment_link_failure_is_highlighted_without_a_payment_row(self) -> None:
+    def test_checkout_failure_is_highlighted_without_a_payment_row(self) -> None:
         booking = self.booking()
-        booking.payment_mode = PaymentMode.PAY_AT_STUDIO
+        booking.payment_mode = PaymentMode.PAY_NOW
         booking.payment_link = None
 
         message = EmailService()._build_message(booking, "payment_failure")

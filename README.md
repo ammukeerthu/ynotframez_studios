@@ -18,7 +18,7 @@ A minimal FastAPI booking application for a two-space photography studio. Custom
 - Half-hour start times, durations, and proportional pricing
 - Two studio spaces with individual details, rules, and hourly rates
 - Google Calendar integration with a local stub mode
-- Razorpay Payment Links API with signed webhook confirmation and a local stub mode
+- Razorpay Standard Checkout for the website, Payment Links for WhatsApp, signed verification, and a local stub mode
 - Multipart booking emails with safe console and SMTP delivery modes
 - Interactive API documentation at `/docs`
 
@@ -153,7 +153,7 @@ The dashboard shows confirmed activity and estimated value and lets the owner se
 
 The **Studio alerts** panel stores new bookings as unread until the owner marks them seen. It also refreshes every 30 seconds and shows operational reminders during the 15 minutes before a booking starts and the final 15 minutes of a current booking. When another session follows within 30 minutes, the ending reminder includes the next customer. Optional desktop notifications work while the dashboard is open and browser permission is granted.
 
-Every booking has a local payment record. New customer requests remain in `payment_pending` and hold the selected time for two hours. The studio is reserved, its Google Calendar event is created, and its confirmation email is sent only after a verified Razorpay `payment_link.paid` webhook. The dashboard retains a manual **Mark paid** action for studio follow-up and payment-provider exceptions.
+Every booking has a local payment record. New customer requests remain in `payment_pending` and hold the selected time for two hours. Website payments are confirmed using both the Razorpay checkout signature and the provider's payment status; signed webhooks provide an idempotent fallback. The studio is reserved, its Google Calendar event is created, and its confirmation email is sent only after captured payment is verified. The dashboard retains a manual **Mark paid** action for studio follow-up and payment-provider exceptions.
 
 The booking directory supports customer search, booking-status filtering, and inclusive from/to date filters. **Export CSV** downloads the currently filtered records with schedule, customer, payment, and value columns for Excel or reconciliation. The export requires an authenticated admin session and neutralizes spreadsheet-formula prefixes in customer-entered text.
 
@@ -273,7 +273,7 @@ Content-Type: application/json
 
 All bookings require a minimum duration of 2 hours. Longer bookings can use 30-minute increments.
 
-New public bookings accept only `pay_now`. In `RAZORPAY_MODE=api`, the app creates a unique Razorpay Payment Link in INR and returns the hosted `short_url`. `pay_at_studio` is retained only as an internal failure/follow-up mode and is not a customer-selectable option.
+New public bookings accept only `pay_now`. In `RAZORPAY_MODE=api`, the server calculates the amount, creates a unique Razorpay Order in INR, and returns only the public key and order metadata needed by Standard Checkout. The secret key never reaches the browser. The legacy WhatsApp flow continues to create a hosted Razorpay Payment Link. `pay_at_studio` is retained only as an internal owner/follow-up mode and is not a customer-selectable option.
 
 ### Retrieve a customer booking
 
@@ -287,7 +287,7 @@ Content-Type: application/json
 }
 ```
 
-Both values must match. The response includes the current booking and payment status, schedule, total, and a pending payment link when applicable. It does not expose a public booking directory.
+Both values must match. The response includes the current booking and payment status, actual verified Razorpay method (`upi`, `netbanking`, `card`, `emi`, and so on), schedule, total, and a retryable Standard Checkout order while an unpaid booking hold remains active. Older captured payments are backfilled from Razorpay when possible. It does not expose a public booking directory.
 
 ## WhatsApp webhook testing
 
@@ -302,15 +302,17 @@ The webhook returns the next bot message as JSON. It is provider-neutral for MVP
 
 ## Razorpay payment-first setup
 
-Create Razorpay Test Mode API keys and configure the `RAZORPAY_*` values shown in `.env.example`. Set `RAZORPAY_MODE="api"`. Configure a Razorpay webhook pointing to:
+Create Razorpay Test Mode API keys and configure the `RAZORPAY_*` values shown in `.env.example`. Keep `RAZORPAY_MODE="stub"` until the code and secrets are deployed together, then change it to `api` for an end-to-end Test Mode payment. Configure a Razorpay webhook pointing to:
 
 ```text
 https://your-public-domain.example/api/payments/razorpay/webhook
 ```
 
-Use the same secret in Razorpay and `RAZORPAY_WEBHOOK_SECRET`. Subscribe to `payment_link.paid`, `payment_link.expired`, `payment_link.cancelled`, and `payment.failed`. Razorpay must be able to reach this HTTPS endpoint; `127.0.0.1` cannot receive provider webhooks.
+Use the same secret in Razorpay and `RAZORPAY_WEBHOOK_SECRET`. Subscribe to `payment.captured`, `payment.failed`, and `order.paid`. If WhatsApp Payment Links are being tested, also subscribe to `payment_link.paid`, `payment_link.expired`, and `payment_link.cancelled`. Razorpay must be able to reach this HTTPS endpoint; `127.0.0.1` cannot receive provider webhooks.
 
-For offline UI development only, use `RAZORPAY_MODE="stub"`. Stub mode produces a deterministic URL but cannot complete payment or confirm the booking automatically.
+For offline UI development only, use `RAZORPAY_MODE="stub"`. Stub mode records deterministic test order/link identifiers but intentionally supplies no checkout key, so it cannot take payment or confirm a booking automatically.
+
+Standard Checkout uses Razorpay's hosted `checkout.js`; the app does not need the Python Razorpay SDK. Order creation and payment-status retrieval use the existing server-side HTTP client. A failed attempt remains retryable during the temporary hold. If money is captured after the slot can no longer be reserved, the booking is cancelled, the payment is marked `refund_due`, and the dashboard shows an unread payment-review alert.
 
 WhatsApp remains provider-neutral until the Meta Cloud API adapter is connected.
 
@@ -339,7 +341,7 @@ SMTP_USE_SSL="false"
 
 Port 587 normally uses STARTTLS (`SMTP_USE_TLS=true`). Providers using implicit TLS commonly use port 465 with `SMTP_USE_SSL=true` and `SMTP_USE_TLS=false`. Do not enable both. SMTP credentials belong only in the ignored `.env` file or deployment environment, never in Git.
 
-Emails contain both plain-text and HTML versions, including the booking reference, booked studio, date, time, duration, purpose, payment mode, recorded amount, and pending payment link. Confirmation and update emails also include the selected studio's latest rules. Delivery failures are logged without cancelling an otherwise valid booking.
+Emails contain both plain-text and HTML versions. The HTML version embeds the YNotFramez Studios PNG logo so it does not depend on a remote image URL. Booking messages include the reference, booked studio, date, time, duration, purpose, and recorded amount. Confirmation and update emails also include the selected studio's latest rules. Payment-failure emails highlight the amount and follow-up instructions. Delivery failures are logged without cancelling an otherwise valid booking.
 
 ## Security note
 
@@ -389,7 +391,7 @@ The Blueprint already supplies `smtp-relay.brevo.com` and port `2525`. Brevo's F
    - `https://<service-name>.onrender.com/dashboard`
 7. The deployed database starts empty. Open `/dashboard` and create the deployment's admin account. This does not change the local admin account.
 
-The Blueprint sets `ADMIN_COOKIE_SECURE=true`, generates a stable admin-session signing secret, and runs one Uvicorn worker. Razorpay remains in stub mode for this testing release. A submitted booking stays payment-pending and holds its slot; use **Mark paid** in the Studio Dashboard to complete the test booking, create its live Google Calendar event, and send its confirmation email.
+The Blueprint sets `ADMIN_COOKIE_SECURE=true`, generates a stable admin-session signing secret, and runs one Uvicorn worker. Razorpay deliberately remains in stub mode until Test Mode is explicitly enabled in Render. In stub mode, a submitted booking stays payment-pending and holds its slot; use **Mark paid** in the Studio Dashboard to complete the test booking, create its live Google Calendar event, and send its confirmation email.
 
 ### Production domains
 
@@ -403,7 +405,7 @@ The `.com` root domain is attached to the Render web service as a custom domain.
 
 The `.in` domain is not added to Render. In GoDaddy it uses an unmasked **Permanent (301)** forwarding rule whose destination is `https://ynotframezstudios.com`; its `www` CNAME points to `@`. GoDaddy forwarding requires completed WHOIS verification and can take several hours to provision HTTPS or up to 48 hours to propagate globally.
 
-When Razorpay API mode is enabled, set:
+When Razorpay API mode is enabled, set this public base URL for the legacy WhatsApp Payment Link return route:
 
 ```env
 RAZORPAY_CALLBACK_BASE_URL="https://ynotframezstudios.com"
