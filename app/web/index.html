@@ -86,7 +86,10 @@
             <label class="field full"><span>Email address</span><input name="customer_email" type="email" autocomplete="email" placeholder="you@example.com" required></label>
             <label class="field full"><span>Purpose</span><select name="purpose" required><option value="">Choose a purpose</option></select></label>
           </div>
-          <label class="terms"><input name="terms_accepted" type="checkbox" required><span>I’ve read and accept the selected studio’s rules and understand that overtime is subject to availability.</span></label>
+          <div class="terms">
+            <input id="terms-accepted" name="terms_accepted" type="checkbox" required>
+            <label for="terms-accepted">I’ve read and accept the selected studio’s rules and the <a id="terms-open" href="/static/legal/ynotframez-studio-booking-terms.pdf">Terms and Conditions</a>.</label>
+          </div>
           <div class="form-actions"><button class="button secondary" type="button" data-back>← Back</button><button class="button primary" type="button" data-next>Review booking <span>→</span></button></div>
         </section>
 
@@ -120,6 +123,105 @@
       </section>
     </section>
   </main>
+
+  <dialog id="terms-dialog" class="terms-dialog" aria-labelledby="terms-title">
+    <div class="terms-dialog-frame">
+      <div class="terms-dialog-header">
+        <div><p>STUDIO BOOKING</p><h2 id="terms-title">Terms and Conditions</h2></div>
+        <button class="terms-close" type="button" data-close-terms aria-label="Close terms and conditions">×</button>
+      </div>
+      <div class="terms-dialog-body">
+        <p class="terms-introduction">These terms apply to all studio bookings made with YNotFramez Studios. By making a booking, the client acknowledges and agrees to the terms below.</p>
+
+        <section>
+          <h3>1. Booking Confirmation</h3>
+          <ol>
+            <li>All bookings require full payment for the selected studio hours to secure the selected date and time slot.</li>
+            <li>Tentative reservations are not guaranteed and may be released to other clients if full payment is not received.</li>
+            <li>A booking is considered confirmed only after the full booking amount has been successfully received by YNotFramez Studios.</li>
+            <li>Booking confirmation, along with the reserved date and time slot, will be shared via WhatsApp and/or email.</li>
+            <li>No balance payment will be pending after the session, as the full booking amount is payable at the time of booking.</li>
+          </ol>
+        </section>
+
+        <section>
+          <h3>2. Studio Rental Duration</h3>
+          <ol>
+            <li>The minimum studio booking duration is 2 hours.</li>
+            <li>Studio rental is charged based on the reserved time slot. The booking commences at the scheduled start time and concludes at the scheduled end time, irrespective of the client’s actual arrival time. Late arrival by the client does not extend the booking duration.</li>
+            <li>The booking end time refers to the time by which all shooting activities, equipment packing, cleanup, and exit procedures must be completed.</li>
+            <li>Setup time, equipment arrangement, makeup preparation, costume changes, and pack-up time are included within the booked duration and will not be provided as additional complimentary time.</li>
+            <li>Clients are advised to book sufficient time to accommodate setup, shooting, and pack-up requirements.</li>
+            <li>Early entry prior to the booked time slot is subject to studio availability and cannot be guaranteed.</li>
+            <li>Backdrop requirements should be communicated at the time of booking. Where the requested backdrop is known in advance and the preceding studio slot is vacant, YNotFramez Studios may, subject to availability, make the necessary backdrop arrangements before the client’s scheduled arrival. If the preceding slot is occupied, the required backdrop setup or change may need to be carried out after the previous booking has concluded. Backdrop changes can be time-consuming, and any time required for backdrop setup or changeover during the client’s booked slot will be included within the booked duration. Clients are therefore advised to communicate their backdrop requirements in advance and allow sufficient time within their booking.</li>
+          </ol>
+        </section>
+
+        <section>
+          <h3>3. Cancellation &amp; Rescheduling Policy</h3>
+          <ol>
+            <li>Full payments made towards a confirmed booking are non-refundable.</li>
+            <li>Bookings cannot be cancelled once confirmed.</li>
+            <li>Clients may request a one-time reschedule of their booking, subject to studio availability.</li>
+            <li>Reschedule requests must be communicated at least 72 hours prior to the scheduled booking time.</li>
+            <li>Each booking is eligible for only one reschedule. Subsequent requests for rescheduling will not be accommodated.</li>
+            <li>Rescheduled bookings must be utilized within 60 days from the original booking date.</li>
+            <li>Failure to attend the scheduled booking without prior notice, or failure to utilize the rescheduled booking within the specified validity period, shall result in forfeiture of the full booking payment.</li>
+            <li>YNotFramez Studios reserves the right to approve or decline rescheduling requests based on slot availability and operational requirements.</li>
+          </ol>
+        </section>
+
+        <section>
+          <h3>4. Occupancy &amp; Guest Policy</h3>
+          <ol>
+            <li>The person making the booking shall be responsible for the conduct of all individuals accompanying them, including photographers, videographers, models, makeup artists, stylists, assistants, clients, and guests.</li>
+            <li>All attendees must comply with the studio’s rules, safety guidelines, and instructions provided by YNotFramez Studios staff.</li>
+            <li>The total number of occupants within the studio premises must not exceed the maximum capacity specified by YNotFramez Studios.</li>
+            <li>Additional attendees beyond the permitted occupancy limit may be denied entry or may incur additional charges at the discretion of YNotFramez Studios.</li>
+            <li>Unauthorised gatherings, parties, workshops, training sessions, events, or commercial activities beyond the declared purpose of the booking are not permitted without prior approval.</li>
+            <li>Minors under the age of 18 must be accompanied and supervised by a responsible adult at all times.</li>
+            <li>Clients shall be liable for any damage, loss, misuse of studio property, or violation of studio policies caused by any member of their team or guests.</li>
+            <li>YNotFramez Studios reserves the right to refuse entry to, or request the removal of, any individual whose behaviour is deemed unsafe, disruptive, abusive, or detrimental to the studio environment.</li>
+          </ol>
+        </section>
+
+        <section>
+          <h3>5. Child &amp; Pet Policy</h3>
+          <ol>
+            <li>The person making the booking shall be responsible for the safety, supervision, and conduct of any children accompanying the booking, irrespective of whether they are the parent, guardian, photographer, or any other accompanying individual.</li>
+            <li>Children must be supervised at all times and must not be left unattended anywhere within the studio premises.</li>
+            <li>YNotFramez Studios does not provide childcare or supervision services and shall not be held responsible for the safety or wellbeing of unattended children.</li>
+            <li>Running, climbing on furniture, handling studio equipment, or entering restricted areas is strictly prohibited.</li>
+            <li>Pets are permitted only with prior approval from YNotFramez Studios.</li>
+            <li>The booking holder shall be responsible for the behaviour and control of any pets brought into the studio and shall ensure that they do not cause injury, disturbance, damage, or excessive soiling of the premises.</li>
+            <li>Any damage, cleaning costs, repairs, or losses arising from the actions of children or pets shall be borne by the person who made the booking.</li>
+            <li>Clients are required to clean up after their pets and dispose of any waste appropriately.</li>
+            <li>YNotFramez Studios reserves the right to refuse entry to or request the removal of any child or pet whose behaviour poses a risk to people, equipment, or property.</li>
+          </ol>
+        </section>
+
+        <section>
+          <h3>6. Force Majeure &amp; Power Interruptions</h3>
+          <ol>
+            <li>YNotFramez Studios shall not be held responsible for interruptions caused by circumstances beyond its reasonable control, including power outages, electrical failures, natural disasters, government restrictions, or other unforeseen events.</li>
+            <li>In the event of a power outage or electrical interruption during a booked session, the studio will not provide a monetary refund for the affected booking or unused booking hours.</li>
+            <li>If a power interruption affects the booked session, the client will be eligible for replacement studio time equivalent only to the actual duration of the interruption.</li>
+            <li>For example, if a client has booked the studio for 2 hours and a power interruption affects 45 minutes of the session, the client will be eligible for 45 minutes of replacement studio time, and not the entire 2-hour booking.</li>
+            <li>The replacement studio time may be used for a future booking within 45 days from the date of the affected booking, subject to studio availability.</li>
+            <li>The replacement booking must be scheduled in advance and cannot be converted into cash, transferred to another person, or combined with any other offer or promotion.</li>
+            <li>No additional compensation, monetary refund, or liability shall be applicable in relation to such power interruptions.</li>
+          </ol>
+        </section>
+
+        <p class="terms-legal-note"><strong>Important:</strong> These terms are intended as a studio operating policy. For legal enforceability and jurisdiction-specific requirements, consider having the final document reviewed by a qualified legal professional.</p>
+      </div>
+      <div class="terms-dialog-actions">
+        <a href="/static/legal/ynotframez-studio-booking-terms.pdf" target="_blank" rel="noopener">Open original PDF</a>
+        <span>Closing this window does not accept the terms.</span>
+        <button class="button primary" type="button" data-close-terms>OK</button>
+      </div>
+    </div>
+  </dialog>
 
   <footer><span>© <span id="year"></span> YNotFramez Studios. All rights reserved.</span><span><a href="/my-booking">Find an existing booking</a> · Questions? Contact the studio team</span></footer>
 </body>

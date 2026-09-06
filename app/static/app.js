@@ -511,6 +511,19 @@ document.querySelector("#payment-button").addEventListener("click", prepareCheck
 document.querySelector("#new-booking").addEventListener("click", () => window.location.reload());
 document.querySelector("#print-booking").addEventListener("click", () => window.print());
 
+const termsDialog = document.querySelector("#terms-dialog");
+const termsOpen = document.querySelector("#terms-open");
+termsOpen.addEventListener("click", (event) => {
+  if (typeof termsDialog.showModal !== "function") return;
+  event.preventDefault();
+  termsDialog.showModal();
+  termsDialog.querySelector(".terms-close").focus();
+});
+termsDialog.querySelectorAll("[data-close-terms]").forEach((button) => {
+  button.addEventListener("click", () => termsDialog.close());
+});
+termsDialog.addEventListener("close", () => termsOpen.focus());
+
 const today = new Date();
 const localToday = new Date(today.getTime() - today.getTimezoneOffset() * 60000).toISOString().split("T")[0];
 form.elements.booking_date.min = localToday;

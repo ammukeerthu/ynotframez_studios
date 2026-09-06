@@ -3,7 +3,7 @@ from zoneinfo import ZoneInfo
 
 from sqlalchemy.orm import Session
 
-from app.core.booking_rules import MINIMUM_BOOKING_DURATION_HOURS
+from app.core.booking_rules import CURRENT_TERMS_VERSION, MINIMUM_BOOKING_DURATION_HOURS
 from app.core.config import settings
 from app.models.booking import Booking, BookingState, PaymentMode
 from app.schemas.booking import (
@@ -354,7 +354,7 @@ class BookingApplicationService:
             customer_name=request.customer_name.strip(),
             customer_email=str(request.customer_email),
             purpose=selected_purpose,
-            terms_accepted="yes",
+            terms_accepted=CURRENT_TERMS_VERSION,
             payment_mode=PaymentMode(request.payment_mode),
         )
         self.db.add(booking)

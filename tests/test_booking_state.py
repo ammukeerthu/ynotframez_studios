@@ -90,6 +90,7 @@ class BookingStateMachineTest(unittest.TestCase):
 
         self.assertEqual(booking.state, BookingState.PAYMENT_PENDING)
         self.assertEqual(booking.payment_mode, PaymentMode.PAY_NOW)
+        self.assertEqual(booking.terms_accepted, "v1")
         self.assertIsNotNone(booking.payment_link)
         self.assertIn("Payment link:", response)
         self.assertNotIn("Choose payment mode", response)

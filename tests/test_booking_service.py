@@ -150,6 +150,7 @@ class BookingApplicationServiceTest(unittest.TestCase):
         self.assertEqual(payment.status.value, "pending")
         self.assertEqual(payment.amount, 2000)
         self.assertEqual(payment.razorpay_order_id, "order_stub_1")
+        self.assertEqual(self.db.get(Booking, result.id).terms_accepted, "v1")
 
     def test_checkout_order_failure_stays_pending_and_retryable(self) -> None:
         self.service.razorpay.create_order = MagicMock(side_effect=OSError("provider unavailable"))

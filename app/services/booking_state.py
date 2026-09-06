@@ -3,7 +3,7 @@ from datetime import date, datetime, time
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.core.booking_rules import MINIMUM_BOOKING_DURATION_HOURS
+from app.core.booking_rules import CURRENT_TERMS_VERSION, MINIMUM_BOOKING_DURATION_HOURS
 from app.models.booking import Booking, BookingState
 from app.schemas.booking import AvailabilityRequest
 from app.services.booking_service import BookingApplicationService
@@ -169,7 +169,7 @@ class BookingStateMachine:
         if text.lower() != "accept":
             return "Please reply ACCEPT to confirm that you accept the studio terms and rules."
 
-        booking.terms_accepted = "yes"
+        booking.terms_accepted = CURRENT_TERMS_VERSION
         return self._finalize_online_booking(booking)
 
     def _handle_payment_mode(self, booking: Booking, text: str) -> str:
