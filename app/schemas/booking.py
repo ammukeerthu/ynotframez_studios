@@ -37,6 +37,8 @@ class SpaceResponse(BaseModel):
     equipment: tuple[str, ...]
     amenities: tuple[str, ...]
     cover_image: str
+    hero_image: str
+    gallery_images: tuple[str, ...]
     opening_time: str
     closing_time: str
     min_duration_hours: float

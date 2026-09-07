@@ -6,10 +6,10 @@
   <meta name="description" content="Book a photography studio at YNotFramez Studios.">
   <title>Book a Studio | YNotFramez Studios</title>
   <link rel="icon" type="image/svg+xml" href="/static/brand/ynotframez-y.svg">
-  <link rel="stylesheet" href="/static/styles.css">
+  <link rel="stylesheet" href="/static/styles.css?v=20260908-3">
   <script src="https://checkout.razorpay.com/v1/checkout.js" defer></script>
   <script src="/static/razorpay_checkout.js" defer></script>
-  <script src="/static/app.js" defer></script>
+  <script src="/static/app.js?v=20260908-3" defer></script>
 </head>
 <body>
   <header class="site-header">
@@ -34,11 +34,11 @@
 
       <div class="trust-note">
         <span class="trust-icon">✓</span>
-        <p><b>Instant reservation</b><br>Availability is checked before you confirm.</p>
+        <p><b>Live availability</b><br>Your time is reserved after payment is verified.</p>
       </div>
       <div id="live-summary" class="live-summary">
         <p>YOUR SELECTION</p>
-        <dl><div><dt>Studio</dt><dd data-summary="space">Not selected</dd></div><div><dt>Date</dt><dd data-summary="date">—</dd></div><div><dt>Time</dt><dd data-summary="time">—</dd></div><div><dt>Estimate</dt><dd data-summary="price">₹0</dd></div></dl>
+        <dl><div><dt>Studio</dt><dd data-summary="space">Not selected</dd></div><div><dt>Date</dt><dd data-summary="date">Not selected</dd></div><div><dt>Time</dt><dd data-summary="time">Not selected</dd></div><div><dt>Estimate</dt><dd data-summary="price">₹0</dd></div></dl>
       </div>
     </aside>
 
@@ -63,7 +63,7 @@
         <section class="form-step" data-step="2" hidden>
           <div class="step-heading">
             <div><p class="step-kicker">STEP 2 OF 4</p><h2>When are you creating?</h2></div>
-            <p>Studio hours: 9 AM–8 PM</p>
+            <p>Studio hours: 9 AM to 8 PM</p>
           </div>
           <label class="field date-field"><span>Date</span><input id="booking-date" name="booking_date" type="date" required></label>
           <input id="start-time" name="start_time" type="hidden">
@@ -213,7 +213,6 @@
           </ol>
         </section>
 
-        <p class="terms-legal-note"><strong>Important:</strong> These terms are intended as a studio operating policy. For legal enforceability and jurisdiction-specific requirements, consider having the final document reviewed by a qualified legal professional.</p>
       </div>
       <div class="terms-dialog-actions">
         <a href="/static/legal/ynotframez-studio-booking-terms.pdf" target="_blank" rel="noopener">Open original PDF</a>

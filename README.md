@@ -351,6 +351,14 @@ Never commit `.env` or `google-service-account.json`. If a service-account key w
 
 The repository includes `render.yaml` for a Render Free web service in Singapore. Deployed data is stored in Neon PostgreSQL because Render Free's local filesystem is ephemeral and would discard a SQLite database whenever the service sleeps, restarts, or redeploys.
 
+Public online booking has a production-safe maintenance switch:
+
+```env
+PUBLIC_BOOKING_ENABLED="false"
+```
+
+When disabled, `/book` shows the branded maintenance page and direct public booking creation returns HTTP 503. Studio pages, the dashboard, existing-booking lookup, payment verification, webhooks, and administrative booking tools remain available. Local `.env` may use `true` for testing. Change the Render value to `true` only when the public payment and booking flow is ready to launch.
+
 This setup has no required hosting charge within the providers' free allowances, but it is a testing environment rather than a production SLA. Render Free sleeps after 15 minutes without inbound traffic, so the first visit after an idle period can take about a minute. Neon Free suspends idle compute and wakes it automatically when the app reconnects.
 
 ### 1. Create the free Neon database

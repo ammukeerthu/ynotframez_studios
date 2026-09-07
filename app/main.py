@@ -16,7 +16,12 @@ apply_schema_compatibility_updates()
 with SessionLocal() as seed_session:
     seed_studio_settings(seed_session)
 
-app = FastAPI(title=settings.app_name)
+app = FastAPI(
+    title=settings.app_name,
+    docs_url=None,
+    redoc_url=None,
+    openapi_url=None,
+)
 app.include_router(admin_router)
 app.include_router(bookings_router)
 app.include_router(whatsapp_router)
@@ -43,7 +48,8 @@ def studio_detail_page(slug: str) -> FileResponse:
 
 @app.get("/book", include_in_schema=False)
 def booking_page() -> FileResponse:
-    return FileResponse(web_directory / "index.html")
+    page = "index.html" if settings.public_booking_enabled else "maintenance.html"
+    return FileResponse(web_directory / page)
 
 
 @app.get("/admin", include_in_schema=False)

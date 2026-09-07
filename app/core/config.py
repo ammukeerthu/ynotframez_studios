@@ -5,6 +5,7 @@ class Settings(BaseSettings):
     app_name: str = "YNotFramez Studios Booking"
     database_url: str = "sqlite:///./studio_bookings.db"
     studio_email: str = "studio@example.com"
+    public_booking_enabled: bool = False
     email_mode: str = "console"
     email_from_name: str = "YNotFramez Studios"
     email_reply_to: str = ""

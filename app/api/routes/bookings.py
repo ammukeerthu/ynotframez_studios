@@ -30,6 +30,14 @@ from app.services.spaces import get_space_by_id, get_space_by_slug, list_spaces
 router = APIRouter(prefix="/api", tags=["Web bookings"])
 
 
+def _require_public_booking_enabled() -> None:
+    if not settings.public_booking_enabled:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Online booking is temporarily unavailable. Please contact the studio team.",
+        )
+
+
 def _webhook_booking(payload: dict, db: Session) -> Booking | None:
     event_payload = payload.get("payload", {})
     payment_link = event_payload.get("payment_link", {}).get("entity", {})
@@ -150,6 +158,7 @@ def create_booking(
     payload: WebBookingCreate,
     db: Session = Depends(get_db),
 ) -> BookingResponse:
+    _require_public_booking_enabled()
     try:
         return BookingApplicationService(db).create_booking(payload)
     except BookingUnavailableError as error:

@@ -30,7 +30,7 @@ class EmailServiceTest(unittest.TestCase):
         self.assertEqual(message["To"], "customer@example.com")
         self.assertEqual(message["Subject"], "Booking confirmation for Email Customer")
         self.assertIn("Cube", plain)
-        self.assertIn("2:30 PM – 4:00 PM", plain)
+        self.assertIn("2:30 PM to 4:00 PM", plain)
         self.assertIn("https://payments.example/booking-42", plain)
         self.assertNotIn("Payment:", plain)
         self.assertNotIn(">Payment<", html)

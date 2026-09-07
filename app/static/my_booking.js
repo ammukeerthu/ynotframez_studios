@@ -66,7 +66,7 @@ function showBooking(booking) {
   paymentStatus.className = booking.payment_status;
   document.querySelector("#result-space").textContent = booking.space_name;
   document.querySelector("#result-date").textContent = formatDate(booking.booking_date);
-  document.querySelector("#result-time").textContent = `${displayTime(booking.start_time)}–${displayTime(booking.end_time)}`;
+  document.querySelector("#result-time").textContent = `${displayTime(booking.start_time)} to ${displayTime(booking.end_time)}`;
   document.querySelector("#result-duration").textContent = `${booking.duration_hours} hour${booking.duration_hours === 1 ? "" : "s"}`;
   document.querySelector("#result-total").textContent = currency.format(booking.total_amount);
   document.querySelector("#result-payment-mode").textContent = paymentMethodLabel(booking.payment_method);
@@ -94,7 +94,7 @@ function showBooking(booking) {
       `UID:${booking.reference}@ynotframez`,
       `DTSTART;TZID=Asia/Kolkata:${booking.booking_date.replaceAll("-", "")}T${booking.start_time.replace(":", "")}00`,
       `DTEND;TZID=Asia/Kolkata:${booking.booking_date.replaceAll("-", "")}T${booking.end_time.replace(":", "")}00`,
-      `SUMMARY:${booking.space_name} — ${booking.reference}`,
+      `SUMMARY:${booking.space_name}: ${booking.reference}`,
       "END:VEVENT", "END:VCALENDAR",
     ].join("\r\n");
     calendarLink.href = `data:text/calendar;charset=utf-8,${encodeURIComponent(calendar)}`;

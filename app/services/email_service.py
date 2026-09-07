@@ -168,7 +168,7 @@ class EmailService:
             "space_name": space.name if space else booking.space_id or "Studio space",
             "date": start.strftime("%A, %d %B %Y") if start else booking.booking_date or "To be confirmed",
             "time": (
-                f"{start.strftime('%I:%M %p').lstrip('0')} – {end.strftime('%I:%M %p').lstrip('0')}"
+                f"{start.strftime('%I:%M %p').lstrip('0')} to {end.strftime('%I:%M %p').lstrip('0')}"
                 if start and end else booking.start_time or "To be confirmed"
             ),
             "duration": f"{duration:g} hour{'s' if duration != 1 else ''}",

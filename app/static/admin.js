@@ -215,7 +215,7 @@ function alertCard(alert) {
     <div class="alert-card-kicker"><b>${safe(label)}</b><span>${safe(alert.reference)}</span></div>
     <h3>${safe(alert.title)}</h3>
     <p>${safe(alert.message)}</p>
-    <footer><small>${safe(formatDate(alert.booking_date))} · ${safe(displayTime(alert.start_time))}–${safe(displayTime(alert.end_time))}</small><div class="alert-card-controls"><button type="button" data-view-alert-booking="${alert.booking_id}" data-alert-space="${safeAttr(alert.space_id)}" data-notification-id="${alert.notification_id || ""}">View</button>${seenButton}</div></footer>
+    <footer><small>${safe(formatDate(alert.booking_date))} · ${safe(displayTime(alert.start_time))} to ${safe(displayTime(alert.end_time))}</small><div class="alert-card-controls"><button type="button" data-view-alert-booking="${alert.booking_id}" data-alert-space="${safeAttr(alert.space_id)}" data-notification-id="${alert.notification_id || ""}">View</button>${seenButton}</div></footer>
   </article>`;
 }
 
@@ -301,10 +301,10 @@ function bookingFilterQuery() {
 
 function bookingRow(booking) {
   const date = booking.booking_date ? formatDate(booking.booking_date) : "Not scheduled";
-  const time = booking.start_time ? `${displayTime(booking.start_time)}–${displayTime(booking.end_time)}` : "—";
+  const time = booking.start_time ? `${displayTime(booking.start_time)} to ${displayTime(booking.end_time)}` : "Not available";
   const action = ["confirmed", "cancelled"].includes(booking.status)
     ? `<button type="button" class="manage-booking" data-booking-id="${booking.id}">Manage</button>`
-    : "—";
+    : "Not available";
   return `<tr>
     <td><b>${safe(booking.reference)}</b><small>${safe(booking.payment_mode?.replaceAll("_", " ") || "No payment mode")}</small></td>
     <td><b>${safe(booking.customer_name || "Incomplete booking")}</b><small>${safe(booking.customer_email || booking.phone_number)}</small></td>
@@ -323,7 +323,7 @@ function formatDate(value) {
 }
 
 function displayTime(value) {
-  if (!value) return "—";
+  if (!value) return "Not available";
   const [hours, minutes] = value.split(":").map(Number);
   return `${hours % 12 || 12}:${String(minutes).padStart(2, "0")} ${hours >= 12 ? "PM" : "AM"}`;
 }
@@ -393,9 +393,9 @@ function renderStudioSettings() {
         <label class="span-2"><span>Dimensions / capacity note</span><input name="dimensions" value="${safeAttr(studio.dimensions)}" minlength="2" maxlength="180" required></label>
         <label class="full"><span>Brochure / details</span><textarea name="brochure" minlength="10" maxlength="3000" required>${safe(studio.brochure)}</textarea></label>
         <label class="full"><span>Studio rules</span><textarea name="rules" minlength="10" maxlength="3000" required>${safe(studio.rules)}</textarea></label>
-        <label class="span-2"><span>Equipment — one item per line</span><textarea name="equipment" maxlength="6050">${safe(studio.equipment.join("\n"))}</textarea></label>
-        <label class="span-2"><span>Amenities — one item per line</span><textarea name="amenities" maxlength="6050">${safe(studio.amenities.join("\n"))}</textarea></label>
-        <label class="full"><span>Purpose options — one dropdown option per line</span><textarea name="booking_purposes" maxlength="6050" required>${safe(studio.booking_purposes.join("\n"))}</textarea></label>
+        <label class="span-2"><span>Equipment: one item per line</span><textarea name="equipment" maxlength="6050">${safe(studio.equipment.join("\n"))}</textarea></label>
+        <label class="span-2"><span>Amenities: one item per line</span><textarea name="amenities" maxlength="6050">${safe(studio.amenities.join("\n"))}</textarea></label>
+        <label class="full"><span>Purpose options: one dropdown option per line</span><textarea name="booking_purposes" maxlength="6050" required>${safe(studio.booking_purposes.join("\n"))}</textarea></label>
         <label class="full"><span>Cover image URL</span><input name="cover_image" type="url" value="${safeAttr(studio.cover_image)}" maxlength="1000" required></label>
         <label><span>Opening time</span><select name="opening_time" required>${halfHourOptions(studio.opening_time, 0, 47)}</select></label>
         <label><span>Closing time</span><select name="closing_time" required>${halfHourOptions(studio.closing_time, 1, 48)}</select></label>
@@ -599,7 +599,7 @@ function availabilitySlot(slot) {
     disabled = "disabled";
   }
   const actionLabel = slot.status === "available" ? "Click to block" : detail;
-  const title = `${displayTime(slot.start_time)}–${displayTime(slot.end_time)} · ${detail}`;
+  const title = `${displayTime(slot.start_time)} to ${displayTime(slot.end_time)} · ${detail}`;
   return `<button type="button" class="admin-slot-button ${safeAttr(slot.status)}" ${action} ${disabled} title="${safeAttr(title)}">
     <span>${safe(displayTime(slot.start_time))}</span>
     <small>${safe(slot.status.replaceAll("_", " "))}</small>

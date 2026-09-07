@@ -18,6 +18,9 @@ services:
         value: ynotframezstudios@gmail.com
       - key: STUDIO_TIMEZONE
         value: Asia/Kolkata
+      # Production-safe gate. Change to true only when public online booking launches.
+      - key: PUBLIC_BOOKING_ENABLED
+        value: false
 
       - key: EMAIL_MODE
         value: smtp

@@ -13,7 +13,7 @@
 * { box-sizing: border-box; }
 [hidden] { display: none !important; }
 html { scroll-behavior: smooth; }
-body { margin: 0; color: var(--ink); background: var(--paper); font-family: Inter, "Segoe UI", Arial, sans-serif; }
+body { margin: 0; overflow-x: hidden; color: var(--ink); background: var(--paper); font-family: Inter, "Segoe UI", Arial, sans-serif; }
 button, input, select, textarea { font: inherit; }
 button, a { -webkit-tap-highlight-color: transparent; }
 footer a { color:inherit; text-underline-offset:3px; }
@@ -66,7 +66,7 @@ footer a { color:inherit; text-underline-offset:3px; }
 .space-card input { position: absolute; opacity: 0; }
 .space-visual { height: 105px; margin: -26px -26px 24px; overflow: hidden; background: #ddd7cb; }
 .space-card.selected .space-visual { margin: -25px -25px 24px; }
-.space-visual img { width: 100%; height: 100%; object-fit: cover; filter: saturate(.75); transition: transform .5s, filter .3s; }
+.space-visual img { width: 100%; height: 100%; object-fit: cover; filter: saturate(.9); transition: transform .5s, filter .3s; }
 .space-card:hover .space-visual img { transform: scale(1.025); filter: saturate(1); }
 .space-visual span { display: block; background: var(--ink); opacity: .9; }
 .space-visual span:nth-child(1) { width: 24%; height: 45%; }.space-visual span:nth-child(2) { width: 38%; height: 80%; background: var(--accent); }.space-visual span:nth-child(3) { width: 28%; height: 60%; }
@@ -139,7 +139,7 @@ body:has(.terms-dialog[open]) { overflow: hidden; }
 .payment-options label { display: flex; align-items: center; gap: 14px; padding: 17px 18px; border: 1px solid var(--line); margin-top: -1px; cursor: pointer; }.payment-options label:has(input:checked) { position: relative; border-color: var(--ink); background: #faf8f2; }
 .payment-options input { accent-color: var(--accent); }.payment-options span { flex: 1; }.payment-options b, .payment-options small { display: block; }.payment-options b { font: 400 14px Georgia, serif; }.payment-options small { margin-top: 3px; color: var(--muted); font-size: 10px; }.payment-options em { font-style: normal; color: var(--muted); }
 
-.confirmation { padding-top: 25px; text-align: center; }.success-mark { display: grid; place-items: center; width: 70px; height: 70px; margin: 0 auto 27px; border-radius: 50%; color: white; background: var(--green); font-size: 27px; }.confirmation .step-kicker { margin-bottom: 13px; }.confirmation > p:not(.step-kicker) { max-width: 520px; margin: 20px auto; color: var(--muted); line-height: 1.6; }.confirmation-details { max-width: 600px; margin: 30px auto; padding: 25px; background: #f3f0e8; display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; text-align: left; }.confirmation-details small, .confirmation-details strong { display: block; }.confirmation-details small { color: var(--muted); font-size: 8px; letter-spacing: .14em; margin-bottom: 6px; }.confirmation-details strong { font: 400 14px Georgia, serif; }.confirmation .button { margin: 5px; }
+.confirmation { padding-top: 25px; text-align: center; }.success-mark { display: grid; place-items: center; width: 70px; height: 70px; margin: 0 auto 27px; border-radius: 50%; color: white; background: var(--green); font-size: 27px; }.confirmation .step-kicker { margin-bottom: 13px; }.confirmation > p:not(.step-kicker) { max-width: 520px; margin: 20px auto; color: var(--muted); line-height: 1.6; text-align:center; }.confirmation #confirmation-copy { white-space:pre-line; }.confirmation-details { max-width: 600px; margin: 30px auto; padding: 25px; background: #f3f0e8; display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; text-align: left; }.confirmation-details small, .confirmation-details strong { display: block; }.confirmation-details small { color: var(--muted); font-size: 8px; letter-spacing: .14em; margin-bottom: 6px; }.confirmation-details strong { font: 400 14px Georgia, serif; }.confirmation .button { margin: 5px; }
 .success-mark.pending { color:var(--accent); background:#f3e8df; }
 .arrival-note { max-width: 600px; margin: 30px auto; padding: 20px; border-left: 3px solid var(--accent); background: #f3f0e8; text-align: left; }.arrival-note b { font: 18px Georgia, serif; }.arrival-note p { margin: 7px 0 0; color: var(--muted); font-size: 11px; line-height: 1.6; }
 
@@ -198,4 +198,40 @@ footer {
   .terms-dialog-body li { padding-left: 40px; font-size: 13px; }
   .terms-dialog-actions { grid-template-columns: 1fr auto; gap: 12px; padding: 14px 20px; }
   .terms-dialog-actions > span { display: none; }
+}
+
+/* Keep supporting copy comfortably readable across the booking flow. */
+.space-card p,
+.rules-card p,
+.payment-options small,
+.arrival-note p {
+  font-size:13px;
+}
+
+.terms {
+  font-size:12px;
+}
+
+@media (max-width:620px) {
+   .intro-panel {
+    padding:32px 22px 30px;
+  }
+
+  .intro-panel h1 {
+    font-size:38px;
+  }
+
+  .intro-copy {
+    margin:18px 0 28px;
+    line-height:1.6;
+  }
+
+  .progress {
+    gap:10px;
+  }
+
+  .live-summary {
+    margin-top:22px;
+    padding-top:18px;
+  }
 }

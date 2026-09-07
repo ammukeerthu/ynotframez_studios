@@ -185,7 +185,7 @@ async function loadDaySlots() {
     const result = await request(`/api/availability/day?${query}`);
     state.slots = result.slots;
     document.querySelector("#operating-hours").textContent =
-      `${displayTime(result.opening_time)} – ${displayTime(result.closing_time)} · Asia/Kolkata`;
+      `${displayTime(result.opening_time)} to ${displayTime(result.closing_time)} · Asia/Kolkata`;
     renderSlots();
   } catch (error) {
     state.slots = [];
@@ -268,7 +268,7 @@ function syncSelectedSlots() {
   const note = document.querySelector("#slot-note");
   note.className = "";
   note.textContent = state.selectedSlots.length
-    ? `${duration} hour${duration === 1 ? "" : "s"} selected. This studio allows ${state.selectedSpace?.min_duration_hours || 2}–${state.selectedSpace?.max_duration_hours || 12} hours.`
+    ? `${duration} hour${duration === 1 ? "" : "s"} selected. This studio allows ${state.selectedSpace?.min_duration_hours || 2} to ${state.selectedSpace?.max_duration_hours || 12} hours.`
     : `Select a start time. The minimum ${state.selectedSpace?.min_duration_hours || 2}-hour window will be highlighted automatically.`;
   updatePrice();
   updateLiveSummary();
@@ -310,10 +310,10 @@ function updateLiveSummary() {
   const first = state.selectedSlots[0];
   const last = state.selectedSlots[state.selectedSlots.length - 1];
   document.querySelector('[data-summary="space"]').textContent = state.selectedSpace?.name || "Not selected";
-  document.querySelector('[data-summary="date"]').textContent = formatDate(form.elements.booking_date.value) || "—";
+  document.querySelector('[data-summary="date"]').textContent = formatDate(form.elements.booking_date.value) || "Not selected";
   document.querySelector('[data-summary="time"]').textContent = first && last
-    ? `${displayTime(first.start_time)} – ${displayTime(last.end_time)}`
-    : "—";
+    ? `${displayTime(first.start_time)} to ${displayTime(last.end_time)}`
+    : "Not selected";
   document.querySelector('[data-summary="price"]').textContent = currency.format(
     (state.selectedSpace?.hourly_rate || 0) * duration
   );
@@ -332,7 +332,7 @@ function renderSummary() {
   document.querySelector("#booking-summary").innerHTML = `
     <div><small>STUDIO</small><strong>${escapeText(state.selectedSpace.name)}</strong></div>
     <div><small>DATE</small><strong>${escapeText(formatDate(data.get("booking_date")))}</strong></div>
-    <div><small>TIME</small><strong>${escapeText(`${displayTime(first.start_time)} – ${displayTime(last.end_time)}`)}</strong></div>
+    <div><small>TIME</small><strong>${escapeText(`${displayTime(first.start_time)} to ${displayTime(last.end_time)}`)}</strong></div>
     <div><small>TOTAL</small><strong>${escapeText(currency.format(state.selectedSpace.hourly_rate * Number(data.get("duration_hours"))))}</strong></div>
   `;
 }
@@ -473,13 +473,13 @@ function showConfirmation(booking, notice = "", paymentProcessing = false) {
     ? "Your booking has been confirmed."
     : paymentProcessing ? "Confirming your payment…" : "Complete payment to reserve.";
   document.querySelector("#confirmation-copy").textContent = notice || (confirmed
-    ? `Your confirmation has been emailed to ${booking.customer_email}. Your studio time is now reserved.`
+    ? `Your confirmation has been emailed to ${booking.customer_email}.\nYour studio time is now reserved.`
     : checkoutReady
       ? "Your studio time is temporarily held for two hours. Complete Razorpay Checkout below to confirm it."
       : `Online checkout could not be prepared. Your booking is not confirmed; retry shortly or contact the studio team with ${booking.reference}.`);
   document.querySelector("#confirmation-details").innerHTML = `
     <div><small>REFERENCE</small><strong>${escapeText(booking.reference)}</strong></div>
-    <div><small>DATE & TIME</small><strong>${escapeText(formatDate(booking.booking_date))} · ${escapeText(displayTime(booking.start_time))}–${escapeText(displayTime(booking.end_time))}</strong></div>
+    <div><small>DATE & TIME</small><strong>${escapeText(formatDate(booking.booking_date))} · ${escapeText(displayTime(booking.start_time))} to ${escapeText(displayTime(booking.end_time))}</strong></div>
     <div><small>AMOUNT</small><strong>${escapeText(currency.format(booking.total_amount))}</strong></div>
   `;
   const paymentButton = document.querySelector("#payment-button");
@@ -490,7 +490,7 @@ function showConfirmation(booking, notice = "", paymentProcessing = false) {
     "BEGIN:VEVENT", `UID:${booking.reference}@ynotframez`,
     `DTSTART;TZID=Asia/Kolkata:${booking.booking_date.replaceAll("-", "")}T${booking.start_time.replace(":", "")}00`,
     `DTEND;TZID=Asia/Kolkata:${booking.booking_date.replaceAll("-", "")}T${booking.end_time.replace(":", "")}00`,
-    `SUMMARY:${booking.space_name} — ${booking.reference}`,
+    `SUMMARY:${booking.space_name}: ${booking.reference}`,
     `DESCRIPTION:Studio booking for ${booking.customer_name}`,
     "END:VEVENT", "END:VCALENDAR",
   ].join("\r\n");
@@ -498,7 +498,7 @@ function showConfirmation(booking, notice = "", paymentProcessing = false) {
   calendarLink.hidden = !confirmed;
   calendarLink.href = `data:text/calendar;charset=utf-8,${encodeURIComponent(calendarContent)}`;
   calendarLink.download = `${booking.reference}.ics`;
-  const shareText = `My YNotFramez Studios booking ${booking.reference} is confirmed: ${booking.space_name}, ${formatDate(booking.booking_date)}, ${displayTime(booking.start_time)}–${displayTime(booking.end_time)}.`;
+  const shareText = `My YNotFramez Studios booking ${booking.reference} is confirmed: ${booking.space_name}, ${formatDate(booking.booking_date)}, ${displayTime(booking.start_time)} to ${displayTime(booking.end_time)}.`;
   const whatsappShare = document.querySelector("#whatsapp-share");
   whatsappShare.hidden = !confirmed;
   whatsappShare.href = `https://wa.me/?text=${encodeURIComponent(shareText)}`;

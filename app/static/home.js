@@ -1,5 +1,4 @@
 const spaceList = document.querySelector("#marketing-space-list");
-const heroImage = document.querySelector("#hero-image");
 
 const money = new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 });
 
@@ -14,12 +13,12 @@ function safeAttr(value) {
 }
 
 function studioCard(space, index) {
-  const amenities = space.amenities.slice(0, 5).map((item) => `<span>${safe(item)}</span>`).join("");
+  const firstFiveAmenities = Array.isArray(space.amenities) ? space.amenities.slice(0, 5) : [];
+  const amenities = firstFiveAmenities.map((item) => `<span>${safe(item)}</span>`).join("");
   return `
     <article class="studio-story ${index % 2 ? "offset" : ""}">
       <a class="studio-image" href="/studios/${encodeURIComponent(space.slug)}">
         <img src="${safeAttr(space.cover_image)}" alt="${safeAttr(space.name)}" loading="lazy" decoding="async">
-        <span class="image-tag">${index === 0 ? "INTIMATE" : "EXPANSIVE"}</span>
       </a>
       <div class="studio-meta">
         <div><p class="overline">SPACE 0${index + 1}</p><h3>${safe(space.name)}</h3><p>${safe(space.short_description)}</p></div>
@@ -37,7 +36,6 @@ fetch("/api/spaces")
     return response.json();
   })
   .then((spaces) => {
-    if (spaces[1]?.cover_image || spaces[0]?.cover_image) heroImage.src = spaces[1]?.cover_image || spaces[0].cover_image;
     spaceList.innerHTML = spaces.map(studioCard).join("");
   })
   .catch(() => {

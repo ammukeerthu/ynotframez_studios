@@ -34,6 +34,8 @@ class StudioSpace:
     equipment: tuple[str, ...]
     amenities: tuple[str, ...]
     cover_image: str
+    hero_image: str
+    gallery_images: tuple[str, ...]
     opening_time: str = "09:00"
     closing_time: str = "20:00"
     min_duration_hours: float = MINIMUM_BOOKING_DURATION_HOURS
@@ -81,10 +83,9 @@ SPACES = {
             "Wi-Fi",
             "Signature Mural Wall",
         ),
-        cover_image=(
-            "https://images.unsplash.com/photo-1615458509633-f15b61bdacb8"
-            "?auto=format&fit=crop&w=1400&q=85"
-        ),
+        cover_image="/static/studio/cube-lifestyle.jpeg",
+        hero_image="/static/studio/cube-wide.jpeg",
+        gallery_images=("/static/studio/cube-lifestyle.jpeg",),
         max_duration_hours=10.0,
         booking_purposes=(
             "Portrait Shoot",
@@ -143,9 +144,13 @@ SPACES = {
             "Marshall Tufton Bluetooth Speaker",
             "Signature Mural Wall",
         ),
-        cover_image=(
-            "https://images.unsplash.com/photo-1664817550969-5e76adc4a3fe"
-            "?auto=format&fit=crop&w=1400&q=85"
+        cover_image="/static/studio/arena-lifestyle.jpeg",
+        hero_image="/static/studio/arena-lifestyle.jpeg",
+        gallery_images=(
+            "/static/studio/arena-cyclorama.jpeg",
+            "/static/studio/arena-mural.jpeg",
+            "/static/studio/arena-backdrop.jpeg",
+            "/static/studio/arena-speaker.jpeg",
         ),
         max_duration_hours=10.0,
         booking_purposes=(
@@ -177,6 +182,16 @@ LEGACY_SPACE_SLUGS = {
     "premium-space": "arena",
     "premium-studio": "arena",
 }
+LEGACY_COVER_IMAGES = {
+    "standard_small": (
+        "https://images.unsplash.com/photo-1615458509633-f15b61bdacb8"
+        "?auto=format&fit=crop&w=1400&q=85"
+    ),
+    "premium_large": (
+        "https://images.unsplash.com/photo-1664817550969-5e76adc4a3fe"
+        "?auto=format&fit=crop&w=1400&q=85"
+    ),
+}
 
 
 def seed_studio_settings(db: Session, commit: bool = True) -> None:
@@ -194,6 +209,8 @@ def seed_studio_settings(db: Session, commit: bool = True) -> None:
                 row.name = space.name
             if row.slug in LEGACY_SPACE_SLUGS:
                 row.slug = LEGACY_SPACE_SLUGS[row.slug]
+            if row.cover_image == LEGACY_COVER_IMAGES.get(space.id):
+                row.cover_image = space.cover_image
             for legacy_name in legacy_names:
                 if row.brochure.startswith(f"{legacy_name}:"):
                     row.brochure = row.brochure.replace(legacy_name, space.name, 1)
@@ -337,6 +354,7 @@ def get_space_by_slug(slug: str, db: Session | None = None) -> StudioSpace | Non
 
 
 def _space_from_row(row: StudioSetting, db: Session) -> StudioSpace:
+    default_space = next((space for space in SPACES.values() if space.id == row.id), None)
     purposes = tuple(
         db.scalars(
             select(StudioPurposeOption.label)
@@ -357,6 +375,8 @@ def _space_from_row(row: StudioSetting, db: Session) -> StudioSpace:
         equipment=_json_items(row.equipment_json),
         amenities=_json_items(row.amenities_json),
         cover_image=row.cover_image,
+        hero_image=default_space.hero_image if default_space else row.cover_image,
+        gallery_images=default_space.gallery_images if default_space else (),
         opening_time=row.opening_time,
         closing_time=row.closing_time,
         min_duration_hours=row.min_duration_hours,

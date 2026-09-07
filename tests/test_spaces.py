@@ -12,7 +12,8 @@ class StudioSpaceTest(unittest.TestCase):
         self.assertEqual(space.name, "Cube")
         self.assertGreaterEqual(len(space.equipment) + len(space.amenities), 4)
         self.assertIn("Portrait Shoot", space.booking_purposes)
-        self.assertTrue(space.cover_image.startswith("https://images.unsplash.com/"))
+        self.assertTrue(space.cover_image.startswith("/static/studio/"))
+        self.assertTrue(space.hero_image.startswith("/static/studio/"))
 
     def test_unknown_slug_returns_none(self) -> None:
         self.assertIsNone(get_space_by_slug("not-a-studio"))

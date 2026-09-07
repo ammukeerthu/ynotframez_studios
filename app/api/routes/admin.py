@@ -761,7 +761,7 @@ def admin_create_availability_block(
     if requested_start < business_start or requested_end > business_end:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Blocks must be within studio hours ({business_start:%H:%M}–{business_end:%H:%M}).",
+            detail=f"Blocks must be within studio hours ({business_start:%H:%M} to {business_end:%H:%M}).",
         )
     if overlapping_booking(
         db,
