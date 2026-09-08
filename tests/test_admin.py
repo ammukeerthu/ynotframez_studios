@@ -20,6 +20,7 @@ from app.api.routes.admin import (
     admin_change_password,
     admin_create_availability_block,
     admin_delete_availability_block,
+    admin_delete_availability_block_slot,
     admin_export_bookings,
     admin_login,
     admin_overview,
@@ -33,6 +34,7 @@ from app.api.routes.admin import (
 from app.core.config import settings
 from app.core.database import Base
 from app.models.admin import AdminUser
+from app.models.availability import AvailabilityBlock
 from app.models.booking import Booking, BookingState
 from app.models.notification import AdminNotification
 from app.schemas.admin import (
@@ -224,15 +226,46 @@ class AdminAuthenticationTest(unittest.TestCase):
                     space_id="standard_small",
                     booking_date=booking_date,
                     start_time=time(17),
-                    duration_hours=1.5,
+                    duration_hours=0.25,
                     reason="Too short",
                 )
+
+            split_response = admin_delete_availability_block_slot(created.id, time(15), db)
+            split_day = admin_availability("standard_small", booking_date, db)
+            split_statuses = {slot.start_time: slot for slot in split_day.slots}
+            remaining_blocks = list(db.scalars(select(AvailabilityBlock)))
+            self.assertEqual(split_response.status_code, 204)
+            self.assertEqual(split_statuses["14:30"].status, "blocked")
+            self.assertEqual(split_statuses["15:00"].status, "available")
+            self.assertEqual(split_statuses["15:30"].status, "blocked")
+            self.assertEqual(split_statuses["16:00"].status, "blocked")
+            self.assertEqual(len(remaining_blocks), 2)
+            self.assertEqual(
+                {(block.start_time, block.duration_hours) for block in remaining_blocks},
+                {("14:30", 0.5), ("15:30", 1.0)},
+            )
 
             response = admin_delete_availability_block(created.id, db)
             reopened = admin_availability("standard_small", booking_date, db)
             reopened_statuses = {slot.start_time: slot.status for slot in reopened.slots}
             self.assertEqual(response.status_code, 204)
             self.assertEqual(reopened_statuses["14:30"], "available")
+
+            half_hour = admin_create_availability_block(
+                AdminAvailabilityBlockCreate(
+                    space_id="standard_small",
+                    booking_date=booking_date,
+                    start_time=time(17),
+                    duration_hours=0.5,
+                    reason="Quick reset",
+                ),
+                db,
+            )
+            half_hour_response = admin_delete_availability_block_slot(half_hour.id, time(17), db)
+            half_hour_day = admin_availability("standard_small", booking_date, db)
+            half_hour_statuses = {slot.start_time: slot.status for slot in half_hour_day.slots}
+            self.assertEqual(half_hour_response.status_code, 204)
+            self.assertEqual(half_hour_statuses["17:00"], "available")
 
     def test_alerts_include_new_booking_start_and_end_handover_reminders(self) -> None:
         engine = create_engine(

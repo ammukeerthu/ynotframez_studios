@@ -806,6 +806,70 @@ def admin_create_availability_block(
 
 
 @router.delete(
+    "/availability/blocks/{block_id}/slot",
+    status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[Depends(require_admin)],
+)
+def admin_delete_availability_block_slot(
+    block_id: int,
+    start_time: time = Query(...),
+    db: Session = Depends(get_db),
+) -> Response:
+    if start_time.minute not in {0, 30} or start_time.second or start_time.microsecond:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Start time must be on the hour or half hour.",
+        )
+
+    block = db.get(AvailabilityBlock, block_id)
+    if block is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Availability block not found.")
+
+    booking_date = date.fromisoformat(block.booking_date)
+    service = BookingApplicationService(db)
+    with service.booking_creation_guard(block.space_id, booking_date):
+        block = db.get(AvailabilityBlock, block_id)
+        if block is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Availability block not found.")
+
+        block_start, block_end = interval_for(
+            booking_date,
+            time.fromisoformat(block.start_time),
+            block.duration_hours,
+        )
+        slot_start = datetime.combine(booking_date, start_time)
+        slot_end = slot_start + timedelta(minutes=30)
+        if slot_start < block_start or slot_end > block_end:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="That half-hour does not belong to this availability block.",
+            )
+
+        left_hours = (slot_start - block_start).total_seconds() / 3600
+        right_hours = (block_end - slot_end).total_seconds() / 3600
+        if left_hours == 0 and right_hours == 0:
+            db.delete(block)
+        elif left_hours == 0:
+            block.start_time = slot_end.strftime("%H:%M")
+            block.duration_hours = right_hours
+        elif right_hours == 0:
+            block.duration_hours = left_hours
+        else:
+            block.duration_hours = left_hours
+            db.add(
+                AvailabilityBlock(
+                    space_id=block.space_id,
+                    booking_date=block.booking_date,
+                    start_time=slot_end.strftime("%H:%M"),
+                    duration_hours=right_hours,
+                    reason=block.reason,
+                )
+            )
+        db.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.delete(
     "/availability/blocks/{block_id}",
     status_code=status.HTTP_204_NO_CONTENT,
     dependencies=[Depends(require_admin)],

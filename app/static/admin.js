@@ -8,6 +8,8 @@ const bookingEditForm = document.querySelector("#booking-edit-form");
 const bookingFilters = document.querySelector("#booking-filters");
 const availabilityFilters = document.querySelector("#availability-filters");
 const availabilityBlockForm = document.querySelector("#availability-block-form");
+const slotContextMenu = document.querySelector("#slot-context-menu");
+const unblockSlotAction = document.querySelector("#unblock-slot-action");
 const alertCenter = document.querySelector("#alert-center");
 const alertBell = document.querySelector("#alert-bell");
 const alertList = document.querySelector("#alert-list");
@@ -22,6 +24,8 @@ let alertsPayload = { unread_count: 0, new_bookings: [], operational: [] };
 let alertFilter = "all";
 let availabilityRequestToken = 0;
 let availabilityRequestController = null;
+let currentAvailabilityDay = null;
+let contextSlot = null;
 const dashboardMessageTimers = new WeakMap();
 const MAX_BLOCK_DURATION_HOURS = 12;
 const currency = new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 });
@@ -469,24 +473,59 @@ function setupHalfHourBlockOptions() {
   const openingIndex = timeToMinutes(studio.opening_time) / 30;
   const closingIndex = timeToMinutes(studio.closing_time) / 30;
   const previous = startSelect.value;
-  startSelect.innerHTML = halfHourOptions(previous, openingIndex, Math.max(openingIndex, closingIndex - 3));
+  const selectedDate = availabilityFilters.elements.booking_date.value;
+  const dayIsLoaded = currentAvailabilityDay
+    && currentAvailabilityDay.space_id === studio.id
+    && currentAvailabilityDay.booking_date === selectedDate;
+  const slotsByStart = new Map((dayIsLoaded ? currentAvailabilityDay.slots : []).map((slot) => [slot.start_time, slot]));
+  const values = Array.from({ length: Math.max(0, closingIndex - openingIndex) }, (_, offset) => {
+    const minutes = (openingIndex + offset) * 30;
+    return `${String(Math.floor(minutes / 60)).padStart(2, "0")}:${String(minutes % 60).padStart(2, "0")}`;
+  });
+  const firstAvailable = values.find((value) => slotsByStart.get(value)?.status === "available") || "";
+  startSelect.innerHTML = values.map((value) => {
+    const slot = slotsByStart.get(value);
+    const available = slot?.status === "available";
+    const endValue = slot?.end_time || minutesToTime(timeToMinutes(value) + 30);
+    const suffix = dayIsLoaded && !available
+      ? ` (${String(slot?.status || "unavailable").replaceAll("_", " ")})`
+      : "";
+    return `<option value="${value}"${available ? "" : " disabled"}>${displayTime(value)} - ${displayTime(endValue)}${safe(suffix)}</option>`;
+  }).join("");
+  startSelect.value = slotsByStart.get(previous)?.status === "available" ? previous : firstAvailable;
   syncBlockDurationOptions();
 }
 
 function syncBlockDurationOptions() {
   const studio = studioById(availabilityFilters.elements.space_id.value) || studioSettings[0];
   if (!studio) return;
-  const startValue = availabilityBlockForm.elements.start_time.value || studio.opening_time;
+  const startValue = availabilityBlockForm.elements.start_time.value;
   const durationSelect = availabilityBlockForm.elements.duration_hours;
-  const previousDuration = Number(durationSelect.value || 2);
-  const remainingHalfHours = (timeToMinutes(studio.closing_time) - timeToMinutes(startValue)) / 30;
-  const maximumDuration = Math.min(MAX_BLOCK_DURATION_HOURS, remainingHalfHours / 2);
-  const optionCount = Math.max(0, Math.floor((maximumDuration - 2) * 2) + 1);
+  const button = document.querySelector("#block-time-button");
+  const previousDuration = Number(durationSelect.value || 0.5);
+  const selectedDate = availabilityFilters.elements.booking_date.value;
+  const dayIsLoaded = currentAvailabilityDay
+    && currentAvailabilityDay.space_id === studio.id
+    && currentAvailabilityDay.booking_date === selectedDate;
+  const startIndex = dayIsLoaded
+    ? currentAvailabilityDay.slots.findIndex((slot) => slot.start_time === startValue)
+    : -1;
+  let contiguousHalfHours = 0;
+  if (startIndex >= 0) {
+    for (const slot of currentAvailabilityDay.slots.slice(startIndex)) {
+      if (slot.status !== "available" || contiguousHalfHours >= MAX_BLOCK_DURATION_HOURS * 2) break;
+      contiguousHalfHours += 1;
+    }
+  }
+  const maximumDuration = contiguousHalfHours / 2;
+  const optionCount = contiguousHalfHours;
   durationSelect.innerHTML = Array.from({ length: optionCount }, (_, index) => {
-    const duration = 2 + (index / 2);
-    return `<option value="${duration}">${duration} hour${duration === 1 ? "" : "s"}</option>`;
+    const duration = 0.5 + (index / 2);
+    const label = duration === 0.5 ? "30 minutes" : `${duration} hour${duration === 1 ? "" : "s"}`;
+    return `<option value="${duration}">${label}</option>`;
   }).join("");
-  durationSelect.value = String(Math.max(2, Math.min(previousDuration, maximumDuration)));
+  if (maximumDuration) durationSelect.value = String(Math.max(0.5, Math.min(previousDuration, maximumDuration)));
+  button.disabled = !startValue || !maximumDuration;
 }
 
 function setupBookingEditOptions() {
@@ -519,6 +558,10 @@ function syncBookingDurationOptions() {
 function timeToMinutes(value) {
   const [hours, minutes] = value.split(":").map(Number);
   return (hours * 60) + minutes;
+}
+
+function minutesToTime(minutes) {
+  return `${String(Math.floor(minutes / 60)).padStart(2, "0")}:${String(minutes % 60).padStart(2, "0")}`;
 }
 
 function openBookingModal(bookingId) {
@@ -576,6 +619,9 @@ async function loadAvailability() {
     booking_date: bookingDate,
   });
   const slots = document.querySelector("#availability-slots");
+  closeSlotContextMenu();
+  currentAvailabilityDay = null;
+  setupHalfHourBlockOptions();
   slots.innerHTML = '<p class="availability-empty">Loading schedule…</p>';
   slots.setAttribute("aria-busy", "true");
   try {
@@ -587,10 +633,13 @@ async function loadAvailability() {
     ) return;
     document.querySelector("#schedule-space").textContent = day.space_name;
     document.querySelector("#schedule-date").textContent = formatDate(day.booking_date);
+    currentAvailabilityDay = day;
     slots.innerHTML = day.slots.map(availabilitySlot).join("");
+    setupHalfHourBlockOptions();
   } catch (error) {
     if (error.name === "AbortError" || requestToken !== availabilityRequestToken) return;
     slots.innerHTML = `<p class="availability-empty">${safe(error.message)}</p>`;
+    setupHalfHourBlockOptions();
     if (error.status === 401) handleDashboardError(error);
   } finally {
     if (requestToken === availabilityRequestToken) {
@@ -607,7 +656,7 @@ function availabilitySlot(slot) {
   if (slot.status === "booked") detail = `${slot.booking_reference} · ${slot.customer_name || "Confirmed booking"}`;
   if (slot.status === "blocked") {
     detail = slot.reason || "Owner blocked";
-    action = `data-unblock="${slot.block_id}"`;
+    action = `data-unblock="${slot.block_id}" data-slot-start="${safeAttr(slot.start_time)}" data-slot-end="${safeAttr(slot.end_time)}" aria-haspopup="menu"`;
   }
   if (slot.status === "booked") {
     action = "";
@@ -618,7 +667,9 @@ function availabilitySlot(slot) {
     action = "";
     disabled = "disabled";
   }
-  const actionLabel = slot.status === "available" ? "Click to block" : detail;
+  const actionLabel = slot.status === "available"
+    ? "Click to block"
+    : slot.status === "blocked" ? "Right-click or tap to unblock" : detail;
   const slotLabel = `${displayTime(slot.start_time)} - ${displayTime(slot.end_time)}`;
   const title = `${slotLabel} · ${detail}`;
   return `<button type="button" class="admin-slot-button ${safeAttr(slot.status)}" ${action} ${disabled} title="${safeAttr(title)}">
@@ -626,6 +677,29 @@ function availabilitySlot(slot) {
     <small>${safe(slot.status.replaceAll("_", " "))}</small>
     <em>${safe(actionLabel)}</em>
   </button>`;
+}
+
+function closeSlotContextMenu() {
+  slotContextMenu.hidden = true;
+  contextSlot = null;
+}
+
+function openSlotContextMenu(button, clientX = null, clientY = null) {
+  contextSlot = {
+    blockId: button.dataset.unblock,
+    startTime: button.dataset.slotStart,
+    endTime: button.dataset.slotEnd,
+  };
+  document.querySelector("#slot-context-label").textContent =
+    `${displayTime(contextSlot.startTime)} - ${displayTime(contextSlot.endTime)} is blocked`;
+  slotContextMenu.hidden = false;
+  const anchor = button.getBoundingClientRect();
+  const desiredLeft = clientX ?? anchor.left;
+  const desiredTop = clientY ?? anchor.bottom + 6;
+  const menuRect = slotContextMenu.getBoundingClientRect();
+  slotContextMenu.style.left = `${Math.max(8, Math.min(desiredLeft, window.innerWidth - menuRect.width - 8))}px`;
+  slotContextMenu.style.top = `${Math.max(8, Math.min(desiredTop, window.innerHeight - menuRect.height - 8))}px`;
+  unblockSlotAction.focus();
 }
 
 loginForm.addEventListener("submit", async (event) => {
@@ -869,22 +943,22 @@ availabilityBlockForm.addEventListener("submit", async (event) => {
         booking_date: filters.get("booking_date"),
         start_time: block.get("start_time"),
         duration_hours: Number(block.get("duration_hours")),
-        reason: block.get("reason") || "Owner blocked",
+        reason: block.get("reason") || "Maintenance",
       }),
     });
     showDashboardMessage(
       "#availability-message",
       "Studio time blocked. Customer availability has been updated.",
     );
-    availabilityBlockForm.querySelector('input[name="reason"]').value = "";
+    availabilityBlockForm.elements.reason.value = "Maintenance";
     await loadAvailability();
   } catch (error) {
     showDashboardMessage("#availability-message", error.message, { autoHide: false, kind: "error" });
   } finally {
-    button.disabled = false;
+    syncBlockDurationOptions();
   }
 });
-document.querySelector("#availability-slots").addEventListener("click", async (event) => {
+document.querySelector("#availability-slots").addEventListener("click", (event) => {
   const blockButton = event.target.closest("[data-block-start]");
   if (blockButton) {
     availabilityBlockForm.elements.start_time.value = blockButton.dataset.blockStart;
@@ -894,16 +968,43 @@ document.querySelector("#availability-slots").addEventListener("click", async (e
   }
   const unblockButton = event.target.closest("[data-unblock]");
   if (!unblockButton) return;
-  unblockButton.disabled = true;
+  event.stopPropagation();
+  openSlotContextMenu(unblockButton);
+});
+document.querySelector("#availability-slots").addEventListener("contextmenu", (event) => {
+  const unblockButton = event.target.closest("[data-unblock]");
+  if (!unblockButton) return;
+  event.preventDefault();
+  event.stopPropagation();
+  openSlotContextMenu(unblockButton, event.clientX, event.clientY);
+});
+unblockSlotAction.addEventListener("click", async () => {
+  if (!contextSlot) return;
+  const selectedSlot = { ...contextSlot };
+  unblockSlotAction.disabled = true;
   try {
-    await api(`/api/admin/availability/blocks/${unblockButton.dataset.unblock}`, { method: "DELETE" });
-    showDashboardMessage("#availability-message", "Studio time reopened for customer bookings.");
+    const query = new URLSearchParams({ start_time: selectedSlot.startTime });
+    await api(`/api/admin/availability/blocks/${selectedSlot.blockId}/slot?${query}`, { method: "DELETE" });
+    closeSlotContextMenu();
+    showDashboardMessage(
+      "#availability-message",
+      `${displayTime(selectedSlot.startTime)} - ${displayTime(selectedSlot.endTime)} reopened for customer bookings.`,
+    );
     await loadAvailability();
   } catch (error) {
     showDashboardMessage("#availability-message", error.message, { autoHide: false, kind: "error" });
-    unblockButton.disabled = false;
+  } finally {
+    unblockSlotAction.disabled = false;
   }
 });
+document.addEventListener("click", (event) => {
+  if (!slotContextMenu.hidden && !event.target.closest("#slot-context-menu")) closeSlotContextMenu();
+});
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && !slotContextMenu.hidden) closeSlotContextMenu();
+});
+window.addEventListener("resize", closeSlotContextMenu);
+window.addEventListener("scroll", closeSlotContextMenu, true);
 bookingFilters.elements.space_id.addEventListener("change", loadBookings);
 bookingFilters.elements.status.addEventListener("change", loadBookings);
 bookingFilters.querySelectorAll('input[type="date"]').forEach((input) => {
@@ -1014,7 +1115,9 @@ function updateCurrentDateTime() {
 updateCurrentDateTime();
 window.setInterval(updateCurrentDateTime, 1000);
 availabilityFilters.elements.booking_date.min = localDate();
-availabilityFilters.elements.booking_date.value = localDate(1);
+availabilityFilters.elements.booking_date.value = localDate();
+bookingFilters.elements.date_from.value = localDate();
+bookingFilters.elements.date_to.value = localDate();
 bookingEditForm.elements.booking_date.min = localDate();
 setupHalfHourBlockOptions();
 setupBookingEditOptions();

@@ -2,7 +2,7 @@ from datetime import date, time
 
 from pydantic import BaseModel, EmailStr, Field, field_validator, model_validator
 
-from app.core.booking_rules import MINIMUM_BOOKING_DURATION_HOURS
+from app.core.booking_rules import BOOKING_DURATION_INCREMENT_HOURS, MINIMUM_BOOKING_DURATION_HOURS
 
 
 class AdminLoginRequest(BaseModel):
@@ -198,7 +198,11 @@ class AdminAvailabilityBlockCreate(BaseModel):
     space_id: str = Field(min_length=1, max_length=64)
     booking_date: date
     start_time: time
-    duration_hours: float = Field(ge=MINIMUM_BOOKING_DURATION_HOURS, le=12, multiple_of=0.5)
+    duration_hours: float = Field(
+        ge=BOOKING_DURATION_INCREMENT_HOURS,
+        le=12,
+        multiple_of=BOOKING_DURATION_INCREMENT_HOURS,
+    )
     reason: str = Field(default="Owner blocked", max_length=240)
 
     @field_validator("start_time")

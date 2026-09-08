@@ -9,9 +9,9 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800&amp;display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/admin.css?v=20260908-4">
+  <link rel="stylesheet" href="/static/admin.css?v=20260908-5">
   <script src="/static/studio_cache.js?v=20260908-1" defer></script>
-  <script src="/static/admin.js?v=20260908-6" defer></script>
+  <script src="/static/admin.js?v=20260909-2" defer></script>
 </head>
 <body>
   <section id="login-view" class="login-view" hidden>
@@ -125,14 +125,14 @@
         <div class="availability-layout">
           <div class="schedule-card">
             <div class="schedule-head"><div><p id="schedule-space">Cube</p><h3 id="schedule-date">Choose a date</h3></div><div class="schedule-legend"><span><i class="available"></i>Available</span><span><i class="booked"></i>Booked</span><span><i class="blocked"></i>Blocked</span></div></div>
-            <div class="admin-slot-heading"><span>AVAILABLE TIMES</span><small>Click an available time to block it, or a blocked time to reopen it.</small></div>
+            <div class="admin-slot-heading"><span>STUDIO TIMES</span><small>Select an available time to block it. Right-click or tap a blocked time to reopen that half-hour.</small></div>
             <div id="availability-slots" class="availability-slots"><p class="availability-empty">Loading schedule…</p></div>
           </div>
           <form id="availability-block-form" class="block-card">
-            <p class="eyebrow">CLOSE A TIME WINDOW</p><h3>Block studio time</h3><p>Customers will immediately see this period as unavailable. Minimum block: 2 hours.</p>
+            <p class="eyebrow">CLOSE A TIME WINDOW</p><h3>Block studio time</h3><p>Customers will immediately see this period as unavailable. Minimum block: 30 minutes.</p>
             <label><span>START TIME</span><select name="start_time" required></select></label>
             <label><span>DURATION</span><select name="duration_hours" required></select></label>
-            <label><span>REASON</span><input name="reason" maxlength="240" placeholder="Maintenance, private use…"></label>
+            <label><span>REASON</span><select name="reason" required><option value="Maintenance">Maintenance</option><option value="Power Shutdown">Power Shutdown</option><option value="Technical Issue">Technical Issue</option><option value="Mandatory Holiday">Mandatory Holiday</option></select></label>
             <button id="block-time-button" type="submit">Block selected time <span>→</span></button>
           </form>
         </div>
@@ -181,6 +181,11 @@
       <div id="password-message" class="form-message" role="alert" hidden></div>
       <button id="save-password-button" class="save-password" type="submit">Update password <span>→</span></button>
     </form>
+  </div>
+
+  <div id="slot-context-menu" class="slot-context-menu" role="menu" hidden>
+    <p id="slot-context-label">Blocked studio time</p>
+    <button id="unblock-slot-action" type="button" role="menuitem">Unblock this 30-minute slot</button>
   </div>
 </body>
 </html>
