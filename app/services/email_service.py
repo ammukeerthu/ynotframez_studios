@@ -297,17 +297,17 @@ class EmailService:
         brand_header = (
             '<table role="presentation" width="100%" cellspacing="0" cellpadding="0" '
             'border="0" bgcolor="#FFFFFF" style="width:100%;background-color:#FFFFFF!important">'
-            '<tr><td bgcolor="#FFFFFF" '
-            'style="padding:22px 28px;background-color:#FFFFFF!important">'
-            f'<img src="cid:{logo_content_id}" width="300" alt="YNotFramez Studios" '
-            'style="display:block;width:300px;max-width:100%;height:auto;border:0;'
+            '<tr><td align="center" bgcolor="#FFFFFF" '
+            'style="padding:22px 28px;text-align:center;background-color:#FFFFFF!important">'
+            f'<img src="cid:{logo_content_id}" width="300" align="center" alt="YNotFramez Studios" '
+            'style="display:block;margin:0 auto;width:300px;max-width:100%;height:auto;border:0;'
             'background-color:#FFFFFF!important;color:#111111">'
             "</td></tr></table>"
             if logo_content_id
             else (
                 '<table role="presentation" width="100%" cellspacing="0" cellpadding="0" '
                 'border="0" bgcolor="#FFFFFF" style="width:100%;background-color:#FFFFFF!important">'
-                '<tr><td bgcolor="#FFFFFF" style="padding:22px 28px;background-color:#FFFFFF!important;'
+                '<tr><td align="center" bgcolor="#FFFFFF" style="padding:22px 28px;text-align:center;background-color:#FFFFFF!important;'
                 'color:#111111;font:700 15px Arial;letter-spacing:.12em">'
                 "YNotFramez Studios</td></tr></table>"
             )

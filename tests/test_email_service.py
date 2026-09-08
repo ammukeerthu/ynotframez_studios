@@ -42,6 +42,8 @@ class EmailServiceTest(unittest.TestCase):
         self.assertIn("COMPLETE PAYMENT", html)
         self.assertIn("YNotFramez Studios", html)
         self.assertIn('src="cid:', html)
+        self.assertIn('<td align="center" bgcolor="#FFFFFF"', html)
+        self.assertIn('style="display:block;margin:0 auto;width:300px;', html)
         self.assertIn('bgcolor="#FFFFFF"', html)
         self.assertIn("background-color:#FFFFFF!important", html)
         self.assertIn('content="light only"', html)
