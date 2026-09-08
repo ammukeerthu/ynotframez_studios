@@ -944,6 +944,7 @@ document.querySelector("#studio-settings-list").addEventListener("submit", async
       message,
       `${studio.name} settings saved. Public booking availability has been updated.`,
     );
+    window.YNFStudioCache?.clear();
     await loadStudioSettings();
     await Promise.all([loadOverview(), loadBookings(), loadAvailability()]);
   } catch (error) {

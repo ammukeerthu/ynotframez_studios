@@ -160,6 +160,8 @@ FastAPI's `/docs`, `/redoc`, and `/openapi.json` routes are disabled intentional
 
 The homepage, Cube page, and Arena page load studio descriptions, rates, dimensions, equipment, amenities, operating hours, cover images, and galleries from the public spaces API. The homepage intentionally previews the first five amenities saved for each studio. Most owner-editable copy comes from Studio Settings; the homepage hero, contact block, navigation labels, and booking-maintenance message are code-managed website content.
 
+Public studio metadata is optimized separately from live availability. Catalogue requests batch studio-purpose reads, individual detail requests query only the requested studio, and the single Render worker warms its metadata cache during startup and keeps responses in memory for up to five minutes. Public pages also reuse the most recently loaded catalogue from browser storage so studio cards and details can appear immediately during navigation, then refresh them from the API in the background. Saving Studio Settings clears the server cache and the dashboard browser's cached copy. Booking, payment, and calendar availability responses are never stored in this metadata cache.
+
 The published contact details are:
 
 - Phone: `+91 72005 77341`

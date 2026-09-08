@@ -1,5 +1,7 @@
 import json
 from dataclasses import dataclass
+from threading import Lock
+from time import monotonic
 
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
@@ -193,6 +195,12 @@ LEGACY_COVER_IMAGES = {
     ),
 }
 LEGACY_ARENA_CYCLORAMA_LABEL = "Approx. 150 sq. ft. Cyclorama"
+PUBLIC_SPACE_CACHE_TTL_SECONDS = 300
+
+_public_space_cache_lock = Lock()
+_public_space_cache_expires_at = 0.0
+_public_space_list_cache: tuple[StudioSpace, ...] | None = None
+_public_space_detail_cache: dict[str, tuple[float, StudioSpace | None]] = {}
 
 
 def _replace_json_item(value: str, old: str, new: str) -> str:
@@ -320,6 +328,7 @@ def overwrite_studio_settings_with_defaults(db: Session, commit: bool = True) ->
         db.commit()
     else:
         db.flush()
+    invalidate_public_space_cache()
 
 
 def list_spaces(db: Session | None = None, include_inactive: bool = False) -> list[StudioSpace]:
@@ -328,7 +337,26 @@ def list_spaces(db: Session | None = None, include_inactive: bool = False) -> li
     else:
         statement = select(StudioSetting).order_by(StudioSetting.sort_order, StudioSetting.id)
         rows = list(db.scalars(statement))
-        spaces = [_space_from_row(row, db) for row in rows] if rows else list(SPACES.values())
+        if rows:
+            purpose_rows = db.execute(
+                select(
+                    StudioPurposeOption.space_id,
+                    StudioPurposeOption.label,
+                ).order_by(
+                    StudioPurposeOption.space_id,
+                    StudioPurposeOption.sort_order,
+                    StudioPurposeOption.id,
+                )
+            )
+            purposes_by_space: dict[str, list[str]] = {}
+            for space_id, label in purpose_rows:
+                purposes_by_space.setdefault(space_id, []).append(label)
+            spaces = [
+                _space_from_row(row, tuple(purposes_by_space.get(row.id, ())))
+                for row in rows
+            ]
+        else:
+            spaces = list(SPACES.values())
     return spaces if include_inactive else [space for space in spaces if space.is_active]
 
 
@@ -373,11 +401,11 @@ def get_space_by_id(
 def get_space_by_slug(slug: str, db: Session | None = None) -> StudioSpace | None:
     normalized = slug.strip().lower()
     normalized = LEGACY_SPACE_SLUGS.get(normalized, normalized)
-    return next((space for space in list_spaces(db) if space.slug == normalized), None)
-
-
-def _space_from_row(row: StudioSetting, db: Session) -> StudioSpace:
-    default_space = next((space for space in SPACES.values() if space.id == row.id), None)
+    if db is None:
+        return next((space for space in SPACES.values() if space.slug == normalized and space.is_active), None)
+    row = db.scalar(select(StudioSetting).where(StudioSetting.slug == normalized))
+    if row is None or not row.is_active:
+        return None
     purposes = tuple(
         db.scalars(
             select(StudioPurposeOption.label)
@@ -385,6 +413,57 @@ def _space_from_row(row: StudioSetting, db: Session) -> StudioSpace:
             .order_by(StudioPurposeOption.sort_order, StudioPurposeOption.id)
         )
     )
+    return _space_from_row(row, purposes)
+
+
+def invalidate_public_space_cache() -> None:
+    global _public_space_cache_expires_at, _public_space_list_cache
+    with _public_space_cache_lock:
+        _public_space_cache_expires_at = 0.0
+        _public_space_list_cache = None
+        _public_space_detail_cache.clear()
+
+
+def list_public_spaces_cached(db: Session) -> list[StudioSpace]:
+    global _public_space_cache_expires_at, _public_space_list_cache
+    now = monotonic()
+    with _public_space_cache_lock:
+        if _public_space_list_cache is not None and now < _public_space_cache_expires_at:
+            return list(_public_space_list_cache)
+
+    spaces = list_spaces(db)
+    with _public_space_cache_lock:
+        _public_space_list_cache = tuple(spaces)
+        _public_space_detail_cache.clear()
+        expires_at = monotonic() + PUBLIC_SPACE_CACHE_TTL_SECONDS
+        _public_space_detail_cache.update((space.slug, (expires_at, space)) for space in spaces)
+        _public_space_cache_expires_at = expires_at
+    return spaces
+
+
+def get_public_space_by_slug_cached(slug: str, db: Session) -> StudioSpace | None:
+    normalized = LEGACY_SPACE_SLUGS.get(slug.strip().lower(), slug.strip().lower())
+    now = monotonic()
+    with _public_space_cache_lock:
+        if now < _public_space_cache_expires_at:
+            if _public_space_list_cache is not None:
+                cached = _public_space_detail_cache.get(normalized)
+                return cached[1] if cached else None
+        cached = _public_space_detail_cache.get(normalized)
+        if cached is not None and now < cached[0]:
+            return cached[1]
+
+    space = get_space_by_slug(normalized, db)
+    with _public_space_cache_lock:
+        _public_space_detail_cache[normalized] = (
+            monotonic() + PUBLIC_SPACE_CACHE_TTL_SECONDS,
+            space,
+        )
+    return space
+
+
+def _space_from_row(row: StudioSetting, purposes: tuple[str, ...]) -> StudioSpace:
+    default_space = next((space for space in SPACES.values() if space.id == row.id), None)
     return StudioSpace(
         id=row.id,
         slug=row.slug,

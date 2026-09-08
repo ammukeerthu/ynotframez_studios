@@ -9,12 +9,13 @@ from app.api.routes.bookings import router as bookings_router
 from app.api.routes.whatsapp import router as whatsapp_router
 from app.core.config import settings
 from app.core.database import Base, SessionLocal, apply_schema_compatibility_updates, engine
-from app.services.spaces import seed_studio_settings
+from app.services.spaces import list_public_spaces_cached, seed_studio_settings
 
 Base.metadata.create_all(bind=engine)
 apply_schema_compatibility_updates()
 with SessionLocal() as seed_session:
     seed_studio_settings(seed_session)
+    list_public_spaces_cached(seed_session)
 
 app = FastAPI(
     title=settings.app_name,

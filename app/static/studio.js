@@ -67,57 +67,67 @@ galleryDialog?.addEventListener("keydown", (event) => {
   if (event.key === "ArrowRight") updateGalleryPreview(galleryIndex + 1);
 });
 
-fetch(`/api/spaces/${encodeURIComponent(slug)}`)
+function renderStudio(space) {
+  document.title = `${space.name} | YNotFramez Studios`;
+  const image = document.querySelector("#detail-image");
+  image.src = space.hero_image || space.cover_image;
+  image.alt = `${space.name} photography studio`;
+  setText("#detail-name", space.name);
+  setText("#detail-short", space.short_description);
+  setText("#detail-statement", space.id === "standard_small" ? "Small in footprint.\nBig on possibility." : "Built for ideas\nthat need more room.");
+  document.querySelector("#detail-statement").style.whiteSpace = "pre-line";
+  setText("#detail-description", space.brochure);
+  setText("#detail-capacity", `Up to ${space.capacity} people`);
+  setText("#detail-dimensions", space.dimensions);
+  setText("#detail-rate", `${money.format(space.hourly_rate)} / hour`);
+  setText("#detail-minimum", `${space.min_duration_hours} hours`);
+  setText("#detail-cta-title", `Make ${space.name} yours.`);
+  setText("#detail-cta-price", `From ${money.format(space.hourly_rate)} per hour`);
+  renderGallery(space);
+
+  const inclusions = [...(space.equipment || []), ...(space.amenities || [])].filter(
+    (item, index, values) => values.findIndex(
+      (candidate) => candidate.trim().toLocaleLowerCase() === item.trim().toLocaleLowerCase(),
+    ) === index,
+  );
+  document.querySelector("#detail-amenities").innerHTML = inclusions
+    .map((amenity, index) => `<li><span>${String(index + 1).padStart(2, "0")}</span><b></b></li>`)
+    .join("");
+  document.querySelectorAll("#detail-amenities li").forEach((item, index) => {
+    item.querySelector("b").textContent = inclusions[index];
+  });
+
+  const rules = space.rules
+    .split(/\r?\n+|\.\s+(?=[A-Z])/)
+    .map((rule) => rule.trim())
+    .filter(Boolean);
+  document.querySelector("#detail-rules").innerHTML = rules.map(() => "<li></li>").join("");
+  document.querySelectorAll("#detail-rules li").forEach((item, index) => {
+    item.textContent = rules[index].replace(/^Rules:\s*/i, "").replace(/\.$/, "");
+  });
+
+  const bookingUrl = `/book?space=${encodeURIComponent(space.id)}`;
+  document.querySelector("#detail-book-link").href = bookingUrl;
+  document.querySelector("#nav-book-space").href = bookingUrl;
+}
+
+const cachedSpace = window.YNFStudioCache?.findBySlug(slug);
+if (cachedSpace) renderStudio(cachedSpace);
+
+fetch(`/api/spaces/${encodeURIComponent(slug)}`, { cache: "no-store" })
   .then((response) => {
     if (!response.ok) throw new Error("Studio not found");
     return response.json();
   })
   .then((space) => {
-    document.title = `${space.name} | YNotFramez Studios`;
-    const image = document.querySelector("#detail-image");
-    image.src = space.hero_image || space.cover_image;
-    image.alt = `${space.name} photography studio`;
-    setText("#detail-name", space.name);
-    setText("#detail-short", space.short_description);
-    setText("#detail-statement", space.id === "standard_small" ? "Small in footprint.\nBig on possibility." : "Built for ideas\nthat need more room.");
-    document.querySelector("#detail-statement").style.whiteSpace = "pre-line";
-    setText("#detail-description", space.brochure);
-    setText("#detail-capacity", `Up to ${space.capacity} people`);
-    setText("#detail-dimensions", space.dimensions);
-    setText("#detail-rate", `${money.format(space.hourly_rate)} / hour`);
-    setText("#detail-minimum", `${space.min_duration_hours} hours`);
-    setText("#detail-cta-title", `Make ${space.name} yours.`);
-    setText("#detail-cta-price", `From ${money.format(space.hourly_rate)} per hour`);
-    renderGallery(space);
-
-    const inclusions = [...(space.equipment || []), ...(space.amenities || [])].filter(
-      (item, index, values) => values.findIndex(
-        (candidate) => candidate.trim().toLocaleLowerCase() === item.trim().toLocaleLowerCase(),
-      ) === index,
-    );
-    document.querySelector("#detail-amenities").innerHTML = inclusions
-      .map((amenity, index) => `<li><span>${String(index + 1).padStart(2, "0")}</span><b></b></li>`)
-      .join("");
-    document.querySelectorAll("#detail-amenities li").forEach((item, index) => {
-      item.querySelector("b").textContent = inclusions[index];
-    });
-
-    const rules = space.rules
-      .split(/\r?\n+|\.\s+(?=[A-Z])/)
-      .map((rule) => rule.trim())
-      .filter(Boolean);
-    document.querySelector("#detail-rules").innerHTML = rules.map(() => "<li></li>").join("");
-    document.querySelectorAll("#detail-rules li").forEach((item, index) => {
-      item.textContent = rules[index].replace(/^Rules:\s*/i, "").replace(/\.$/, "");
-    });
-
-    const bookingUrl = `/book?space=${encodeURIComponent(space.id)}`;
-    document.querySelector("#detail-book-link").href = bookingUrl;
-    document.querySelector("#nav-book-space").href = bookingUrl;
+    window.YNFStudioCache?.upsert(space);
+    renderStudio(space);
   })
   .catch(() => {
-    detailRoot.hidden = true;
-    errorRoot.hidden = false;
+    if (!cachedSpace) {
+      detailRoot.hidden = true;
+      errorRoot.hidden = false;
+    }
   });
 
 document.querySelector("#year").textContent = new Date().getFullYear();

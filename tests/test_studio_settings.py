@@ -2,7 +2,7 @@ import json
 import unittest
 from datetime import date, time, timedelta
 
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, event
 from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
 
@@ -14,6 +14,9 @@ from app.schemas.booking import AvailabilityRequest, WebBookingCreate
 from app.services.booking_service import BookingApplicationService
 from app.services.spaces import (
     get_space_by_id,
+    get_space_by_slug,
+    invalidate_public_space_cache,
+    list_public_spaces_cached,
     list_spaces,
     overwrite_studio_settings_with_defaults,
     seed_studio_settings,
@@ -27,6 +30,7 @@ settings.razorpay_mode = "stub"
 
 class StudioSettingsTest(unittest.TestCase):
     def setUp(self) -> None:
+        invalidate_public_space_cache()
         self.engine = create_engine(
             "sqlite://",
             connect_args={"check_same_thread": False},
@@ -37,6 +41,7 @@ class StudioSettingsTest(unittest.TestCase):
         seed_studio_settings(self.db)
 
     def tearDown(self) -> None:
+        invalidate_public_space_cache()
         self.db.close()
         self.engine.dispose()
 
@@ -211,6 +216,45 @@ class StudioSettingsTest(unittest.TestCase):
         self.assertIsNone(get_space_by_id("standard_small", self.db))
         self.assertIsNotNone(get_space_by_id("standard_small", self.db, include_inactive=True))
         self.assertNotIn("standard_small", {space.id for space in list_spaces(self.db)})
+
+    def test_public_studio_list_uses_two_database_queries(self) -> None:
+        statements = []
+
+        def track_statement(*args) -> None:
+            statements.append(args[2])
+
+        event.listen(self.engine, "before_cursor_execute", track_statement)
+        try:
+            spaces = list_spaces(self.db)
+        finally:
+            event.remove(self.engine, "before_cursor_execute", track_statement)
+
+        self.assertEqual([space.name for space in spaces], ["Cube", "Arena"])
+        self.assertEqual(len(statements), 2)
+
+    def test_single_studio_lookup_does_not_load_the_full_catalogue(self) -> None:
+        statements = []
+
+        def track_statement(*args) -> None:
+            statements.append(args[2])
+
+        event.listen(self.engine, "before_cursor_execute", track_statement)
+        try:
+            space = get_space_by_slug("cube", self.db)
+        finally:
+            event.remove(self.engine, "before_cursor_execute", track_statement)
+
+        self.assertEqual(space.name, "Cube")
+        self.assertEqual(len(statements), 2)
+
+    def test_admin_save_invalidates_the_public_studio_cache(self) -> None:
+        cached = list_public_spaces_cached(self.db)
+        self.assertEqual(cached[0].name, "Cube")
+
+        admin_update_studio("standard_small", self.payload(), self.db)
+        refreshed = list_public_spaces_cached(self.db)
+
+        self.assertEqual(refreshed[0].name, "Standard Creator Space")
 
 
 if __name__ == "__main__":

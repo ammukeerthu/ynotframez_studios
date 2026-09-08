@@ -45,7 +45,7 @@ from app.services.admin_auth import (
 from app.services.availability_service import interval_for, intervals_overlap, overlapping_block, overlapping_booking
 from app.services.booking_service import BookingApplicationService, BookingUnavailableError
 from app.services.payment_service import PaymentLifecycleError, PaymentService
-from app.services.spaces import get_space_by_id, seed_studio_settings
+from app.services.spaces import get_space_by_id, invalidate_public_space_cache, seed_studio_settings
 
 router = APIRouter(prefix="/api/admin", tags=["Admin"])
 SESSION_COOKIE = "ynf_admin_session"
@@ -183,6 +183,7 @@ def admin_update_studio(
         db.add(StudioPurposeOption(space_id=studio.id, label=label, sort_order=sort_order))
     db.commit()
     db.refresh(studio)
+    invalidate_public_space_cache()
     return _serialize_studio(studio, db)
 
 

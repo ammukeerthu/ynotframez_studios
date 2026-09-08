@@ -25,7 +25,11 @@ from app.models.payment import PaymentRecord, PaymentStatus
 from app.services.payment_service import PaymentService
 from app.services.booking_service import BookingApplicationService, BookingUnavailableError
 from app.services.razorpay_service import RazorpayError, RazorpayService
-from app.services.spaces import get_space_by_id, get_space_by_slug, list_spaces
+from app.services.spaces import (
+    get_public_space_by_slug_cached,
+    get_space_by_id,
+    list_public_spaces_cached,
+)
 
 router = APIRouter(prefix="/api", tags=["Web bookings"])
 
@@ -122,12 +126,12 @@ def _backfill_razorpay_method(service: BookingApplicationService, record: Paymen
 
 @router.get("/spaces", response_model=list[SpaceResponse])
 def public_spaces(db: Session = Depends(get_db)) -> list[SpaceResponse]:
-    return [SpaceResponse(**vars(space)) for space in list_spaces(db)]
+    return [SpaceResponse(**vars(space)) for space in list_public_spaces_cached(db)]
 
 
 @router.get("/spaces/{slug}", response_model=SpaceResponse)
 def get_space(slug: str, db: Session = Depends(get_db)) -> SpaceResponse:
-    space = get_space_by_slug(slug, db)
+    space = get_public_space_by_slug_cached(slug, db)
     if space is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Studio space not found.")
     return SpaceResponse(**vars(space))

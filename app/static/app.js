@@ -52,18 +52,31 @@ async function request(url, options = {}) {
 }
 
 async function loadSpaces() {
+  const requestedSpace = new URLSearchParams(window.location.search).get("space");
+  const cachedSpaces = window.YNFStudioCache?.read();
+  if (cachedSpaces) applySpaces(cachedSpaces, requestedSpace);
+
   try {
-    state.spaces = await request("/api/spaces");
-    renderSpaces();
-    const requestedSpace = new URLSearchParams(window.location.search).get("space");
-    if (requestedSpace && state.spaces.some((space) => space.id === requestedSpace)) {
-      const input = document.querySelector(`input[name="space_id"][value="${requestedSpace}"]`);
-      if (input) input.checked = true;
-      selectSpace(requestedSpace);
+    const freshSpaces = await request("/api/spaces", { cache: "no-store" });
+    window.YNFStudioCache?.write(freshSpaces);
+    if (!cachedSpaces || JSON.stringify(freshSpaces) !== JSON.stringify(cachedSpaces)) {
+      if (!cachedSpaces || state.step === 1) applySpaces(freshSpaces, state.selectedSpace?.id || requestedSpace);
     }
   } catch (error) {
-    document.querySelector("#space-list").innerHTML = "";
-    showMessage(`Could not load studio spaces. ${error.message}`);
+    if (!cachedSpaces) {
+      document.querySelector("#space-list").innerHTML = "";
+      showMessage(`Could not load studio spaces. ${error.message}`);
+    }
+  }
+}
+
+function applySpaces(spaces, preferredSpaceId = null) {
+  state.spaces = spaces;
+  renderSpaces();
+  if (preferredSpaceId && state.spaces.some((space) => space.id === preferredSpaceId)) {
+    const input = document.querySelector(`input[name="space_id"][value="${preferredSpaceId}"]`);
+    if (input) input.checked = true;
+    selectSpace(preferredSpaceId);
   }
 }
 

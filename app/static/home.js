@@ -30,16 +30,26 @@ function studioCard(space, index) {
     </article>`;
 }
 
-fetch("/api/spaces")
+function renderStudioCards(spaces) {
+  spaceList.innerHTML = spaces.map(studioCard).join("");
+}
+
+const cachedSpaces = window.YNFStudioCache?.read();
+if (cachedSpaces) renderStudioCards(cachedSpaces);
+
+fetch("/api/spaces", { cache: "no-store" })
   .then((response) => {
     if (!response.ok) throw new Error("Unable to load studios");
     return response.json();
   })
   .then((spaces) => {
-    spaceList.innerHTML = spaces.map(studioCard).join("");
+    window.YNFStudioCache?.write(spaces);
+    renderStudioCards(spaces);
   })
   .catch(() => {
-    spaceList.innerHTML = '<p class="load-error">Studio information is temporarily unavailable. Please try again shortly.</p>';
+    if (!cachedSpaces) {
+      spaceList.innerHTML = '<p class="load-error">Studio information is temporarily unavailable. Please try again shortly.</p>';
+    }
   });
 
 document.querySelector("#year").textContent = new Date().getFullYear();
