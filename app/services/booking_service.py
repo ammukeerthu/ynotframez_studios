@@ -367,7 +367,13 @@ class BookingApplicationService:
 
         return True, "Your selected slot is available."
 
-    def get_day_availability(self, space_id: str, booking_date: date) -> DayAvailabilityResponse:
+    def get_day_availability(
+        self,
+        space_id: str,
+        booking_date: date,
+        exclude_booking_id: int | None = None,
+        ignore_calendar_event_id: str | None = None,
+    ) -> DayAvailabilityResponse:
         if self.expire_stale_payment_holds():
             self.db.commit()
         space = get_space_by_id(space_id, self.db, include_inactive=True)
@@ -421,6 +427,8 @@ class BookingApplicationService:
             )
             available, message = self.check_availability(
                 request,
+                exclude_booking_id=exclude_booking_id,
+                ignore_calendar_event_id=ignore_calendar_event_id,
                 enforce_duration_limits=False,
                 calendar_events=calendar_events,
                 space=space,

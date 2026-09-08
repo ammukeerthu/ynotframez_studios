@@ -562,6 +562,16 @@ def admin_update_booking(
         )
     if get_space_by_id(payload.space_id, db) is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Studio space not found.")
+    if (
+        payload.customer_name.strip() != (booking.customer_name or "")
+        or payload.phone_number.strip() != booking.phone_number
+        or payload.purpose.strip() != (booking.purpose or "")
+        or payload.duration_hours != booking.duration_hours
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Customer name, phone number, duration, and purpose cannot be changed.",
+        )
 
     new_date = payload.booking_date.isoformat()
     new_time = payload.start_time.strftime("%H:%M")
@@ -590,11 +600,7 @@ def admin_update_booking(
     booking.space_id = payload.space_id
     booking.booking_date = new_date
     booking.start_time = new_time
-    booking.duration_hours = payload.duration_hours
-    booking.customer_name = payload.customer_name.strip()
     booking.customer_email = str(payload.customer_email)
-    booking.phone_number = payload.phone_number.strip()
-    booking.purpose = payload.purpose.strip()
     try:
         payment_record = service.payments.sync_pending_amount(booking)
     except PaymentLifecycleError as error:
@@ -681,12 +687,21 @@ def admin_availability(
     space_id: str = Query(...),
     booking_date: date = Query(...),
     db: Session = Depends(get_db),
+    exclude_booking_id: int | None = None,
 ) -> AdminDayAvailabilityResponse:
     space = get_space_by_id(space_id, db, include_inactive=True)
     if space is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Studio space not found.")
 
-    day = BookingApplicationService(db).get_day_availability(space_id, booking_date)
+    editing_booking = db.get(Booking, exclude_booking_id) if exclude_booking_id is not None else None
+    if exclude_booking_id is not None and editing_booking is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Booking not found.")
+    day = BookingApplicationService(db).get_day_availability(
+        space_id,
+        booking_date,
+        exclude_booking_id=exclude_booking_id,
+        ignore_calendar_event_id=editing_booking.calendar_event_id if editing_booking else None,
+    )
     bookings = list(
         db.scalars(
             select(Booking).where(
@@ -702,7 +717,8 @@ def admin_availability(
     bookings = [
         booking
         for booking in bookings
-        if booking.state == BookingState.CONFIRMED or booking.updated_at >= hold_cutoff
+        if booking.id != exclude_booking_id
+        and (booking.state == BookingState.CONFIRMED or booking.updated_at >= hold_cutoff)
     ]
     blocks = list(
         db.scalars(

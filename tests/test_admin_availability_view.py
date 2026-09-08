@@ -39,6 +39,23 @@ class AdminAvailabilityViewTest(unittest.TestCase):
         self.assertIn('data-table-column="terms">${terms}', self.script)
         self.assertIn('localStorage.setItem(BOOKING_COLUMN_STORAGE_KEY', self.script)
 
+    def test_manage_booking_uses_live_reschedule_availability(self) -> None:
+        self.assertIn("exclude_booking_id: bookingId", self.script)
+        self.assertIn("loadBookingEditAvailability(booking.start_time)", self.script)
+        self.assertIn('bookingEditForm.elements.booking_date.addEventListener("change"', self.script)
+        self.assertIn('slot.status === "available" && availableHalfHours >= requiredHalfHours', self.script)
+        self.assertIn("insufficient time", self.script)
+        self.assertIn(".booking-modal select option:disabled", self.styles)
+
+    def test_manage_booking_keeps_identity_duration_and_purpose_read_only(self) -> None:
+        self.assertIn('name="duration_display" readonly', self.html)
+        self.assertIn('name="duration_hours" type="hidden"', self.html)
+        self.assertIn('name="customer_name" maxlength="120" readonly', self.html)
+        self.assertIn('name="phone_number" maxlength="32" readonly', self.html)
+        self.assertIn('name="purpose" maxlength="1000" readonly', self.html)
+        self.assertIn("Number(bookingEditForm.elements.duration_hours.value)", self.script)
+        self.assertIn(".booking-modal input[readonly]", self.styles)
+
     def test_blocked_tiles_expose_single_slot_unblock_menu(self) -> None:
         self.assertIn('id="slot-context-menu"', self.html)
         self.assertIn('addEventListener("contextmenu"', self.script)

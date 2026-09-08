@@ -9,9 +9,9 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800&amp;display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/admin.css?v=20260909-1">
+  <link rel="stylesheet" href="/static/admin.css?v=20260909-3">
   <script src="/static/studio_cache.js?v=20260908-1" defer></script>
-  <script src="/static/admin.js?v=20260909-3" defer></script>
+  <script src="/static/admin.js?v=20260909-5" defer></script>
 </head>
 <body>
   <section id="login-view" class="login-view" hidden>
@@ -174,11 +174,11 @@
         <label><span>STUDIO SPACE</span><select name="space_id" required><option value="standard_small">Cube</option><option value="premium_large">Arena</option></select></label>
         <label><span>DATE</span><input name="booking_date" type="date" required></label>
         <label><span>START TIME</span><select name="start_time" required></select></label>
-        <label><span>DURATION</span><select name="duration_hours" required></select></label>
-        <label><span>CUSTOMER NAME</span><input name="customer_name" maxlength="120" required></label>
+        <label><span>DURATION</span><input name="duration_display" readonly><input name="duration_hours" type="hidden"></label>
+        <label><span>CUSTOMER NAME</span><input name="customer_name" maxlength="120" readonly required></label>
         <label><span>EMAIL</span><input name="customer_email" type="email" maxlength="255" required></label>
-        <label><span>PHONE</span><input name="phone_number" maxlength="32" required></label>
-        <label class="full"><span>PURPOSE</span><textarea name="purpose" maxlength="1000" required></textarea></label>
+        <label><span>PHONE</span><input name="phone_number" maxlength="32" readonly required></label>
+        <label><span>PURPOSE</span><input name="purpose" maxlength="1000" readonly required></label>
       </div>
       <div class="payment-control">
         <div><p>PAYMENT</p><strong id="booking-payment-status">Pending</strong><small id="booking-payment-summary"></small></div>

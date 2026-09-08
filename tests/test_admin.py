@@ -357,6 +357,17 @@ class AdminAuthenticationTest(unittest.TestCase):
             db.get(Booking, second.id).state = BookingState.CONFIRMED
             db.commit()
 
+            edit_day = admin_availability(
+                "standard_small",
+                booking_date,
+                db,
+                exclude_booking_id=original.id,
+            )
+            edit_statuses = {slot.start_time: slot.status for slot in edit_day.slots}
+            self.assertEqual(edit_statuses["11:00"], "available")
+            self.assertEqual(edit_statuses["11:30"], "available")
+            self.assertEqual(edit_statuses["15:00"], "booked")
+
             with self.assertRaises(HTTPException) as conflict:
                 admin_update_booking(
                     original.id,
@@ -365,14 +376,32 @@ class AdminAuthenticationTest(unittest.TestCase):
                         booking_date=booking_date,
                         start_time=time(15),
                         duration_hours=2,
-                        customer_name="Updated Customer",
+                        customer_name="Original Customer",
                         customer_email="updated@example.com",
-                        phone_number="+918888888888",
-                        purpose="Updated portrait shoot",
+                        phone_number="+919999999999",
+                        purpose="Fashion Shoot",
                     ),
                     db,
                 )
             self.assertEqual(conflict.exception.status_code, 409)
+
+            with self.assertRaises(HTTPException) as immutable_details:
+                admin_update_booking(
+                    original.id,
+                    AdminBookingUpdate(
+                        space_id="standard_small",
+                        booking_date=booking_date,
+                        start_time=time(11),
+                        duration_hours=2,
+                        customer_name="Changed Customer",
+                        customer_email="updated@example.com",
+                        phone_number="+919999999999",
+                        purpose="Fashion Shoot",
+                    ),
+                    db,
+                )
+            self.assertEqual(immutable_details.exception.status_code, 409)
+            self.assertIn("cannot be changed", immutable_details.exception.detail)
 
             updated = admin_update_booking(
                 original.id,
@@ -381,10 +410,10 @@ class AdminAuthenticationTest(unittest.TestCase):
                     booking_date=booking_date,
                     start_time=time(13),
                     duration_hours=2,
-                    customer_name="Updated Customer",
+                    customer_name="Original Customer",
                     customer_email="updated@example.com",
-                    phone_number="+918888888888",
-                    purpose="Updated portrait shoot",
+                    phone_number="+919999999999",
+                    purpose="Fashion Shoot",
                 ),
                 db,
             )
@@ -399,8 +428,8 @@ class AdminAuthenticationTest(unittest.TestCase):
 
             self.assertEqual(updated.start_time, "13:00")
             self.assertEqual(updated.end_time, "15:00")
-            self.assertEqual(updated.customer_name, "Updated Customer")
-            self.assertEqual(updated.purpose, "Updated portrait shoot")
+            self.assertEqual(updated.customer_name, "Original Customer")
+            self.assertEqual(updated.purpose, "Fashion Shoot")
             self.assertEqual(updated.terms_accepted, "v1")
             self.assertEqual(updated.total_amount, 2000)
             self.assertEqual(updated.payment_status, "pending")
@@ -421,14 +450,14 @@ class AdminAuthenticationTest(unittest.TestCase):
                 admin_update_booking(
                     original.id,
                     AdminBookingUpdate(
-                        space_id="standard_small",
+                        space_id="premium_large",
                         booking_date=booking_date,
                         start_time=time(12, 30),
-                        duration_hours=2.5,
-                        customer_name="Updated Customer",
+                        duration_hours=2,
+                        customer_name="Original Customer",
                         customer_email="updated@example.com",
-                        phone_number="+918888888888",
-                        purpose="Updated portrait shoot",
+                        phone_number="+919999999999",
+                        purpose="Fashion Shoot",
                     ),
                     db,
                 )

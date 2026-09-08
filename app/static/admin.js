@@ -28,6 +28,9 @@ let availabilityRequestToken = 0;
 let availabilityRequestController = null;
 let currentAvailabilityDay = null;
 let contextSlot = null;
+let bookingEditAvailabilityRequestToken = 0;
+let bookingEditAvailabilityRequestController = null;
+let currentBookingEditDay = null;
 const dashboardMessageTimers = new WeakMap();
 const MAX_BLOCK_DURATION_HOURS = 12;
 const BOOKING_COLUMN_STORAGE_KEY = "ynf_admin_booking_columns";
@@ -589,31 +592,92 @@ function syncBlockDurationOptions() {
   button.disabled = !startValue || !maximumDuration;
 }
 
-function setupBookingEditOptions() {
+function availableEditHalfHoursFrom(startTime) {
+  if (!currentBookingEditDay) return 0;
+  const startIndex = currentBookingEditDay.slots.findIndex((slot) => slot.start_time === startTime);
+  if (startIndex < 0) return 0;
+  let count = 0;
+  for (const slot of currentBookingEditDay.slots.slice(startIndex)) {
+    if (slot.status !== "available") break;
+    count += 1;
+  }
+  return count;
+}
+
+function setupBookingEditOptions(preferredStart = "") {
   if (!studioSettings.length) return;
   const startSelect = bookingEditForm.elements.start_time;
   const studio = studioById(bookingEditForm.elements.space_id.value) || studioSettings[0];
-  const openingIndex = timeToMinutes(studio.opening_time) / 30;
-  const closingIndex = timeToMinutes(studio.closing_time) / 30;
-  const previous = startSelect.value;
-  startSelect.innerHTML = halfHourOptions(previous, openingIndex, closingIndex);
-  syncBookingDurationOptions();
+  const selectedDate = bookingEditForm.elements.booking_date.value;
+  const dayIsLoaded = currentBookingEditDay
+    && currentBookingEditDay.space_id === studio.id
+    && currentBookingEditDay.booking_date === selectedDate;
+  if (!dayIsLoaded) {
+    startSelect.innerHTML = '<option value="">Checking live availability…</option>';
+    startSelect.disabled = true;
+    document.querySelector("#save-booking-button").disabled = true;
+    return;
+  }
+
+  const previous = preferredStart || startSelect.value;
+  const requiredHalfHours = Number(bookingEditForm.elements.duration_hours.value) * 2;
+  const validStarts = new Set();
+  startSelect.innerHTML = currentBookingEditDay.slots.map((slot) => {
+    const availableHalfHours = availableEditHalfHoursFrom(slot.start_time);
+    const selectable = slot.status === "available" && availableHalfHours >= requiredHalfHours;
+    if (selectable) validStarts.add(slot.start_time);
+    const suffix = selectable
+      ? ""
+      : ` (${slot.status === "available" ? "insufficient time" : slot.status.replaceAll("_", " ")})`;
+    return `<option value="${safeAttr(slot.start_time)}"${selectable ? "" : " disabled"}>${displayTime(slot.start_time)} - ${displayTime(slot.end_time)}${safe(suffix)}</option>`;
+  }).join("");
+  startSelect.value = validStarts.has(previous) ? previous : [...validStarts][0] || "";
+  startSelect.disabled = validStarts.size === 0;
+  syncBookingEditSaveState();
 }
 
-function syncBookingDurationOptions() {
-  const studio = studioById(bookingEditForm.elements.space_id.value) || studioSettings[0];
-  if (!studio) return;
-  const startValue = bookingEditForm.elements.start_time.value || studio.opening_time;
-  const durationSelect = bookingEditForm.elements.duration_hours;
-  const previousDuration = Number(durationSelect.value || studio.min_duration_hours);
-  const remainingHours = (timeToMinutes(studio.closing_time) - timeToMinutes(startValue)) / 60;
-  const maximum = Math.min(studio.max_duration_hours, remainingHours);
-  const optionCount = Math.max(0, Math.floor((maximum - studio.min_duration_hours) * 2) + 1);
-  durationSelect.innerHTML = Array.from({ length: optionCount }, (_, index) => {
-    const duration = studio.min_duration_hours + (index / 2);
-    return `<option value="${duration}">${duration} hour${duration === 1 ? "" : "s"}</option>`;
-  }).join("");
-  durationSelect.value = String(Math.max(studio.min_duration_hours, Math.min(previousDuration, maximum)));
+function syncBookingEditSaveState() {
+  const startSelect = bookingEditForm.elements.start_time;
+  const saveButton = document.querySelector("#save-booking-button");
+  saveButton.disabled = startSelect.disabled || !startSelect.value;
+}
+
+async function loadBookingEditAvailability(preferredStart = "") {
+  const bookingId = bookingEditForm.elements.booking_id.value;
+  const spaceId = bookingEditForm.elements.space_id.value;
+  const bookingDate = bookingEditForm.elements.booking_date.value;
+  if (!bookingId || !spaceId || !bookingDate) return;
+  const requestToken = ++bookingEditAvailabilityRequestToken;
+  bookingEditAvailabilityRequestController?.abort();
+  const controller = new AbortController();
+  bookingEditAvailabilityRequestController = controller;
+  currentBookingEditDay = null;
+  setupBookingEditOptions();
+  const query = new URLSearchParams({
+    space_id: spaceId,
+    booking_date: bookingDate,
+    exclude_booking_id: bookingId,
+  });
+  try {
+    const day = await api(`/api/admin/availability?${query}`, { signal: controller.signal });
+    if (
+      requestToken !== bookingEditAvailabilityRequestToken
+      || bookingEditForm.elements.booking_id.value !== bookingId
+      || bookingEditForm.elements.space_id.value !== spaceId
+      || bookingEditForm.elements.booking_date.value !== bookingDate
+    ) return;
+    currentBookingEditDay = day;
+    setupBookingEditOptions(preferredStart);
+  } catch (error) {
+    if (error.name === "AbortError" || requestToken !== bookingEditAvailabilityRequestToken) return;
+    const message = document.querySelector("#booking-edit-message");
+    message.textContent = `Live availability could not be loaded. ${error.message}`;
+    message.hidden = false;
+  } finally {
+    if (requestToken === bookingEditAvailabilityRequestToken) {
+      bookingEditAvailabilityRequestController = null;
+    }
+  }
 }
 
 function timeToMinutes(value) {
@@ -632,10 +696,10 @@ function openBookingModal(bookingId) {
   bookingEditForm.elements.booking_id.value = booking.id;
   bookingEditForm.elements.space_id.value = booking.space_id;
   bookingEditForm.elements.booking_date.value = booking.booking_date;
-  setupBookingEditOptions();
-  bookingEditForm.elements.start_time.value = booking.start_time;
-  syncBookingDurationOptions();
+  const bookingSlotEnd = minutesToTime(timeToMinutes(booking.start_time) + 30);
+  bookingEditForm.elements.start_time.innerHTML = `<option value="${safeAttr(booking.start_time)}">${displayTime(booking.start_time)} - ${displayTime(bookingSlotEnd)}</option>`;
   bookingEditForm.elements.duration_hours.value = String(booking.duration_hours);
+  bookingEditForm.elements.duration_display.value = `${booking.duration_hours} hour${booking.duration_hours === 1 ? "" : "s"}`;
   bookingEditForm.elements.customer_name.value = booking.customer_name || "";
   bookingEditForm.elements.customer_email.value = booking.customer_email || "";
   bookingEditForm.elements.phone_number.value = booking.phone_number || "";
@@ -665,6 +729,7 @@ function openBookingModal(bookingId) {
   document.querySelector("#booking-modal-reference").textContent = booking.reference;
   document.querySelector("#booking-edit-message").hidden = true;
   bookingModal.hidden = false;
+  if (editable) loadBookingEditAvailability(booking.start_time);
 }
 
 async function loadAvailability() {
@@ -926,7 +991,7 @@ bookingEditForm.addEventListener("submit", async (event) => {
         space_id: data.get("space_id"),
         booking_date: data.get("booking_date"),
         start_time: data.get("start_time"),
-        duration_hours: Number(data.get("duration_hours")),
+        duration_hours: Number(bookingEditForm.elements.duration_hours.value),
         customer_name: data.get("customer_name"),
         customer_email: data.get("customer_email"),
         phone_number: data.get("phone_number"),
@@ -940,7 +1005,7 @@ bookingEditForm.addEventListener("submit", async (event) => {
     message.textContent = error.message;
     message.hidden = false;
   } finally {
-    button.disabled = false;
+    syncBookingEditSaveState();
   }
 });
 document.querySelector("#cancel-booking-button").addEventListener("click", async () => {
@@ -1001,8 +1066,9 @@ availabilityFilters.querySelector('select[name="space_id"]').addEventListener("c
 });
 availabilityFilters.querySelector('input[name="booking_date"]').addEventListener("change", loadAvailability);
 availabilityBlockForm.elements.start_time.addEventListener("change", syncBlockDurationOptions);
-bookingEditForm.elements.space_id.addEventListener("change", setupBookingEditOptions);
-bookingEditForm.elements.start_time.addEventListener("change", syncBookingDurationOptions);
+bookingEditForm.elements.space_id.addEventListener("change", () => loadBookingEditAvailability());
+bookingEditForm.elements.booking_date.addEventListener("change", () => loadBookingEditAvailability());
+bookingEditForm.elements.start_time.addEventListener("change", syncBookingEditSaveState);
 availabilityBlockForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   const filters = new FormData(availabilityFilters);

@@ -24,6 +24,7 @@ button,input,select,textarea { font:inherit; }
 .edit-grid label.full { grid-column:1/-1; }
 .booking-modal select,.booking-modal textarea { width:100%; min-height:46px; padding:0 13px; border:1px solid var(--line); background:#fbfaf6; outline:none; }
 .booking-modal textarea { min-height:85px; padding-top:12px; resize:vertical; font:inherit; }
+.booking-modal input[readonly] { color:#656159; background:#efede7; cursor:default; }
 .booking-modal-actions { display:flex; justify-content:space-between; align-items:center; gap:15px; margin-top:24px; }
 .booking-modal-actions .save-password { width:auto; min-width:200px; margin:0; }
 .booking-modal-actions .cancel-booking { padding:10px 0; border:0; background:none; color:#a43826; font-size:8px; font-weight:800; letter-spacing:.11em; text-transform:uppercase; text-decoration:underline; text-underline-offset:4px; cursor:pointer; }
@@ -148,7 +149,7 @@ button,input,select,textarea { font:inherit; }
 .admin-slot-button.past small,.admin-slot-button.unavailable small { color:#aaa69e; }
 .admin-slot-button.booked span,.admin-slot-button.blocked span,.admin-slot-button.past span,.admin-slot-button.unavailable span { text-decoration:line-through; text-decoration-thickness:1px; }
 .admin-slot-button:disabled { pointer-events:none; }
-.block-card select option:disabled { color:#9b968d; text-decoration:line-through; }
+.block-card select option:disabled,.booking-modal select option:disabled { color:#9b968d; text-decoration:line-through; }
 .slot-context-menu { position:fixed; z-index:100; width:min(280px,calc(100vw - 16px)); padding:9px; border:1px solid var(--ink); background:var(--white); box-shadow:0 16px 45px rgba(22,21,18,.22); }
 .slot-context-menu p { margin:0; padding:8px 10px 10px; color:var(--muted); font-size:9px; }
 .slot-context-menu button { width:100%; min-height:42px; padding:10px 12px; border:0; background:var(--ink); color:white; cursor:pointer; font-size:8px; font-weight:800; letter-spacing:.1em; text-align:left; text-transform:uppercase; }
