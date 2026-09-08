@@ -1,6 +1,6 @@
-# YNotFramez Studios Booking MVP
+# YNotFramez Studios Booking
 
-A minimal FastAPI booking application for a two-space photography studio. Customers can book through the responsive web interface or through the existing WhatsApp-style webhook. Both channels share the same relational database: SQLite for local development and Neon PostgreSQL for the deployed testing environment.
+A FastAPI website and booking application for the Cube and Arena photography studios. Customers can explore the studios, reserve a live-checked time slot, pay through Razorpay, receive email updates, and retrieve a booking later. The owner dashboard manages bookings, availability, studio content, payments, and operational alerts. SQLite is used locally and Neon PostgreSQL is used by the Render deployment.
 
 ## What is included
 
@@ -20,7 +20,10 @@ A minimal FastAPI booking application for a two-space photography studio. Custom
 - Google Calendar integration with a local stub mode
 - Razorpay Standard Checkout for the website, Payment Links for WhatsApp, signed verification, and a local stub mode
 - Multipart booking emails with safe console and SMTP delivery modes
-- Interactive API documentation at `/docs`
+- Versioned booking Terms and Conditions with an in-page modal and downloadable PDF
+- Public-booking maintenance gate with studio contact and directions
+- Responsive studio galleries, branding, and dedicated Cube and Arena photography
+- Production API documentation and schema routes intentionally disabled
 
 ## Project structure
 
@@ -31,6 +34,7 @@ app/
     bookings.py          # Web booking JSON API
     whatsapp.py          # WhatsApp webhook
   core/
+    booking_rules.py      # Shared duration and Terms version constants
     config.py
     database.py
   models/
@@ -39,6 +43,7 @@ app/
     booking.py
     notification.py
     payment.py
+    studio.py
   schemas/
     admin.py
     booking.py
@@ -50,6 +55,7 @@ app/
     availability_service.py
     calendar_service.py
     email_service.py
+    notification_service.py
     payment_service.py
     razorpay_service.py
     spaces.py
@@ -59,17 +65,31 @@ app/
     app.js
     customer_booking.css
     home.js
+    maintenance.css
     marketing.css
     my_booking.js
+    razorpay_checkout.js
     studio.js
     styles.css
+    brand/               # Website and opaque email logos
+    legal/               # Published booking Terms PDF
+    studio/              # Homepage and studio gallery images
   web/
     admin.html
     home.html
     index.html
+    maintenance.html
     my_booking.html
     studio.html
   main.py
+scripts/
+  clear_bookings.py
+  migrate_stub_calendar_events.py
+  refresh_google_calendar_events.py
+  reset_admin_password.py
+  sync_admin_password.py
+  sync_studio_defaults.py
+  verify_google_calendars.py
 ```
 
 ## Local setup (Windows PowerShell)
@@ -105,16 +125,49 @@ Open:
 - Booking wizard: `http://127.0.0.1:8000/book`
 - Find an existing booking: `http://127.0.0.1:8000/my-booking`
 - Owner dashboard: `http://127.0.0.1:8000/dashboard`
-- API documentation: `http://127.0.0.1:8000/docs`
 - Health check: `http://127.0.0.1:8000/health`
 
 SQLite data is created in `studio_bookings.db` by default.
+
+The copied `.env.example` starts in safe local modes: `EMAIL_MODE=console`, `RAZORPAY_MODE=stub`, `CALENDAR_MODE=stub`, and `PUBLIC_BOOKING_ENABLED=false`. Set `PUBLIC_BOOKING_ENABLED=true` to open the local booking wizard. Switch an integration to its live implementation only after replacing its placeholder values in the ignored `.env` file.
 
 Run the automated checks with:
 
 ```powershell
 python -m unittest discover -s tests -v
 ```
+
+## Environment configuration
+
+`.env.example` groups settings by application, email, payments, admin security, Calendar integration, and Render overrides. Copy it to `.env` for local work; never put secrets into `.env.example`.
+
+The principal mode switches are:
+
+| Setting | Safe local value | Integrated value | Purpose |
+| --- | --- | --- | --- |
+| `PUBLIC_BOOKING_ENABLED` | `false` | `true` | Shows the booking wizard instead of the maintenance page and permits public booking creation. |
+| `EMAIL_MODE` | `console` | `smtp` | Prints email summaries locally or sends through the configured SMTP relay. |
+| `RAZORPAY_MODE` | `stub` | `api` | Uses placeholder orders or Razorpay Standard Checkout and API verification. |
+| `CALENDAR_MODE` | `stub` | `google` | Uses placeholder event IDs or the two configured Google Calendars. |
+
+`RAZORPAY_MODE=api` does not itself select Test or Live Mode. The `rzp_test_...` or `rzp_live_...` key pair determines which Razorpay environment is used. The key ID, key secret, and webhook secret must all belong to the same environment.
+
+`STUDIO_OPENING_HOUR` and `STUDIO_CLOSING_HOUR` are startup fallbacks. Once studio rows exist, the operating hours and booking-duration limits saved in Studio Settings are authoritative. `FUTURE_BOOKING_DAYS` controls the furthest date accepted by the booking API. Timeout values bound external SMTP, Razorpay, and Google Calendar requests.
+
+FastAPI's `/docs`, `/redoc`, and `/openapi.json` routes are disabled intentionally so the public deployment does not expose interactive API documentation.
+
+## Public website content
+
+The homepage, Cube page, and Arena page load studio descriptions, rates, dimensions, equipment, amenities, operating hours, cover images, and galleries from the public spaces API. The homepage intentionally previews the first five amenities saved for each studio. Most owner-editable copy comes from Studio Settings; the homepage hero, contact block, navigation labels, and booking-maintenance message are code-managed website content.
+
+The published contact details are:
+
+- Phone: `+91 72005 77341`
+- Email: `ynotframezstudios@gmail.com`
+- Address: Survey No 712, 1A1, Poonamallee - Avadi High Rd, Paruthippattu, Selva Nagar, Govarthanagiri, Avadi, Chennai, Tamil Nadu 600071
+- Directions: `https://maps.app.goo.gl/k3ZhASzdAr66mNFM6`
+
+Studio and homepage photographs are tracked under `app/static/studio/`. The regular PNG logo has transparency for the website; email uses `ynotframez-logo-email.png`, which has an opaque white background for visibility in dark-mode mail clients.
 
 ## Owner dashboard
 
@@ -147,9 +200,21 @@ ADMIN_SESSION_SECRET="use-a-random-secret-with-at-least-32-characters"
 ADMIN_COOKIE_SECURE="true"
 ```
 
-Keep `ADMIN_COOKIE_SECURE="false"` for local HTTP and set it to `true` when the deployed site uses HTTPS. Back up both the SQLite database and the session secret for a stable deployed installation. Password recovery is intentionally an offline, local command for this MVP rather than a public web endpoint.
+Keep `ADMIN_COOKIE_SECURE="false"` for local HTTP and set it to `true` when the deployed site uses HTTPS. Back up both the SQLite database and the session secret for a stable deployed installation. Password recovery is intentionally an offline, local command rather than a public web endpoint.
 
-The dashboard shows confirmed activity and estimated value and lets the owner search/filter customer bookings. Confirmed rows include a **Manage** action for editing customer details, changing studios, rescheduling in 30-minute increments, or cancelling the booking. Reschedules use the same live overlap checks as customer bookings. Cancellation retains a red `DECLINED` event in Google Calendar while releasing the studio time.
+To copy the password hash for the local `admin` account into an already initialized Render/Neon database, temporarily load the remote `DATABASE_URL` and run the guarded synchronization. The command never reads or prints the plain-text password:
+
+```powershell
+$env:DATABASE_URL = (Get-Clipboard).Trim()
+.\.venv\Scripts\python.exe -m scripts.sync_admin_password
+.\.venv\Scripts\python.exe -m scripts.sync_admin_password --apply
+Remove-Item Env:DATABASE_URL
+Set-Clipboard -Value "cleared"
+```
+
+The first command is a dry run. `--apply` copies the local salt and password hash, increments the remote session version, and invalidates existing remote sessions. Both databases must already contain the selected username. Use `--username owner_name` on both commands for a different account.
+
+The dashboard shows confirmed activity and estimated value and lets the owner search/filter customer bookings. Confirmed rows include a **Manage** action for editing customer details, changing studios, rescheduling in 30-minute increments, or cancelling the booking. Reschedules use the same live overlap checks as customer bookings. Cancellation retains a red `DECLINED` event in Google Calendar while releasing the studio time. Cancelling a paid booking marks its payment `refund_due`; it does not call Razorpay's Refund API or return money automatically. Complete the refund in Razorpay, then use **Mark refunded** in the dashboard with the provider reference.
 
 The **Studio alerts** panel stores new bookings as unread until the owner marks them seen. It also refreshes every 30 seconds and shows operational reminders during the 15 minutes before a booking starts and the final 15 minutes of a current booking. When another session follows within 30 minutes, the ending reminder includes the next customer. Optional desktop notifications work while the dashboard is open and browser permission is granted.
 
@@ -190,6 +255,25 @@ Set-Clipboard -Value "cleared"
 
 Never paste the connection string into chat, source files, or a command that will be retained in shell history. The synchronization replaces studio profiles and purpose options only; it does not alter bookings, payments, calendar events, availability blocks, or admin credentials.
 
+### Remove booking test data
+
+The guarded cleanup command removes all bookings from the selected database together with their payment records and booking notifications. When Google Calendar mode is active, it deletes every linked booking or payment-hold event before deleting database records. Studio settings, owner availability blocks, purpose options, and admin users remain intact.
+
+Always inspect the dry-run counts and database label first:
+
+```powershell
+.\.venv\Scripts\python.exe -m scripts.clear_bookings
+.\.venv\Scripts\python.exe -m scripts.clear_bookings --apply
+```
+
+To clean Neon, temporarily load its `DATABASE_URL` into the same terminal before running both commands. If any Calendar deletion fails, the database deletion is stopped. This command deletes every booking in the selected database, not an individual reference.
+
+### Booking Terms and Conditions
+
+The current published booking terms are identified internally as `v1` in `app/core/booking_rules.py`; the version is deliberately not displayed in the customer interface. During booking, the customer opens the Terms and Conditions in an accessible modal, can view the published PDF, and must explicitly accept before continuing. The accepted version is stored with the booking so future wording changes do not erase which terms applied.
+
+The source displayed by the booking flow is in `app/web/index.html`, and the downloadable copy is `app/static/legal/ynotframez-studio-booking-terms.pdf`. When publishing a later revision, update both together and then increment `CURRENT_TERMS_VERSION`.
+
 Owner-created blocks are currently application-managed: they prevent bookings even when Google Calendar mode is enabled, but they are not exported as separate Google Calendar events.
 
 ## Calendar modes
@@ -221,7 +305,38 @@ GOOGLE_CALENDAR_TIMEOUT_SECONDS="8"
 
 Studio hours continue to come from Studio Dashboard settings. Any normal busy event placed on a dedicated studio calendar blocks that time for only that studio; events marked **Free** remain bookable. Confirmed bookings are created on the selected studio's calendar, and rescheduling or cancellation updates the same event. Calendar API transports are isolated per request worker and bounded by `GOOGLE_CALENDAR_TIMEOUT_SECONDS`, so one stalled Google connection cannot queue every public and admin availability view. The legacy `GOOGLE_CALENDAR_ID` setting remains available when both studios intentionally share one calendar.
 
+Useful Calendar maintenance commands are:
+
+```powershell
+# Creates, reads, and removes one temporary event in each configured calendar.
+.\.venv\Scripts\python.exe -m scripts.verify_google_calendars
+
+# Replaces stub IDs on confirmed bookings with real Google events.
+.\.venv\Scripts\python.exe -m scripts.migrate_stub_calendar_events
+
+# Recreates or updates events from confirmed and cancelled booking records.
+.\.venv\Scripts\python.exe -m scripts.refresh_google_calendar_events
+```
+
+Run these only after confirming `CALENDAR_MODE=google`, the selected `DATABASE_URL`, the service-account file, and both studio Calendar IDs. The verification command performs a real temporary write and removes it. Migration and refresh modify live studio calendars and should be used only for a deliberate repair or environment transition.
+
 ## Web API
+
+Interactive OpenAPI pages are disabled. The customer-facing routes used by the bundled frontend are:
+
+| Method and path | Purpose |
+| --- | --- |
+| `GET /api/spaces` | List active studio profiles. |
+| `GET /api/spaces/{slug}` | Load one public studio profile and gallery. |
+| `POST /api/availability` | Check one proposed booking window. |
+| `GET /api/availability/day` | Load all half-hour slots for a studio and date. |
+| `POST /api/bookings` | Create a payment-pending booking and checkout order. Disabled by the maintenance gate. |
+| `POST /api/bookings/checkout` | Create or retrieve a retry checkout for an active hold. |
+| `POST /api/payments/razorpay/verify` | Verify checkout signature, provider status, amount, currency, and availability before confirming. |
+| `POST /api/payments/razorpay/webhook` | Process signed Razorpay payment fallback events idempotently. |
+| `POST /api/bookings/lookup` | Retrieve one booking using its reference and customer email. |
+
+Owner routes use the `/api/admin` prefix and require the signed HttpOnly admin-session cookie. The WhatsApp-style state-machine webhook is `POST /webhooks/whatsapp`.
 
 ### List spaces
 
@@ -244,7 +359,7 @@ Content-Type: application/json
 
 {
   "space_id": "standard_small",
-  "booking_date": "2026-08-15",
+  "booking_date": "2026-10-15",
   "start_time": "14:30",
   "duration_hours": 2
 }
@@ -258,7 +373,7 @@ Content-Type: application/json
 
 {
   "space_id": "standard_small",
-  "booking_date": "2026-08-15",
+  "booking_date": "2026-10-15",
   "start_time": "14:30",
   "duration_hours": 2,
   "customer_name": "Sample Customer",
@@ -299,21 +414,39 @@ Invoke-RestMethod -Method Post `
   -Body '{"from_number":"919999999999","message":"hi"}'
 ```
 
-The webhook returns the next bot message as JSON. It is provider-neutral for MVP testing; connecting Meta WhatsApp Cloud API still requires signature verification, payload adaptation, and outbound-message delivery.
+The webhook returns the next bot message as JSON. It is provider-neutral for development; connecting Meta WhatsApp Cloud API still requires signature verification, payload adaptation, and outbound-message delivery.
 
 ## Razorpay payment-first setup
 
-Create Razorpay Test Mode API keys and configure the `RAZORPAY_*` values shown in `.env.example`. Keep `RAZORPAY_MODE="stub"` until the code and secrets are deployed together, then change it to `api` for an end-to-end Test Mode payment. Configure a Razorpay webhook pointing to:
+Create Razorpay Test Mode API keys and configure the `RAZORPAY_*` values shown in `.env.example`. Keep `RAZORPAY_MODE="stub"` until the code and secrets are deployed together, then change it to `api` for an end-to-end Test Mode payment. Never mix Test and Live credentials. Configure a webhook in the same Razorpay mode, pointing to:
 
 ```text
 https://your-public-domain.example/api/payments/razorpay/webhook
 ```
 
-Use the same secret in Razorpay and `RAZORPAY_WEBHOOK_SECRET`. Subscribe to `payment.captured`, `payment.failed`, and `order.paid`. If WhatsApp Payment Links are being tested, also subscribe to `payment_link.paid`, `payment_link.expired`, and `payment_link.cancelled`. Razorpay must be able to reach this HTTPS endpoint; `127.0.0.1` cannot receive provider webhooks.
+Use the same webhook secret in Razorpay and `RAZORPAY_WEBHOOK_SECRET`. This secret is chosen while creating the webhook; it is not the API key secret. Subscribe to `payment.captured`, `payment.failed`, and `order.paid`. If WhatsApp Payment Links are being tested, also subscribe to `payment_link.paid`, `payment_link.expired`, and `payment_link.cancelled`. Razorpay must be able to reach this HTTPS endpoint; `127.0.0.1` cannot receive provider webhooks.
 
 For offline UI development only, use `RAZORPAY_MODE="stub"`. Stub mode records deterministic test order/link identifiers but intentionally supplies no checkout key, so it cannot take payment or confirm a booking automatically.
 
-Standard Checkout uses Razorpay's hosted `checkout.js`; the app does not need the Python Razorpay SDK. Order creation and payment-status retrieval use the existing server-side HTTP client. A failed attempt remains retryable during the temporary hold. If money is captured after the hold expires or the slot can no longer be reserved, the booking is not confirmed, the payment is marked `refund_due`, and the dashboard shows an unread payment-review alert.
+Standard Checkout uses Razorpay's hosted `checkout.js`; the app does not need the Python Razorpay SDK. Order creation and payment-status retrieval use the existing server-side HTTP client. A new request creates a database hold and an opaque Google Calendar `PAYMENT HOLD` event. A failed attempt remains retryable until the hold deadline, and failed attempts do not release the time to another customer. Captured payment is confirmed only after checking the signature, Razorpay status, order, amount, currency, and final slot availability.
+
+If money is captured after the hold expires or the slot can no longer be reserved, the booking is not confirmed, the payment is marked `refund_due`, and the dashboard shows an unread payment-review alert. Refunds are currently operational rather than automatic: process the refund in Razorpay first, then record it with **Mark refunded** in the dashboard. Never mark a payment refunded before Razorpay confirms the refund.
+
+### Razorpay Test-to-Live cutover
+
+Complete and verify the full flow in Test Mode before changing Render:
+
+1. Keep `PUBLIC_BOOKING_ENABLED=false` while configuring production.
+2. In Razorpay Live Mode, create or obtain a matching `rzp_live_...` key ID and key secret.
+3. In Razorpay Live Mode, create and enable the production webhook at `https://ynotframezstudios.com/api/payments/razorpay/webhook` with the required events above.
+4. Update Render's `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET`, and `RAZORPAY_WEBHOOK_SECRET` together. Do not reuse the Test webhook secret.
+5. Set Render's `RAZORPAY_MODE=api` and keep `RAZORPAY_CALLBACK_BASE_URL=https://ynotframezstudios.com`.
+6. Deploy while the maintenance gate remains closed. Verify `/health`, the homepage, studio pages, dashboard, email delivery, both calendars, and existing-booking lookup.
+7. Perform one controlled real booking and payment. Confirm the Razorpay payment is captured, the database booking is confirmed, the Calendar hold becomes a confirmed event, the email arrives, and the booking lookup shows the actual payment method.
+8. Cancel/refund that controlled booking manually if required and reconcile the dashboard with Razorpay.
+9. Clear only deliberate test data, then set `PUBLIC_BOOKING_ENABLED=true` to open public booking.
+
+Switching Razorpay modes changes which provider data is visible; Test Mode transactions are simulated and do not appear in Live Mode. Keep the Live credentials only in Render or the ignored local `.env`, never in Git or documentation.
 
 WhatsApp remains provider-neutral until the Meta Cloud API adapter is connected.
 
@@ -348,7 +481,7 @@ Emails contain both plain-text and HTML versions. The HTML version embeds the YN
 
 Never commit `.env` or `google-service-account.json`. If a service-account key was committed previously, removing the file from the current branch is not enough: disable/delete that key in Google Cloud, create a replacement, and consider purging the old file from Git history before sharing the repository further.
 
-## Free team-testing deployment
+## Render and Neon deployment
 
 The repository includes `render.yaml` for a Render Free web service in Singapore. Deployed data is stored in Neon PostgreSQL because Render Free's local filesystem is ephemeral and would discard a SQLite database whenever the service sleeps, restarts, or redeploys.
 
@@ -360,7 +493,7 @@ PUBLIC_BOOKING_ENABLED="false"
 
 When disabled, `/book` shows the branded maintenance page and direct public booking creation returns HTTP 503. Studio pages, the dashboard, existing-booking lookup, payment verification, webhooks, and administrative booking tools remain available. Local `.env` may use `true` for testing. Change the Render value to `true` only when the public payment and booking flow is ready to launch.
 
-This setup has no required hosting charge within the providers' free allowances, but it is a testing environment rather than a production SLA. Render Free sleeps after 15 minutes without inbound traffic, so the first visit after an idle period can take about a minute. Neon Free suspends idle compute and wakes it automatically when the app reconnects.
+This setup has no required hosting charge within the providers' free allowances, but it does not provide a production uptime or response-time SLA. Render Free sleeps after periods without inbound traffic, so the first visit after an idle period can take about a minute. Neon Free can also suspend idle compute and wakes when the app reconnects. The bounded, worker-isolated Calendar client prevents a slow Google request from queuing every public and admin availability view, but it cannot remove a Render or database cold start.
 
 ### 1. Create the free Neon database
 
@@ -398,9 +531,9 @@ The Blueprint already supplies `smtp-relay.brevo.com` and port `2525`. Brevo's F
    - `https://<service-name>.onrender.com/health`
    - `https://<service-name>.onrender.com/`
    - `https://<service-name>.onrender.com/dashboard`
-7. The deployed database starts empty. Open `/dashboard` and create the deployment's admin account. This does not change the local admin account.
+7. The deployed database starts empty. Open `/dashboard` and create the deployment's admin account. This does not change the local admin account. Alternatively, after both accounts exist, use `scripts.sync_admin_password` to copy the local password hash safely.
 
-The Blueprint sets `ADMIN_COOKIE_SECURE=true`, generates a stable admin-session signing secret, and runs one Uvicorn worker. Razorpay deliberately remains in stub mode until Test Mode is explicitly enabled in Render. In stub mode, a submitted booking stays payment-pending and holds its slot; use **Mark paid** in the Studio Dashboard to complete the test booking, create its live Google Calendar event, and send its confirmation email.
+The Blueprint sets `ADMIN_COOKIE_SECURE=true`, generates a stable admin-session signing secret, and runs one Uvicorn worker. Its committed baseline deliberately keeps Razorpay in stub mode until Test or Live Mode is explicitly enabled in Render. In stub mode, a submitted booking stays payment-pending and holds its slot; use **Mark paid** in the Studio Dashboard to complete the test booking, convert its Calendar hold into a confirmed event, and send its confirmation email.
 
 ### Production domains
 
