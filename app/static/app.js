@@ -228,7 +228,8 @@ function renderSlots() {
   slotGrid.innerHTML = state.slots.map((slot) => {
     const selected = state.selectedSlots.some((item) => item.start_time === slot.start_time);
     const available = slot.status === "available";
-    return `<button type="button" class="slot-button${selected ? " selected" : ""}" data-start="${slot.start_time}" ${available ? "" : "disabled"} aria-pressed="${selected}">${displayTime(slot.start_time)}</button>`;
+    const slotLabel = `${displayTime(slot.start_time)} - ${displayTime(slot.end_time)}`;
+    return `<button type="button" class="slot-button${selected ? " selected" : ""}" data-start="${slot.start_time}" ${available ? "" : "disabled"} aria-pressed="${selected}">${escapeText(slotLabel)}</button>`;
   }).join("");
   slotGrid.querySelectorAll(".slot-button:not(:disabled)").forEach((button) => {
     button.addEventListener("click", () => toggleSlot(button.dataset.start));

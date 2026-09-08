@@ -619,9 +619,10 @@ function availabilitySlot(slot) {
     disabled = "disabled";
   }
   const actionLabel = slot.status === "available" ? "Click to block" : detail;
-  const title = `${displayTime(slot.start_time)} to ${displayTime(slot.end_time)} · ${detail}`;
+  const slotLabel = `${displayTime(slot.start_time)} - ${displayTime(slot.end_time)}`;
+  const title = `${slotLabel} · ${detail}`;
   return `<button type="button" class="admin-slot-button ${safeAttr(slot.status)}" ${action} ${disabled} title="${safeAttr(title)}">
-    <span>${safe(displayTime(slot.start_time))}</span>
+    <span>${safe(slotLabel)}</span>
     <small>${safe(slot.status.replaceAll("_", " "))}</small>
     <em>${safe(actionLabel)}</em>
   </button>`;

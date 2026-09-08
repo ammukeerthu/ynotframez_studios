@@ -8,6 +8,7 @@ class BookingTermsViewTests(unittest.TestCase):
         cls.project_root = Path(__file__).resolve().parents[1]
         cls.booking_html = (cls.project_root / "app" / "web" / "index.html").read_text(encoding="utf-8")
         cls.booking_script = (cls.project_root / "app" / "static" / "app.js").read_text(encoding="utf-8")
+        cls.admin_script = (cls.project_root / "app" / "static" / "admin.js").read_text(encoding="utf-8")
         cls.styles = (cls.project_root / "app" / "static" / "styles.css").read_text(encoding="utf-8")
         cls.pdf_path = (
             cls.project_root
@@ -43,6 +44,12 @@ class BookingTermsViewTests(unittest.TestCase):
             'document.querySelector("#new-booking").addEventListener("click", () => window.location.reload())',
             self.booking_script,
         )
+
+    def test_half_hour_slots_show_the_complete_interval(self) -> None:
+        interval_template = "`${displayTime(slot.start_time)} - ${displayTime(slot.end_time)}`"
+        self.assertIn(interval_template, self.booking_script)
+        self.assertIn(interval_template, self.admin_script)
+        self.assertIn("grid-template-columns: repeat(2, minmax(0, 1fr))", self.styles)
 
 
 if __name__ == "__main__":
