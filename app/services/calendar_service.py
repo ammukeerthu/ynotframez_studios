@@ -1,5 +1,7 @@
 from datetime import date, datetime, time, timedelta
+from functools import lru_cache
 from pathlib import Path
+from threading import RLock
 from uuid import uuid4
 from zoneinfo import ZoneInfo
 
@@ -10,6 +12,26 @@ from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.models.booking import Booking
 from app.services.spaces import get_space_by_id
+
+
+_google_calendar_request_lock = RLock()
+
+
+@lru_cache(maxsize=4)
+def _google_calendar_client(key_file: str):
+    """Build one authorized client per service-account file for this process.
+
+    Reusing the client also reuses its short-lived OAuth token. Constructing a
+    new client for every availability check forces an avoidable token exchange
+    before each Calendar API request, which is especially slow on small hosts.
+    Access is serialized because google-api-python-client's HTTP transport is
+    not thread-safe.
+    """
+    credentials = service_account.Credentials.from_service_account_file(
+        key_file,
+        scopes=GoogleCalendarService.scopes,
+    )
+    return build("calendar", "v3", credentials=credentials)
 
 
 class GoogleCalendarService:
@@ -136,9 +158,9 @@ class GoogleCalendarService:
         calendar_id = self._calendar_id_for_space(booking.space_id)
 
         created_event = (
-            self.service.events()
-            .insert(calendarId=calendar_id, body=event)
-            .execute()
+            self._execute(
+                self.service.events().insert(calendarId=calendar_id, body=event)
+            )
         )
         return created_event["id"]
 
@@ -163,20 +185,28 @@ class GoogleCalendarService:
         if booking.calendar_event_id and not booking.calendar_event_id.startswith("gcal_stub_"):
             previous_calendar_id = self._calendar_id_for_space(previous_space_id or booking.space_id)
             if previous_calendar_id != calendar_id:
-                self.service.events().delete(
-                    calendarId=previous_calendar_id,
-                    eventId=booking.calendar_event_id,
-                ).execute()
-                created = self.service.events().insert(calendarId=calendar_id, body=body).execute()
+                self._execute(
+                    self.service.events().delete(
+                        calendarId=previous_calendar_id,
+                        eventId=booking.calendar_event_id,
+                    )
+                )
+                created = self._execute(
+                    self.service.events().insert(calendarId=calendar_id, body=body)
+                )
                 return created["id"]
-            updated = (
-                self.service.events()
-                .update(calendarId=calendar_id, eventId=booking.calendar_event_id, body=body)
-                .execute()
+            updated = self._execute(
+                self.service.events().update(
+                    calendarId=calendar_id,
+                    eventId=booking.calendar_event_id,
+                    body=body,
+                )
             )
             return updated["id"]
 
-        created = self.service.events().insert(calendarId=calendar_id, body=body).execute()
+        created = self._execute(
+            self.service.events().insert(calendarId=calendar_id, body=body)
+        )
         return created["id"]
 
     def delete_event(self, event_id: str | None, space_id: str | None = None) -> None:
@@ -189,7 +219,9 @@ class GoogleCalendarService:
             print("Google Calendar stub event deleted:", {"event_id": event_id})
             return
         calendar_id = self._calendar_id_for_space(space_id)
-        self.service.events().delete(calendarId=calendar_id, eventId=event_id).execute()
+        self._execute(
+            self.service.events().delete(calendarId=calendar_id, eventId=event_id)
+        )
 
     def decline_event(self, booking: Booking) -> str:
         if not booking.booking_date or not booking.start_time or not booking.duration_hours:
@@ -212,14 +244,18 @@ class GoogleCalendarService:
 
         calendar_id = self._calendar_id_for_space(booking.space_id)
         if booking.calendar_event_id and not booking.calendar_event_id.startswith("gcal_stub_"):
-            event = (
-                self.service.events()
-                .update(calendarId=calendar_id, eventId=booking.calendar_event_id, body=body)
-                .execute()
+            event = self._execute(
+                self.service.events().update(
+                    calendarId=calendar_id,
+                    eventId=booking.calendar_event_id,
+                    body=body,
+                )
             )
             return event["id"]
 
-        event = self.service.events().insert(calendarId=calendar_id, body=body).execute()
+        event = self._execute(
+            self.service.events().insert(calendarId=calendar_id, body=body)
+        )
         return event["id"]
 
     def _event_body(
@@ -258,18 +294,21 @@ class GoogleCalendarService:
     def _list_events(self, start: datetime, end: datetime, calendar_id: str) -> list[dict]:
         if self.service is None:
             return []
-        response = (
-            self.service.events()
-            .list(
+        response = self._execute(
+            self.service.events().list(
                 calendarId=calendar_id,
                 timeMin=start.isoformat(),
                 timeMax=end.isoformat(),
                 singleEvents=True,
                 orderBy="startTime",
             )
-            .execute()
         )
         return response.get("items", [])
+
+    @staticmethod
+    def _execute(request):
+        with _google_calendar_request_lock:
+            return request.execute()
 
     def _event_blocks_space(
         self,
@@ -355,11 +394,7 @@ class GoogleCalendarService:
                 "Set GOOGLE_SERVICE_ACCOUNT_FILE in your .env file."
             )
 
-        credentials = service_account.Credentials.from_service_account_file(
-            key_path,
-            scopes=self.scopes,
-        )
-        return build("calendar", "v3", credentials=credentials)
+        return _google_calendar_client(str(key_path.resolve()))
 
     def _calendar_id_for_space(self, space_id: str | None) -> str:
         calendar_id = self.calendar_ids.get(space_id or "") or self.calendar_id

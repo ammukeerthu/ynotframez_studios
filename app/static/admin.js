@@ -20,6 +20,8 @@ let studioSettings = [];
 let alertPollTimer = null;
 let alertsPayload = { unread_count: 0, new_bookings: [], operational: [] };
 let alertFilter = "all";
+let availabilityRequestToken = 0;
+let availabilityRequestController = null;
 const dashboardMessageTimers = new WeakMap();
 const MAX_BLOCK_DURATION_HOURS = 12;
 const currency = new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 });
@@ -563,20 +565,38 @@ function openBookingModal(bookingId) {
 
 async function loadAvailability() {
   const data = new FormData(availabilityFilters);
+  const spaceId = data.get("space_id");
+  const bookingDate = data.get("booking_date");
+  const requestToken = ++availabilityRequestToken;
+  availabilityRequestController?.abort();
+  const controller = new AbortController();
+  availabilityRequestController = controller;
   const query = new URLSearchParams({
-    space_id: data.get("space_id"),
-    booking_date: data.get("booking_date"),
+    space_id: spaceId,
+    booking_date: bookingDate,
   });
   const slots = document.querySelector("#availability-slots");
   slots.innerHTML = '<p class="availability-empty">Loading schedule…</p>';
+  slots.setAttribute("aria-busy", "true");
   try {
-    const day = await api(`/api/admin/availability?${query}`);
+    const day = await api(`/api/admin/availability?${query}`, { signal: controller.signal });
+    if (
+      requestToken !== availabilityRequestToken
+      || availabilityFilters.elements.space_id.value !== spaceId
+      || availabilityFilters.elements.booking_date.value !== bookingDate
+    ) return;
     document.querySelector("#schedule-space").textContent = day.space_name;
     document.querySelector("#schedule-date").textContent = formatDate(day.booking_date);
     slots.innerHTML = day.slots.map(availabilitySlot).join("");
   } catch (error) {
+    if (error.name === "AbortError" || requestToken !== availabilityRequestToken) return;
     slots.innerHTML = `<p class="availability-empty">${safe(error.message)}</p>`;
     if (error.status === 401) handleDashboardError(error);
+  } finally {
+    if (requestToken === availabilityRequestToken) {
+      slots.removeAttribute("aria-busy");
+      availabilityRequestController = null;
+    }
   }
 }
 

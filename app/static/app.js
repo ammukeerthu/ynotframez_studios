@@ -10,6 +10,8 @@ const state = {
   slotChecked: false,
   currentBooking: null,
   paymentNotice: "",
+  slotRequestToken: 0,
+  slotRequestController: null,
 };
 
 const currency = new Intl.NumberFormat("en-IN", {
@@ -83,6 +85,9 @@ function renderSpaces() {
 }
 
 function selectSpace(id) {
+  state.slotRequestController?.abort();
+  state.slotRequestController = null;
+  state.slotRequestToken += 1;
   state.selectedSpace = state.spaces.find((space) => space.id === id);
   state.slotChecked = false;
   state.slots = [];
@@ -176,21 +181,39 @@ function displayTime(value) {
 async function loadDaySlots() {
   const bookingDate = form.elements.booking_date.value;
   if (!bookingDate || !state.selectedSpace) return;
+  const spaceId = state.selectedSpace.id;
+  const requestToken = ++state.slotRequestToken;
+  state.slotRequestController?.abort();
+  const controller = new AbortController();
+  state.slotRequestController = controller;
   const slotGrid = document.querySelector("#slot-grid");
-  slotGrid.innerHTML = Array.from({ length: 12 }, () => '<span class="slot-button loading"></span>').join("");
+  slotGrid.setAttribute("aria-busy", "true");
+  slotGrid.innerHTML = '<p class="slot-loading-message">Checking live calendar availability…</p>'
+    + Array.from({ length: 12 }, () => '<span class="slot-button loading"></span>').join("");
   state.selectedSlots = [];
   syncSelectedSlots();
   try {
-    const query = new URLSearchParams({ space_id: state.selectedSpace.id, booking_date: bookingDate });
-    const result = await request(`/api/availability/day?${query}`);
+    const query = new URLSearchParams({ space_id: spaceId, booking_date: bookingDate });
+    const result = await request(`/api/availability/day?${query}`, { signal: controller.signal });
+    if (
+      requestToken !== state.slotRequestToken
+      || state.selectedSpace?.id !== spaceId
+      || form.elements.booking_date.value !== bookingDate
+    ) return;
     state.slots = result.slots;
     document.querySelector("#operating-hours").textContent =
       `${displayTime(result.opening_time)} to ${displayTime(result.closing_time)} · Asia/Kolkata`;
     renderSlots();
   } catch (error) {
+    if (error.name === "AbortError" || requestToken !== state.slotRequestToken) return;
     state.slots = [];
     slotGrid.innerHTML = `<p>${escapeText(error.message)}</p>`;
     showMessage(error.message);
+  } finally {
+    if (requestToken === state.slotRequestToken) {
+      slotGrid.removeAttribute("aria-busy");
+      state.slotRequestController = null;
+    }
   }
 }
 

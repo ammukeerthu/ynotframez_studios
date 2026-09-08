@@ -96,6 +96,7 @@ footer a { color:inherit; text-underline-offset:3px; }
 .slot-heading > span { font-size: 9px; font-weight: 800; letter-spacing: .15em; }.slot-heading small { color: var(--muted); font-size: 9px; }
 .slot-grid { min-height: 132px; display: grid; grid-template-columns: repeat(4, 1fr); gap: 9px; padding-top: 15px; }
 .slot-grid > p { grid-column: 1 / -1; color: var(--muted); font: 14px/1.6 Georgia, serif; }
+.slot-grid > .slot-loading-message { margin: 0 0 3px; font: 11px/1.5 Inter, "Segoe UI", sans-serif; }
 .slot-button { min-height: 50px; padding: 7px; border: 1px solid var(--line); background: var(--white); color: var(--ink); cursor: pointer; font-size: 11px; transition: transform .15s, background .15s, border-color .15s; }
 .slot-button:hover:not(:disabled) { transform: translateY(-2px); border-color: var(--ink); }.slot-button.selected { color: white; background: var(--ink); border-color: var(--ink); }
 .slot-button:disabled { color: #aaa69e; background: #efede7; cursor: not-allowed; text-decoration: line-through; }
