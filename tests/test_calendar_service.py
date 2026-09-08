@@ -7,6 +7,7 @@ from app.core.config import settings
 from app.services.calendar_service import (
     GoogleCalendarService,
     _google_calendar_client,
+    _google_calendar_credentials,
     _google_calendar_thread_state,
 )
 
@@ -17,6 +18,7 @@ class GoogleCalendarServiceTest(unittest.TestCase):
     def tearDown(self) -> None:
         if hasattr(_google_calendar_thread_state, "clients"):
             del _google_calendar_thread_state.clients
+        _google_calendar_credentials.cache_clear()
 
     def service(self) -> GoogleCalendarService:
         service = GoogleCalendarService()

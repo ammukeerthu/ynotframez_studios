@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 
 from app.core.booking_rules import CURRENT_TERMS_VERSION, MINIMUM_BOOKING_DURATION_HOURS
 from app.core.config import settings
+from app.models.availability import AvailabilityBlock
 from app.models.booking import Booking, BookingState, PaymentMode
 from app.schemas.booking import (
     AvailabilityRequest,
@@ -25,7 +26,7 @@ from app.services.email_service import EmailService
 from app.services.payment_service import PaymentService
 from app.services.notification_service import notify_new_booking, notify_payment_issue
 from app.services.razorpay_service import RazorpayService
-from app.services.spaces import get_space_by_id
+from app.services.spaces import StudioSpace, get_space_by_id
 
 
 class BookingUnavailableError(ValueError):
@@ -303,8 +304,11 @@ class BookingApplicationService:
         ignore_calendar_event_id: str | None = None,
         enforce_duration_limits: bool = True,
         calendar_events: list[dict] | None = None,
+        space: StudioSpace | None = None,
+        day_bookings: list[Booking] | None = None,
+        day_blocks: list[AvailabilityBlock] | None = None,
     ) -> tuple[bool, str]:
-        space = get_space_by_id(request.space_id, self.db)
+        space = space or get_space_by_id(request.space_id, self.db)
         if not space:
             return False, "Please select a valid studio space."
         minimum_duration = max(space.min_duration_hours, MINIMUM_BOOKING_DURATION_HOURS)
@@ -329,6 +333,7 @@ class BookingApplicationService:
             requested_start,
             requested_end,
             exclude_booking_id,
+            bookings=day_bookings,
         ):
             return False, "That slot has just been booked. Please choose another time."
 
@@ -338,6 +343,7 @@ class BookingApplicationService:
             request.booking_date,
             requested_start,
             requested_end,
+            blocks=day_blocks,
         ):
             return False, "That time has been blocked by the studio. Please choose another slot."
 
@@ -352,6 +358,7 @@ class BookingApplicationService:
             candidate,
             ignore_event_id=ignore_calendar_event_id,
             events=calendar_events,
+            space=space,
         ):
             return False, (
                 "That slot is unavailable. Studio hours are "
@@ -371,6 +378,26 @@ class BookingApplicationService:
         day_start = datetime.combine(booking_date, time.fromisoformat(space.opening_time))
         day_end = datetime.combine(booking_date, time.fromisoformat(space.closing_time))
         within_booking_window = 0 <= (booking_date - studio_now.date()).days <= settings.future_booking_days
+        # Neon can be in a different region from the web service. Load each day's
+        # state once instead of issuing booking, block, and studio queries for
+        # every half-hour slot.
+        day_bookings = list(
+            self.db.scalars(
+                select(Booking).where(
+                    Booking.space_id == space_id,
+                    Booking.booking_date == booking_date.isoformat(),
+                    Booking.state.in_([BookingState.CONFIRMED, BookingState.PAYMENT_PENDING]),
+                )
+            )
+        )
+        day_blocks = list(
+            self.db.scalars(
+                select(AvailabilityBlock).where(
+                    AvailabilityBlock.space_id == space_id,
+                    AvailabilityBlock.booking_date == booking_date.isoformat(),
+                )
+            )
+        )
         calendar_events = (
             self.calendar.events_for_day(
                 space_id,
@@ -396,6 +423,9 @@ class BookingApplicationService:
                 request,
                 enforce_duration_limits=False,
                 calendar_events=calendar_events,
+                space=space,
+                day_bookings=day_bookings,
+                day_blocks=day_blocks,
             )
             slot_start = datetime.combine(booking_date, start)
             if available:

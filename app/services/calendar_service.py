@@ -1,4 +1,5 @@
 from datetime import UTC, date, datetime, time, timedelta
+from functools import lru_cache
 from pathlib import Path
 from threading import local
 from uuid import uuid4
@@ -12,10 +13,19 @@ from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.models.booking import Booking
-from app.services.spaces import get_space_by_id
+from app.services.spaces import StudioSpace, get_space_by_id
 
 
 _google_calendar_thread_state = local()
+
+
+@lru_cache(maxsize=4)
+def _google_calendar_credentials(key_file: str):
+    """Share the short-lived service-account token across worker threads."""
+    return service_account.Credentials.from_service_account_file(
+        key_file,
+        scopes=GoogleCalendarService.scopes,
+    )
 
 
 def _google_calendar_client(key_file: str, timeout_seconds: int):
@@ -23,9 +33,10 @@ def _google_calendar_client(key_file: str, timeout_seconds: int):
 
     ``httplib2.Http`` is not thread-safe, so sharing a single client required a
     process-wide lock. One stalled Google request could therefore freeze every
-    public and admin availability request. Thread-local clients retain token and
-    connection reuse without coupling otherwise independent requests, while the
-    socket timeout bounds an individual failure.
+    public and admin availability request. Thread-local clients retain connection
+    reuse without coupling otherwise independent requests. Their credentials are
+    shared so a service-account token refresh is not repeated by every FastAPI
+    worker thread, while the socket timeout bounds an individual failure.
     """
     clients = getattr(_google_calendar_thread_state, "clients", None)
     if clients is None:
@@ -34,10 +45,7 @@ def _google_calendar_client(key_file: str, timeout_seconds: int):
     cache_key = (key_file, timeout_seconds)
     client = clients.get(cache_key)
     if client is None:
-        credentials = service_account.Credentials.from_service_account_file(
-            key_file,
-            scopes=GoogleCalendarService.scopes,
-        )
+        credentials = _google_calendar_credentials(key_file)
         transport = AuthorizedHttp(
             credentials,
             http=httplib2.Http(timeout=timeout_seconds),
@@ -93,6 +101,7 @@ class GoogleCalendarService:
         booking: Booking,
         ignore_event_id: str | None = None,
         events: list[dict] | None = None,
+        space: StudioSpace | None = None,
     ) -> bool:
         if not booking.booking_date or not booking.start_time or not booking.duration_hours:
             return False
@@ -100,7 +109,7 @@ class GoogleCalendarService:
         start = self._start_datetime(booking)
         end = start + timedelta(hours=booking.duration_hours)
 
-        space = get_space_by_id(booking.space_id, self.db, include_inactive=True)
+        space = space or get_space_by_id(booking.space_id, self.db, include_inactive=True)
         opening = time.fromisoformat(space.opening_time) if space else time(settings.studio_opening_hour)
         closing = time.fromisoformat(space.closing_time) if space else time(settings.studio_closing_hour)
         business_start = datetime.combine(start.date(), opening, tzinfo=self.timezone)

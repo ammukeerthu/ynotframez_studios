@@ -6,7 +6,7 @@ from tempfile import TemporaryDirectory
 from threading import Event
 from unittest.mock import MagicMock
 
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, event
 from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
 
@@ -112,6 +112,22 @@ class BookingApplicationServiceTest(unittest.TestCase):
         self.assertEqual(states["12:00"], "available")
         events.list.assert_called_once()
         self.assertEqual(events.list.call_args.kwargs["calendarId"], "standard-calendar")
+
+    def test_day_availability_batches_database_reads(self) -> None:
+        statements: list[str] = []
+
+        def record_statement(_connection, _cursor, statement, _parameters, _context, _many) -> None:
+            if statement.lstrip().upper().startswith("SELECT"):
+                statements.append(statement)
+
+        event.listen(self.engine, "before_cursor_execute", record_statement)
+        try:
+            day = self.service.get_day_availability("standard_small", self.future_date)
+        finally:
+            event.remove(self.engine, "before_cursor_execute", record_statement)
+
+        self.assertEqual(len(day.slots), 22)
+        self.assertLessEqual(len(statements), 6)
 
     def test_booking_requires_a_minimum_of_two_hours(self) -> None:
         available, message = self.service.check_availability(

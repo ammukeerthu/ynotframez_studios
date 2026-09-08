@@ -1,3 +1,4 @@
+from collections.abc import Iterable
 from datetime import UTC, date, datetime, time, timedelta
 
 from sqlalchemy import select
@@ -28,12 +29,16 @@ def overlapping_block(
     booking_date: date,
     requested_start: datetime,
     requested_end: datetime,
+    blocks: Iterable[AvailabilityBlock] | None = None,
 ) -> AvailabilityBlock | None:
-    statement = select(AvailabilityBlock).where(
-        AvailabilityBlock.space_id == space_id,
-        AvailabilityBlock.booking_date == booking_date.isoformat(),
-    )
-    for block in db.scalars(statement):
+    matching_blocks = blocks
+    if matching_blocks is None:
+        statement = select(AvailabilityBlock).where(
+            AvailabilityBlock.space_id == space_id,
+            AvailabilityBlock.booking_date == booking_date.isoformat(),
+        )
+        matching_blocks = db.scalars(statement)
+    for block in matching_blocks:
         block_start, block_end = interval_for(
             date.fromisoformat(block.booking_date),
             time.fromisoformat(block.start_time),
@@ -51,16 +56,20 @@ def overlapping_booking(
     requested_start: datetime,
     requested_end: datetime,
     exclude_booking_id: int | None = None,
+    bookings: Iterable[Booking] | None = None,
 ) -> Booking | None:
-    statement = select(Booking).where(
-        Booking.space_id == space_id,
-        Booking.booking_date == booking_date.isoformat(),
-        Booking.state.in_([BookingState.CONFIRMED, BookingState.PAYMENT_PENDING]),
-    )
+    matching_bookings = bookings
+    if matching_bookings is None:
+        statement = select(Booking).where(
+            Booking.space_id == space_id,
+            Booking.booking_date == booking_date.isoformat(),
+            Booking.state.in_([BookingState.CONFIRMED, BookingState.PAYMENT_PENDING]),
+        )
+        matching_bookings = db.scalars(statement)
     hold_cutoff = datetime.now(UTC).replace(tzinfo=None) - timedelta(
         minutes=settings.razorpay_payment_hold_minutes
     )
-    for booking in db.scalars(statement):
+    for booking in matching_bookings:
         if booking.id == exclude_booking_id:
             continue
         if booking.state == BookingState.PAYMENT_PENDING and booking.updated_at < hold_cutoff:
