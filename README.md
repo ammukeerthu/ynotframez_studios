@@ -228,7 +228,7 @@ The **Studio settings** section stores the two studio profiles in the configured
 
 ### Synchronize committed studio defaults
 
-The committed Cube and Arena defaults live in `app/services/spaces.py`. Normal application startup seeds missing studio rows but deliberately does not overwrite owner-managed settings in an existing database.
+The committed Cube and Arena defaults live in `app/services/spaces.py`. Normal application startup seeds missing studio rows and does not perform a full overwrite of owner-managed settings. Narrow compatibility migrations may update a field only when its saved value exactly matches a superseded application default. The current migration changes the old 9 AM to 8 PM schedule to 9 AM to 9 PM, Arena capacity from 10 to 8, and Arena's exact legacy Cyclorama list label to `Cyclorama`. Other custom values and all operational data remain untouched. This lets the same guarded changes reach SQLite and Render/Neon during normal startup without copying one database into another.
 
 Use the guarded maintenance command when an existing database must be explicitly reset to the committed profiles and purpose options. Running it without `--apply` opens a transaction and rolls it back:
 
@@ -284,7 +284,7 @@ The default in `.env.example` is safe for local development:
 CALENDAR_MODE="stub"
 ```
 
-Stub mode enforces studio hours (9:00 AM–8:00 PM), checks confirmed SQLite bookings for clashes, and returns placeholder Calendar event IDs. It does not call Google.
+Stub mode enforces the database-backed studio hours (9:00 AM to 9:00 PM by default), checks confirmed SQLite bookings for clashes, and returns placeholder Calendar event IDs. It does not call Google.
 
 To use Google Calendar:
 

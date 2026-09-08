@@ -37,7 +37,7 @@ class StudioSpace:
     hero_image: str
     gallery_images: tuple[str, ...]
     opening_time: str = "09:00"
-    closing_time: str = "20:00"
+    closing_time: str = "21:00"
     min_duration_hours: float = MINIMUM_BOOKING_DURATION_HOURS
     max_duration_hours: float = 12.0
     is_active: bool = True
@@ -123,10 +123,10 @@ SPACES = {
             "Any damage or excessive cleaning may attract additional charges."
         ),
         hourly_rate=1500,
-        capacity=10,
+        capacity=8,
         dimensions="45 × 17 ft · Approx. 765 sq. ft. · Ideal for medium to large teams and productions",
         equipment=(
-            "Approx. 150 sq. ft. Cyclorama",
+            "Cyclorama",
             "Movable Backdrop System",
             "Studio Lighting Equipment",
             "Light Stands & Modifiers",
@@ -134,7 +134,7 @@ SPACES = {
             "Marshall Tufton Bluetooth Speaker",
         ),
         amenities=(
-            "Approx. 150 sq. ft. Cyclorama",
+            "Cyclorama",
             "Lifestyle Arch Wall",
             "Natural Daylight French Door",
             "Movable Backdrop System",
@@ -192,6 +192,14 @@ LEGACY_COVER_IMAGES = {
         "?auto=format&fit=crop&w=1400&q=85"
     ),
 }
+LEGACY_ARENA_CYCLORAMA_LABEL = "Approx. 150 sq. ft. Cyclorama"
+
+
+def _replace_json_item(value: str, old: str, new: str) -> str:
+    items = _json_items(value)
+    if old not in items:
+        return value
+    return json.dumps([new if item == old else item for item in items])
 
 
 def seed_studio_settings(db: Session, commit: bool = True) -> None:
@@ -200,6 +208,21 @@ def seed_studio_settings(db: Session, commit: bool = True) -> None:
     for sort_order, space in enumerate(SPACES.values(), start=1):
         if space.id in existing:
             row = existing[space.id]
+            if row.opening_time == "09:00" and row.closing_time == "20:00":
+                row.closing_time = space.closing_time
+            if row.id == "premium_large":
+                if row.capacity == 10:
+                    row.capacity = space.capacity
+                row.equipment_json = _replace_json_item(
+                    row.equipment_json,
+                    LEGACY_ARENA_CYCLORAMA_LABEL,
+                    "Cyclorama",
+                )
+                row.amenities_json = _replace_json_item(
+                    row.amenities_json,
+                    LEGACY_ARENA_CYCLORAMA_LABEL,
+                    "Cyclorama",
+                )
             if row.min_duration_hours < MINIMUM_BOOKING_DURATION_HOURS:
                 row.min_duration_hours = MINIMUM_BOOKING_DURATION_HOURS
             if row.max_duration_hours < MINIMUM_BOOKING_DURATION_HOURS:
@@ -392,4 +415,3 @@ def _json_items(value: str) -> tuple[str, ...]:
     except (TypeError, json.JSONDecodeError):
         return ()
     return tuple(str(item).strip() for item in items if str(item).strip())
-

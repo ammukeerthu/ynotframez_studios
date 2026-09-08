@@ -103,6 +103,8 @@ function selectSpace(id) {
   const purposeOptions = state.selectedSpace.booking_purposes.map((purpose) => new Option(purpose, purpose));
   purposeSelect.replaceChildren(new Option("Choose a purpose", ""), ...purposeOptions);
   purposeSelect.value = "";
+  document.querySelector("#studio-hours-summary").textContent =
+    `Studio hours: ${displayCompactTime(state.selectedSpace.opening_time)} to ${displayCompactTime(state.selectedSpace.closing_time)}`;
   updatePrice();
   updateLiveSummary();
   showMessage();
@@ -176,6 +178,10 @@ function displayTime(value) {
   const period = hours >= 12 ? "PM" : "AM";
   const displayHours = hours % 12 || 12;
   return `${displayHours}:${String(minutes).padStart(2, "0")} ${period}`;
+}
+
+function displayCompactTime(value) {
+  return displayTime(value).replace(":00 ", " ");
 }
 
 async function loadDaySlots() {

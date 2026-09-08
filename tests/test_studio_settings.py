@@ -1,3 +1,4 @@
+import json
 import unittest
 from datetime import date, time, timedelta
 
@@ -122,6 +123,58 @@ class StudioSettingsTest(unittest.TestCase):
 
         self.assertEqual(studio.min_duration_hours, 2.0)
 
+    def test_seed_migrates_the_previous_default_closing_time(self) -> None:
+        studio = self.db.get(StudioSetting, "standard_small")
+        studio.opening_time = "09:00"
+        studio.closing_time = "20:00"
+        self.db.commit()
+
+        seed_studio_settings(self.db)
+
+        self.assertEqual(studio.closing_time, "21:00")
+
+    def test_seed_preserves_owner_managed_custom_hours(self) -> None:
+        studio = self.db.get(StudioSetting, "standard_small")
+        studio.opening_time = "10:00"
+        studio.closing_time = "18:00"
+        self.db.commit()
+
+        seed_studio_settings(self.db)
+
+        self.assertEqual((studio.opening_time, studio.closing_time), ("10:00", "18:00"))
+
+    def test_seed_migrates_previous_arena_capacity_and_cyclorama_labels(self) -> None:
+        arena = self.db.get(StudioSetting, "premium_large")
+        arena.capacity = 10
+        arena.equipment_json = json.dumps(
+            ["Approx. 150 sq. ft. Cyclorama", "Custom production light"]
+        )
+        arena.amenities_json = json.dumps(
+            ["Approx. 150 sq. ft. Cyclorama", "Custom client lounge"]
+        )
+        self.db.commit()
+
+        seed_studio_settings(self.db)
+        migrated = get_space_by_id("premium_large", self.db, include_inactive=True)
+
+        self.assertEqual(migrated.capacity, 8)
+        self.assertEqual(migrated.equipment, ("Cyclorama", "Custom production light"))
+        self.assertEqual(migrated.amenities, ("Cyclorama", "Custom client lounge"))
+
+    def test_seed_preserves_custom_arena_values(self) -> None:
+        arena = self.db.get(StudioSetting, "premium_large")
+        arena.capacity = 12
+        arena.equipment_json = json.dumps(["Custom cyc wall description"])
+        arena.amenities_json = json.dumps(["Custom production amenity"])
+        self.db.commit()
+
+        seed_studio_settings(self.db)
+        preserved = get_space_by_id("premium_large", self.db, include_inactive=True)
+
+        self.assertEqual(preserved.capacity, 12)
+        self.assertEqual(preserved.equipment, ("Custom cyc wall description",))
+        self.assertEqual(preserved.amenities, ("Custom production amenity",))
+
     def test_seed_migrates_previous_public_studio_names_and_slugs(self) -> None:
         standard = self.db.get(StudioSetting, "standard_small")
         premium = self.db.get(StudioSetting, "premium_large")
@@ -149,7 +202,7 @@ class StudioSettingsTest(unittest.TestCase):
         premium = get_space_by_id("premium_large", self.db)
         self.assertEqual((standard.name, standard.hourly_rate, standard.capacity), ("Cube", 1000, 5))
         self.assertEqual(standard.booking_purposes[0], "Portrait Shoot")
-        self.assertEqual((premium.name, premium.hourly_rate, premium.capacity), ("Arena", 1500, 10))
+        self.assertEqual((premium.name, premium.hourly_rate, premium.capacity), ("Arena", 1500, 8))
         self.assertEqual(premium.booking_purposes[-1], "Larger Productions")
 
     def test_inactive_studio_is_hidden_from_public_catalogue(self) -> None:

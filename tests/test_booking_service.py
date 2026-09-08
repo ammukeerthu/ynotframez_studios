@@ -66,7 +66,7 @@ class BookingApplicationServiceTest(unittest.TestCase):
     def test_stub_calendar_enforces_business_hours(self) -> None:
         available, _ = self.service.check_availability(self.availability())
         outside_hours, _ = self.service.check_availability(
-            self.availability(start_time=time(19, 0), duration_hours=2)
+            self.availability(start_time=time(20, 0), duration_hours=2)
         )
 
         self.assertTrue(available)
@@ -78,8 +78,8 @@ class BookingApplicationServiceTest(unittest.TestCase):
         after_booking = self.service.get_day_availability("standard_small", self.future_date)
 
         self.assertEqual(before_booking.opening_time, "09:00")
-        self.assertEqual(before_booking.closing_time, "20:00")
-        self.assertEqual(len(before_booking.slots), 22)
+        self.assertEqual(before_booking.closing_time, "21:00")
+        self.assertEqual(len(before_booking.slots), 24)
         states = {slot.start_time: slot.status for slot in after_booking.slots}
         self.assertEqual(states["11:00"], "booked")
         self.assertEqual(states["11:30"], "booked")
@@ -106,7 +106,7 @@ class BookingApplicationServiceTest(unittest.TestCase):
         day = self.service.get_day_availability("standard_small", self.future_date)
         states = {slot.start_time: slot.status for slot in day.slots}
 
-        self.assertEqual(len(day.slots), 22)
+        self.assertEqual(len(day.slots), 24)
         self.assertEqual(states["11:00"], "unavailable")
         self.assertEqual(states["11:30"], "unavailable")
         self.assertEqual(states["12:00"], "available")
@@ -126,7 +126,7 @@ class BookingApplicationServiceTest(unittest.TestCase):
         finally:
             event.remove(self.engine, "before_cursor_execute", record_statement)
 
-        self.assertEqual(len(day.slots), 22)
+        self.assertEqual(len(day.slots), 24)
         self.assertLessEqual(len(statements), 6)
 
     def test_booking_requires_a_minimum_of_two_hours(self) -> None:

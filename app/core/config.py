@@ -18,7 +18,7 @@ class Settings(BaseSettings):
     smtp_timeout_seconds: int = 15
     studio_timezone: str = "Asia/Kolkata"
     studio_opening_hour: int = 9
-    studio_closing_hour: int = 20
+    studio_closing_hour: int = 21
     future_booking_days: int = 90
     admin_session_secret: str = ""
     admin_session_secret_file: str = ".admin_session_secret"
