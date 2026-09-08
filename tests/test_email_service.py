@@ -1,4 +1,5 @@
 import unittest
+from datetime import datetime
 from unittest.mock import MagicMock, patch
 
 from app.core.config import settings
@@ -23,7 +24,8 @@ class EmailServiceTest(unittest.TestCase):
         )
 
     def test_confirmation_contains_plain_and_html_booking_details(self) -> None:
-        message = EmailService()._build_message(self.booking(), "confirmation")
+        email_service = EmailService()
+        message = email_service._build_message(self.booking(), "confirmation")
         plain = message.get_body(preferencelist=("plain",)).get_content()
         html = message.get_body(preferencelist=("html",)).get_content()
 
@@ -50,7 +52,8 @@ class EmailServiceTest(unittest.TestCase):
         self.assertIn("arrive on time", html.lower())
         logo_parts = [part for part in message.walk() if part.get_content_type() == "image/png"]
         self.assertEqual(len(logo_parts), 1)
-        self.assertEqual(logo_parts[0].get_filename(), "ynotframez-studios.png")
+        self.assertEqual(email_service.logo_path.name, "ynotframez-logo-email.png")
+        self.assertEqual(logo_parts[0].get_filename(), "ynotframez-studios-white.png")
         self.assertEqual(logo_parts[0].get_content_disposition(), "inline")
         self.assertTrue(logo_parts[0]["Content-ID"])
 
@@ -97,6 +100,33 @@ class EmailServiceTest(unittest.TestCase):
         self.assertIn("more than two hours", html)
         self.assertIn("border-left:4px solid #c62828", html)
         self.assertNotIn(">Payment<", html)
+
+    def test_payment_hold_email_is_clear_timed_and_actionable(self) -> None:
+        booking = self.booking()
+        booking.updated_at = datetime(2026, 9, 1, 10, 0)
+        booking.payment_link = None
+        with (
+            patch.object(settings, "razorpay_callback_base_url", "https://ynotframezstudios.com"),
+            patch.object(settings, "razorpay_payment_hold_minutes", 120),
+            patch.object(settings, "studio_timezone", "Asia/Kolkata"),
+        ):
+            message = EmailService()._build_message(booking, "payment_hold")
+
+        plain = message.get_body(preferencelist=("plain",)).get_content()
+        html = message.get_body(preferencelist=("html",)).get_content()
+        self.assertEqual(
+            message["Subject"],
+            "Booking request received — payment pending (YNF-000042)",
+        )
+        self.assertIn("your booking is not confirmed yet", plain)
+        self.assertIn("1 September 2026 at 05:30 PM IST", plain)
+        self.assertIn("hold will expire automatically", plain)
+        self.assertIn(
+            "https://ynotframezstudios.com/my-booking?reference=YNF-000042",
+            plain,
+        )
+        self.assertIn("Payment pending — this is not a confirmed booking", html)
+        self.assertIn("VIEW BOOKING &amp; COMPLETE PAYMENT", html)
 
     def test_smtp_mode_uses_starttls_login_and_multipart_message(self) -> None:
         smtp = MagicMock()

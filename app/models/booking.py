@@ -25,6 +25,7 @@ class BookingState(StrEnum):
     PAYMENT_PENDING = "payment_pending"
     CONFIRMED = "confirmed"
     CANCELLED = "cancelled"
+    EXPIRED = "expired"
 
 
 class PaymentMode(StrEnum):

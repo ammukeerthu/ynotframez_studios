@@ -63,7 +63,7 @@ def overlapping_booking(
     for booking in db.scalars(statement):
         if booking.id == exclude_booking_id:
             continue
-        if booking.state == BookingState.PAYMENT_PENDING and booking.created_at < hold_cutoff:
+        if booking.state == BookingState.PAYMENT_PENDING and booking.updated_at < hold_cutoff:
             continue
         if not booking.start_time or not booking.duration_hours:
             continue

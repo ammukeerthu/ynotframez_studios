@@ -1,5 +1,9 @@
 import unittest
-from datetime import date, time, timedelta
+from concurrent.futures import ThreadPoolExecutor
+from datetime import UTC, date, datetime, time, timedelta
+from pathlib import Path
+from tempfile import TemporaryDirectory
+from threading import Event
 from unittest.mock import MagicMock
 
 from sqlalchemy import create_engine
@@ -134,6 +138,7 @@ class BookingApplicationServiceTest(unittest.TestCase):
             self.service.create_booking(self.booking(purpose="Unlisted custom purpose"))
 
     def test_create_booking_returns_payment_hold_and_checkout_order(self) -> None:
+        self.service.email.send_payment_hold = MagicMock(return_value=True)
         result = self.service.create_booking(self.booking())
 
         self.assertEqual(result.status, "payment_pending")
@@ -150,7 +155,26 @@ class BookingApplicationServiceTest(unittest.TestCase):
         self.assertEqual(payment.status.value, "pending")
         self.assertEqual(payment.amount, 2000)
         self.assertEqual(payment.razorpay_order_id, "order_stub_1")
-        self.assertEqual(self.db.get(Booking, result.id).terms_accepted, "v1")
+        stored_booking = self.db.get(Booking, result.id)
+        self.assertEqual(stored_booking.terms_accepted, "v1")
+        self.assertTrue((stored_booking.calendar_event_id or "").startswith("gcal_stub_"))
+        self.service.email.send_payment_hold.assert_called_once_with(
+            stored_booking
+        )
+
+    def test_stale_unpaid_hold_becomes_expired_and_releases_its_slot(self) -> None:
+        result = self.service.create_booking(self.booking())
+        booking = self.db.get(Booking, result.id)
+        booking.updated_at = datetime.now(UTC).replace(tzinfo=None) - timedelta(hours=3)
+        self.db.commit()
+
+        day = self.service.get_day_availability("standard_small", self.future_date)
+
+        states = {slot.start_time: slot.status for slot in day.slots}
+        self.assertEqual(booking.state, BookingState.EXPIRED)
+        self.assertIsNone(booking.calendar_event_id)
+        self.assertEqual(PaymentService(self.db).get(result.id).status.value, "void")
+        self.assertEqual(states["11:00"], "available")
 
     def test_checkout_order_failure_stays_pending_and_retryable(self) -> None:
         self.service.razorpay.create_order = MagicMock(side_effect=OSError("provider unavailable"))
@@ -166,15 +190,27 @@ class BookingApplicationServiceTest(unittest.TestCase):
         self.assertEqual(payment.mode.value, "pay_now")
         self.assertEqual(payment.status.value, "pending")
 
+    def test_calendar_hold_failure_does_not_create_a_booking(self) -> None:
+        self.service.calendar.create_hold_event = MagicMock(
+            side_effect=OSError("calendar unavailable")
+        )
+
+        with self.assertRaisesRegex(OSError, "calendar unavailable"):
+            self.service.create_booking(self.booking())
+
+        self.assertEqual(self.db.query(Booking).count(), 0)
+
     def test_paid_booking_is_confirmed_and_creates_calendar_and_notification(self) -> None:
         result = self.service.create_booking(self.booking())
         booking = self.db.get(Booking, result.id)
+        hold_event_id = booking.calendar_event_id
 
         self.service.confirm_paid_booking(booking, "pay_test_001")
         self.db.commit()
 
         self.assertEqual(booking.state, BookingState.CONFIRMED)
         self.assertTrue((booking.calendar_event_id or "").startswith("gcal_stub_"))
+        self.assertEqual(booking.calendar_event_id, hold_event_id)
         self.assertEqual(PaymentService(self.db).get(result.id).status.value, "paid")
         self.assertIsNotNone(self.db.query(AdminNotification).filter_by(booking_id=result.id).one_or_none())
 
@@ -183,6 +219,65 @@ class BookingApplicationServiceTest(unittest.TestCase):
 
         with self.assertRaises(BookingUnavailableError):
             self.service.create_booking(self.booking(customer_email="second@example.com"))
+
+    def test_parallel_booking_requests_create_only_one_hold(self) -> None:
+        with TemporaryDirectory() as temp_directory:
+            database_path = Path(temp_directory) / "parallel.sqlite3"
+            engine = create_engine(
+                f"sqlite:///{database_path.as_posix()}",
+                connect_args={"check_same_thread": False},
+            )
+            Base.metadata.create_all(engine)
+            first_holding_lock = Event()
+            second_started = Event()
+            release_first = Event()
+
+            def attempt(email: str, pause_inside_lock: bool = False) -> str:
+                with Session(engine) as db:
+                    service = BookingApplicationService(db)
+                    if pause_inside_lock:
+                        original_create_hold = service.calendar.create_hold_event
+
+                        def delayed_hold(booking: Booking) -> str:
+                            first_holding_lock.set()
+                            release_first.wait(timeout=5)
+                            return original_create_hold(booking)
+
+                        service.calendar.create_hold_event = delayed_hold
+                    else:
+                        first_holding_lock.wait(timeout=5)
+                        second_started.set()
+                    try:
+                        service.create_booking(self.booking(customer_email=email))
+                    except BookingUnavailableError:
+                        return "unavailable"
+                    return "created"
+
+            try:
+                with ThreadPoolExecutor(max_workers=2) as executor:
+                    first = executor.submit(attempt, "first@example.com", True)
+                    self.assertTrue(first_holding_lock.wait(timeout=5))
+                    second = executor.submit(attempt, "second@example.com")
+                    self.assertTrue(second_started.wait(timeout=5))
+                    release_first.set()
+                    outcomes = {first.result(timeout=5), second.result(timeout=5)}
+
+                with Session(engine) as db:
+                    self.assertEqual(db.query(Booking).count(), 1)
+                self.assertEqual(outcomes, {"created", "unavailable"})
+            finally:
+                engine.dispose()
+
+    def test_postgres_booking_guard_uses_a_transaction_advisory_lock(self) -> None:
+        db = MagicMock()
+        db.bind.dialect.name = "postgresql"
+        service = BookingApplicationService(db)
+
+        with service.booking_creation_guard("standard_small", self.future_date):
+            pass
+
+        statement = str(db.execute.call_args.args[0])
+        self.assertIn("pg_advisory_xact_lock", statement)
 
     def test_other_space_can_use_the_same_slot(self) -> None:
         self.service.create_booking(self.booking())

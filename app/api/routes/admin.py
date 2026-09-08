@@ -430,6 +430,9 @@ def admin_bookings(
     limit: int = Query(default=200, ge=1, le=500),
     db: Session = Depends(get_db),
 ) -> list[AdminBookingResponse]:
+    service = BookingApplicationService(db)
+    if service.expire_stale_payment_holds():
+        db.commit()
     statement = _filtered_booking_statement(space_id, q, booking_status, date_from, date_to)
     statement = statement.order_by(Booking.created_at.desc()).limit(limit)
     return [_serialize_booking(booking, db) for booking in db.scalars(statement)]
@@ -444,6 +447,9 @@ def admin_export_bookings(
     date_to: date | None = Query(default=None),
     db: Session = Depends(get_db),
 ) -> Response:
+    service = BookingApplicationService(db)
+    if service.expire_stale_payment_holds():
+        db.commit()
     statement = _filtered_booking_statement(space_id, q, booking_status, date_from, date_to)
     bookings = list(db.scalars(statement.order_by(Booking.booking_date, Booking.start_time)))
     output = StringIO(newline="")
@@ -695,7 +701,7 @@ def admin_availability(
     bookings = [
         booking
         for booking in bookings
-        if booking.state == BookingState.CONFIRMED or booking.created_at >= hold_cutoff
+        if booking.state == BookingState.CONFIRMED or booking.updated_at >= hold_cutoff
     ]
     blocks = list(
         db.scalars(
@@ -763,36 +769,38 @@ def admin_create_availability_block(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Blocks must be within studio hours ({business_start:%H:%M} to {business_end:%H:%M}).",
         )
-    if overlapping_booking(
-        db,
-        payload.space_id,
-        payload.booking_date,
-        requested_start,
-        requested_end,
-    ):
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="A confirmed booking already occupies part of that time.",
-        )
-    if overlapping_block(
-        db,
-        payload.space_id,
-        payload.booking_date,
-        requested_start,
-        requested_end,
-    ):
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="That time is already blocked.")
+    service = BookingApplicationService(db)
+    with service.booking_creation_guard(payload.space_id, payload.booking_date):
+        if overlapping_booking(
+            db,
+            payload.space_id,
+            payload.booking_date,
+            requested_start,
+            requested_end,
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="A booking or active payment hold already occupies part of that time.",
+            )
+        if overlapping_block(
+            db,
+            payload.space_id,
+            payload.booking_date,
+            requested_start,
+            requested_end,
+        ):
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="That time is already blocked.")
 
-    block = AvailabilityBlock(
-        space_id=payload.space_id,
-        booking_date=payload.booking_date.isoformat(),
-        start_time=payload.start_time.strftime("%H:%M"),
-        duration_hours=payload.duration_hours,
-        reason=payload.reason.strip() or "Owner blocked",
-    )
-    db.add(block)
-    db.commit()
-    db.refresh(block)
+        block = AvailabilityBlock(
+            space_id=payload.space_id,
+            booking_date=payload.booking_date.isoformat(),
+            start_time=payload.start_time.strftime("%H:%M"),
+            duration_hours=payload.duration_hours,
+            reason=payload.reason.strip() or "Owner blocked",
+        )
+        db.add(block)
+        db.commit()
+        db.refresh(block)
     return _serialize_availability_block(block)
 
 
@@ -821,7 +829,9 @@ def _serialize_booking(booking: Booking, db: Session) -> AdminBookingResponse:
     space = get_space_by_id(booking.space_id, db, include_inactive=True)
     payment = PaymentService(db).get(booking.id)
     inferred_payment_status = (
-        PaymentStatus.VOID if booking.state == BookingState.CANCELLED else PaymentStatus.PENDING
+        PaymentStatus.VOID
+        if booking.state in {BookingState.CANCELLED, BookingState.EXPIRED}
+        else PaymentStatus.PENDING
     )
     return AdminBookingResponse(
         id=booking.id,

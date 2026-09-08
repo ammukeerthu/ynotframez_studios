@@ -36,6 +36,11 @@ def apply_schema_compatibility_updates(target_engine: Engine | None = None) -> N
     """Apply the small additive migrations required by existing MVP databases."""
     migration_engine = target_engine or engine
     inspector = inspect(migration_engine)
+    if migration_engine.dialect.name == "postgresql" and "bookings" in inspector.get_table_names():
+        # SQLAlchemy stores Python Enum member names in PostgreSQL's native enum.
+        # This DDL must commit before application requests can write the new value.
+        with migration_engine.connect().execution_options(isolation_level="AUTOCOMMIT") as connection:
+            connection.execute(text("ALTER TYPE bookingstate ADD VALUE IF NOT EXISTS 'EXPIRED'"))
     if "payment_records" not in inspector.get_table_names():
         return
     columns = {column["name"] for column in inspector.get_columns("payment_records")}

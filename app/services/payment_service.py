@@ -103,6 +103,13 @@ class PaymentService:
             record.status = PaymentStatus.REFUND_DUE
         return record
 
+    def void_pending(self, booking: Booking) -> PaymentRecord:
+        """Close an unpaid payment record after its temporary studio hold expires."""
+        record = self.ensure(booking)
+        if record.status == PaymentStatus.PENDING:
+            record.status = PaymentStatus.VOID
+        return record
+
     def mark_refunded(self, booking: Booking, provider_reference: str | None = None) -> PaymentRecord:
         record = self.ensure(booking)
         if record.status != PaymentStatus.REFUND_DUE:

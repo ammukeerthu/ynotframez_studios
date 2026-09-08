@@ -68,6 +68,33 @@ class GoogleCalendarServiceTest(unittest.TestCase):
             )
         )
 
+    def test_payment_hold_is_created_as_an_opaque_busy_event(self) -> None:
+        service = self.service()
+        service.mode = "google"
+        service.service = MagicMock()
+        events = service.service.events.return_value
+        events.insert.return_value.execute.return_value = {"id": "hold-event"}
+        booking = Booking(
+            id=46,
+            phone_number="+919876543210",
+            space_id="standard_small",
+            booking_date="2026-09-20",
+            start_time="14:30",
+            duration_hours=2,
+            customer_name="Pending Customer",
+            customer_email="pending@example.com",
+            purpose="Fashion Shoot",
+        )
+
+        event_id = service.create_hold_event(booking)
+
+        body = events.insert.call_args.kwargs["body"]
+        self.assertEqual(event_id, "hold-event")
+        self.assertTrue(body["summary"].startswith("PAYMENT HOLD - Booking - Pending Customer"))
+        self.assertEqual(body["transparency"], "opaque")
+        self.assertEqual(body["extendedProperties"]["private"]["booking_status"], "payment_pending")
+        self.assertIn("Hold expires:", body["description"])
+
     def test_moving_a_booking_moves_its_google_event_between_calendars(self) -> None:
         service = self.service()
         service.mode = "google"

@@ -102,7 +102,7 @@
         <form id="booking-filters" class="filters">
           <label><span>STUDIO SPACE</span><select name="space_id"><option value="standard_small">Cube</option><option value="premium_large">Arena</option></select></label>
           <label><span>SEARCH</span><input name="q" placeholder="Name, email, or phone"></label>
-          <label><span>STATUS</span><select name="status"><option value="">All statuses</option><option value="confirmed">Confirmed</option><option value="payment_pending">Payment pending</option><option value="cancelled">Cancelled</option></select></label>
+          <label><span>STATUS</span><select name="status"><option value="">All statuses</option><option value="confirmed">Confirmed</option><option value="payment_pending">Payment pending</option><option value="expired">Expired</option><option value="cancelled">Cancelled</option></select></label>
           <label><span>FROM DATE</span><input name="date_from" type="date"></label>
           <label><span>TO DATE</span><input name="date_to" type="date"></label>
           <div class="filter-actions"><button type="submit">Apply</button><a id="booking-export" href="/api/admin/bookings/export.csv">Export CSV</a></div>

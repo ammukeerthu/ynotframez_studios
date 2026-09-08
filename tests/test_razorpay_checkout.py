@@ -3,7 +3,7 @@ import hashlib
 import hmac
 import json
 import unittest
-from datetime import date, time, timedelta
+from datetime import UTC, date, datetime, time, timedelta
 from unittest.mock import patch
 
 from fastapi import HTTPException
@@ -12,11 +12,15 @@ from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
 
 from app.api.routes.admin import admin_alerts
-from app.api.routes.bookings import razorpay_webhook, verify_razorpay_payment
+from app.api.routes.bookings import (
+    razorpay_webhook,
+    retry_booking_checkout,
+    verify_razorpay_payment,
+)
 from app.core.config import settings
 from app.core.database import Base
 from app.models.booking import Booking, BookingState
-from app.schemas.booking import RazorpayPaymentVerification, WebBookingCreate
+from app.schemas.booking import PaymentCheckoutRequest, RazorpayPaymentVerification, WebBookingCreate
 from app.services.booking_service import BookingApplicationService
 from app.services.payment_service import PaymentService
 
@@ -159,6 +163,36 @@ class RazorpayCheckoutFlowTest(unittest.TestCase):
         self.assertEqual(alerts.new_bookings[0].kind, "payment_issue")
         self.assertIn("refund", alerts.new_bookings[0].message.lower())
 
+    def test_payment_captured_after_hold_expiry_is_flagged_for_refund(self) -> None:
+        self.booking.updated_at = datetime.now(UTC).replace(tzinfo=None) - timedelta(hours=3)
+        self.db.commit()
+        with (
+            patch.object(settings, "razorpay_key_secret", "checkout-secret"),
+            patch("app.services.razorpay_service.RazorpayService.fetch_payment", return_value=self.payment()),
+        ):
+            result = verify_razorpay_payment(self.verification(self.signature()), self.db)
+
+        self.assertEqual(result.status, "expired")
+        self.assertEqual(self.record.status.value, "refund_due")
+        self.assertIsNone(self.booking.calendar_event_id)
+
+    def test_checkout_retry_rejects_and_expires_an_elapsed_hold(self) -> None:
+        self.booking.updated_at = datetime.now(UTC).replace(tzinfo=None) - timedelta(hours=3)
+        self.db.commit()
+
+        with self.assertRaises(HTTPException) as expired:
+            retry_booking_checkout(
+                PaymentCheckoutRequest(
+                    reference=self.created.reference,
+                    customer_email=self.booking.customer_email,
+                ),
+                self.db,
+            )
+
+        self.assertEqual(expired.exception.status_code, 409)
+        self.assertEqual(self.booking.state, BookingState.EXPIRED)
+        self.assertEqual(self.record.status.value, "void")
+
     def test_captured_webhook_confirms_and_duplicate_is_safe(self) -> None:
         payload = {
             "event": "payment.captured",
@@ -180,7 +214,7 @@ class RazorpayCheckoutFlowTest(unittest.TestCase):
         self.assertEqual(self.record.status.value, "paid")
         self.assertEqual(self.record.razorpay_method, "netbanking")
 
-    def test_failed_webhook_keeps_checkout_retryable_and_emails_once(self) -> None:
+    def test_failed_webhook_keeps_checkout_retryable_without_duplicate_email(self) -> None:
         payload = {
             "event": "payment.failed",
             "payload": {
@@ -206,7 +240,7 @@ class RazorpayCheckoutFlowTest(unittest.TestCase):
         self.assertEqual(self.booking.state, BookingState.PAYMENT_PENDING)
         self.assertEqual(self.record.status.value, "pending")
         self.assertEqual(self.record.provider_reference, self.payment_id)
-        email.assert_called_once_with(self.booking)
+        email.assert_not_called()
 
 
 if __name__ == "__main__":

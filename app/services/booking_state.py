@@ -50,7 +50,11 @@ class BookingStateMachine:
         stmt = (
             select(Booking)
             .where(Booking.phone_number == phone_number)
-            .where(Booking.state.notin_([BookingState.CANCELLED, BookingState.CONFIRMED]))
+            .where(
+                Booking.state.notin_(
+                    [BookingState.CANCELLED, BookingState.CONFIRMED, BookingState.EXPIRED]
+                )
+            )
             .order_by(Booking.created_at.desc())
         )
         booking = self.db.scalars(stmt).first()
@@ -177,25 +181,50 @@ class BookingStateMachine:
         return self._finalize_online_booking(booking)
 
     def _finalize_online_booking(self, booking: Booking) -> str:
-        available, message = self.booking_service.check_availability(
-            AvailabilityRequest(
-                space_id=booking.space_id or "",
-                booking_date=date.fromisoformat(booking.booking_date or ""),
-                start_time=time.fromisoformat(booking.start_time or ""),
-                duration_hours=booking.duration_hours or 0,
+        booking_date = date.fromisoformat(booking.booking_date or "")
+        space_id = booking.space_id or ""
+        with self.booking_service.booking_creation_guard(space_id, booking_date):
+            available, message = self.booking_service.check_availability(
+                AvailabilityRequest(
+                    space_id=space_id,
+                    booking_date=booking_date,
+                    start_time=time.fromisoformat(booking.start_time or ""),
+                    duration_hours=booking.duration_hours or 0,
+                ),
+                exclude_booking_id=booking.id,
             )
-        )
-        if not available:
-            booking.state = BookingState.ASK_SCHEDULE
-            booking.payment_mode = None
-            booking.payment_link = None
-            return (
-                f"{message}\n\nPlease choose a new time using: "
-                "YYYY-MM-DD HH:MM duration_hours"
-            )
+            if not available:
+                booking.state = BookingState.ASK_SCHEDULE
+                booking.payment_mode = None
+                booking.payment_link = None
+                return (
+                    f"{message}\n\nPlease choose a new time using: "
+                    "YYYY-MM-DD HH:MM duration_hours"
+                )
 
-        self.booking_service.prepare_online_payment(booking)
-        booking.state = BookingState.PAYMENT_PENDING
+            booking.state = BookingState.PAYMENT_PENDING
+            calendar_hold_id: str | None = None
+            try:
+                calendar_hold_id = self.booking_service.calendar.create_hold_event(booking)
+                booking.calendar_event_id = calendar_hold_id
+                self.booking_service.prepare_online_payment(booking)
+                self.db.commit()
+                self.db.refresh(booking)
+            except Exception:
+                self.db.rollback()
+                if calendar_hold_id:
+                    try:
+                        self.booking_service.calendar.delete_event(calendar_hold_id, space_id)
+                    except Exception as cleanup_error:
+                        print(
+                            "Orphaned Calendar hold requires manual cleanup:",
+                            {
+                                "event_id": calendar_hold_id,
+                                "error": f"{type(cleanup_error).__name__}: {cleanup_error}",
+                            },
+                        )
+                raise
+        self.booking_service.email.send_payment_hold(booking)
         return self._payment_pending_message(booking)
 
     def _handle_payment_pending(self, booking: Booking, text: str) -> str:

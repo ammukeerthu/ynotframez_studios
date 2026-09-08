@@ -438,6 +438,8 @@ textarea:focus-visible {
   outline-offset:2px;
 }
 
+.status-expired { color:#77736b; border-color:#aaa69d; }
+
 @media(max-width:620px) {
   .availability-slots { grid-template-columns:repeat(2,minmax(0,1fr)); }
   .stats article { min-height:145px; }

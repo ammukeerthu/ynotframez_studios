@@ -1,4 +1,4 @@
-from datetime import date, datetime, time, timedelta
+from datetime import UTC, date, datetime, time, timedelta
 from functools import lru_cache
 from pathlib import Path
 from threading import RLock
@@ -163,6 +163,43 @@ class GoogleCalendarService:
             )
         )
         return created_event["id"]
+
+    def create_hold_event(self, booking: Booking) -> str:
+        """Create an opaque calendar event while the customer completes payment."""
+        if not booking.booking_date or not booking.start_time or not booking.duration_hours:
+            raise ValueError("Booking must have a complete schedule before creating a calendar hold.")
+
+        space = get_space_by_id(booking.space_id, self.db, include_inactive=True)
+        space_name = space.name if space else "Studio Space"
+        start = self._start_datetime(booking)
+        end = start + timedelta(hours=booking.duration_hours)
+        expires_at = datetime.now(UTC) + timedelta(
+            minutes=settings.razorpay_payment_hold_minutes
+        )
+        body = self._event_body(booking, space_name, start, end)
+        body["summary"] = f"PAYMENT HOLD - {body['summary']}"
+        body["description"] = (
+            "Booking status: PAYMENT PENDING\n"
+            f"Hold expires: {expires_at.astimezone(self.timezone):%d %b %Y, %I:%M %p %Z}\n"
+            f"{body['description']}"
+        )
+        body["transparency"] = "opaque"
+        body["colorId"] = "5"
+        body["extendedProperties"]["private"]["booking_status"] = "payment_pending"
+
+        if self.mode == "stub":
+            event_id = f"gcal_stub_{uuid4().hex[:12]}"
+            print(
+                "Google Calendar stub hold created:",
+                {"event_id": event_id, "space": space_name, "date": booking.booking_date},
+            )
+            return event_id
+
+        calendar_id = self._calendar_id_for_space(booking.space_id)
+        created = self._execute(
+            self.service.events().insert(calendarId=calendar_id, body=body)
+        )
+        return created["id"]
 
     def update_event(self, booking: Booking, previous_space_id: str | None = None) -> str:
         if not booking.booking_date or not booking.start_time or not booking.duration_hours:

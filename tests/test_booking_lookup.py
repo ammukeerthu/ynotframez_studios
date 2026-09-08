@@ -1,5 +1,5 @@
 import unittest
-from datetime import date, time, timedelta
+from datetime import UTC, date, datetime, time, timedelta
 from unittest.mock import patch
 
 from fastapi import HTTPException
@@ -11,6 +11,7 @@ from app.api.routes.admin import admin_cancel_booking, admin_update_payment
 from app.api.routes.bookings import lookup_booking
 from app.core.database import Base
 from app.core.config import settings
+from app.models.booking import Booking
 from app.schemas.admin import AdminPaymentUpdate
 from app.schemas.booking import BookingLookupRequest, WebBookingCreate
 from app.services.booking_service import BookingApplicationService
@@ -76,6 +77,17 @@ class CustomerBookingLookupTest(unittest.TestCase):
 
         self.assertEqual(not_found.exception.status_code, 404)
         self.assertNotIn("lookup@example.com", str(not_found.exception.detail))
+
+    def test_lookup_marks_an_elapsed_payment_hold_expired(self) -> None:
+        booking = self.db.get(Booking, self.created.id)
+        booking.updated_at = datetime.now(UTC).replace(tzinfo=None) - timedelta(hours=3)
+        self.db.commit()
+
+        result = self.lookup()
+
+        self.assertEqual(result.booking_status, "expired")
+        self.assertEqual(result.payment_status, "void")
+        self.assertIsNone(result.checkout)
 
     def test_paid_and_cancelled_states_hide_payment_link(self) -> None:
         paid = admin_update_payment(

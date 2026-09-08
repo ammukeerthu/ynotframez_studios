@@ -188,17 +188,18 @@ def retry_booking_checkout(
             detail="No booking matched that reference and email address.",
         )
     service = BookingApplicationService(db)
+    if service.expire_payment_hold(booking):
+        db.commit()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="The temporary payment hold has expired. Please create a new booking.",
+        )
     if booking.state != BookingState.PAYMENT_PENDING:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="This booking is not awaiting payment.")
     if booking.payment_link:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="This booking already has a hosted payment link. Use that link to complete payment.",
-        )
-    if not service.payment_hold_active(booking):
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="The temporary payment hold has expired. Please create a new booking.",
         )
     checkout = service.prepare_standard_checkout(booking)
     db.commit()
@@ -238,6 +239,7 @@ def verify_razorpay_payment(
         ) from error
     _validate_standard_payment(payment, record, stored_order_id)
     method = _razorpay_method(payment)
+    service.expire_payment_hold(booking)
     if payment.get("status") != "captured":
         record.razorpay_payment_id = payload.razorpay_payment_id
         record.razorpay_method = method
@@ -289,6 +291,7 @@ async def razorpay_webhook(
     if booking is None:
         return {"ok": True}
     service = BookingApplicationService(db)
+    service.expire_payment_hold(booking)
     if event == "payment_link.paid":
         link = payload.get("payload", {}).get("payment_link", {}).get("entity", {})
         payment = payload.get("payload", {}).get("payment", {}).get("entity", {})
@@ -299,7 +302,14 @@ async def razorpay_webhook(
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Razorpay link is not fully paid.")
         if int(link.get("amount_paid", 0)) != record.amount * 100:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Razorpay amount does not match.")
-        if booking.state != BookingState.CONFIRMED:
+        if booking.state not in {BookingState.PAYMENT_PENDING, BookingState.CONFIRMED}:
+            service.record_unreservable_payment(
+                booking,
+                None,
+                payment.get("id") or link.get("id"),
+                _razorpay_method(payment),
+            )
+        elif booking.state != BookingState.CONFIRMED:
             booking.payment_mode = PaymentMode.PAY_NOW
             record.mode = PaymentMode.PAY_NOW
             service.confirm_paid_booking(
@@ -346,7 +356,7 @@ async def razorpay_webhook(
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Razorpay order mismatch.")
         service.record_checkout_attempt_failure(booking, failed_payment.get("id"))
     elif event in {"payment_link.expired", "payment_link.cancelled"}:
-        service.record_payment_failure(booking)
+        service.expire_payment_hold(booking, force=True)
     db.commit()
     return {"ok": True}
 
@@ -368,11 +378,14 @@ def lookup_booking(
 
     payments = PaymentService(db)
     service = BookingApplicationService(db)
+    hold_expired = service.expire_payment_hold(booking)
     payment = payments.get(booking.id)
-    if _backfill_razorpay_method(service, payment):
+    if hold_expired or _backfill_razorpay_method(service, payment):
         db.commit()
     payment_status = payment.status if payment else (
-        PaymentStatus.VOID if booking.state == BookingState.CANCELLED else PaymentStatus.PENDING
+        PaymentStatus.VOID
+        if booking.state in {BookingState.CANCELLED, BookingState.EXPIRED}
+        else PaymentStatus.PENDING
     )
     start = datetime.strptime(f"{booking.booking_date} {booking.start_time}", "%Y-%m-%d %H:%M")
     space = get_space_by_id(booking.space_id, db, include_inactive=True)

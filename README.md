@@ -153,7 +153,7 @@ The dashboard shows confirmed activity and estimated value and lets the owner se
 
 The **Studio alerts** panel stores new bookings as unread until the owner marks them seen. It also refreshes every 30 seconds and shows operational reminders during the 15 minutes before a booking starts and the final 15 minutes of a current booking. When another session follows within 30 minutes, the ending reminder includes the next customer. Optional desktop notifications work while the dashboard is open and browser permission is granted.
 
-Every booking has a local payment record. New customer requests remain in `payment_pending` and hold the selected time for two hours. Website payments are confirmed using both the Razorpay checkout signature and the provider's payment status; signed webhooks provide an idempotent fallback. The studio is reserved, its Google Calendar event is created, and its confirmation email is sent only after captured payment is verified. The dashboard retains a manual **Mark paid** action for studio follow-up and payment-provider exceptions.
+Every booking has a local payment record. New customer requests remain in `payment_pending` and hold the selected time for two hours. A single payment-pending email states the exact hold deadline and links to **Find My Booking**; failed checkout retries do not generate repeated emails. Each active hold also creates an opaque **PAYMENT HOLD** event in that studio's Google Calendar. Payment confirmation updates the same event into the final booking; expiry deletes it, marks the booking `expired`, marks its payment `void`, and releases the time. PostgreSQL transaction advisory locks serialize booking creation for each studio day so parallel website requests cannot both create a hold. Website payments are confirmed using both the Razorpay checkout signature and the provider's payment status; signed webhooks provide an idempotent fallback. The confirmation email is sent only after captured payment is verified. The dashboard retains a manual **Mark paid** action for studio follow-up and payment-provider exceptions.
 
 The booking directory supports customer search, booking-status filtering, and inclusive from/to date filters. **Export CSV** downloads the currently filtered records with schedule, customer, payment, and value columns for Excel or reconciliation. The export requires an authenticated admin session and neutralizes spreadsheet-formula prefixes in customer-entered text.
 
@@ -312,7 +312,7 @@ Use the same secret in Razorpay and `RAZORPAY_WEBHOOK_SECRET`. Subscribe to `pay
 
 For offline UI development only, use `RAZORPAY_MODE="stub"`. Stub mode records deterministic test order/link identifiers but intentionally supplies no checkout key, so it cannot take payment or confirm a booking automatically.
 
-Standard Checkout uses Razorpay's hosted `checkout.js`; the app does not need the Python Razorpay SDK. Order creation and payment-status retrieval use the existing server-side HTTP client. A failed attempt remains retryable during the temporary hold. If money is captured after the slot can no longer be reserved, the booking is cancelled, the payment is marked `refund_due`, and the dashboard shows an unread payment-review alert.
+Standard Checkout uses Razorpay's hosted `checkout.js`; the app does not need the Python Razorpay SDK. Order creation and payment-status retrieval use the existing server-side HTTP client. A failed attempt remains retryable during the temporary hold. If money is captured after the hold expires or the slot can no longer be reserved, the booking is not confirmed, the payment is marked `refund_due`, and the dashboard shows an unread payment-review alert.
 
 WhatsApp remains provider-neutral until the Meta Cloud API adapter is connected.
 
@@ -341,7 +341,7 @@ SMTP_USE_SSL="false"
 
 Port 587 normally uses STARTTLS (`SMTP_USE_TLS=true`). Providers using implicit TLS commonly use port 465 with `SMTP_USE_SSL=true` and `SMTP_USE_TLS=false`. Do not enable both. SMTP credentials belong only in the ignored `.env` file or deployment environment, never in Git.
 
-Emails contain both plain-text and HTML versions. The HTML version embeds the YNotFramez Studios PNG logo so it does not depend on a remote image URL. Booking messages include the reference, booked studio, date, time, duration, purpose, and recorded amount. Confirmation and update emails also include the selected studio's latest rules. Payment-failure emails highlight the amount and follow-up instructions. Delivery failures are logged without cancelling an otherwise valid booking.
+Emails contain both plain-text and HTML versions. The HTML version embeds the YNotFramez Studios PNG logo on an opaque white background so it does not depend on a remote image URL and remains visible in dark-mode mail clients. Booking messages include the reference, booked studio, date, time, duration, purpose, and recorded amount. Payment-hold emails clearly say the booking is not confirmed, show the exact expiry in the studio timezone, and provide retry/contact guidance. Confirmation and update emails also include the selected studio's latest rules. Delivery failures are logged without cancelling an otherwise valid booking.
 
 ## Security note
 

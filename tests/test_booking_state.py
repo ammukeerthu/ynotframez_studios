@@ -92,6 +92,7 @@ class BookingStateMachineTest(unittest.TestCase):
         self.assertEqual(booking.payment_mode, PaymentMode.PAY_NOW)
         self.assertEqual(booking.terms_accepted, "v1")
         self.assertIsNotNone(booking.payment_link)
+        self.assertTrue((booking.calendar_event_id or "").startswith("gcal_stub_"))
         self.assertIn("Payment link:", response)
         self.assertNotIn("Choose payment mode", response)
 

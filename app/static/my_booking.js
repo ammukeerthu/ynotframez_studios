@@ -73,6 +73,8 @@ function showBooking(booking) {
 
   const note = document.querySelector("#result-note");
   if (booking.booking_status === "cancelled") note.textContent = "This booking has been cancelled. Contact the studio if you need help with a refund or a new session.";
+  else if (booking.booking_status === "expired" && booking.payment_status === "refund_due") note.textContent = "Payment arrived after this hold expired and requires studio review. Do not pay again; contact the studio with your booking reference.";
+  else if (booking.booking_status === "expired") note.textContent = "This unpaid booking hold has expired, and the studio time is available to others. Please create a new booking.";
   else if (booking.payment_status === "pending") note.textContent = "Your studio time is temporarily held while payment is pending.";
   else note.textContent = "Your booking is confirmed and the recorded payment is complete.";
 
@@ -115,22 +117,20 @@ document.querySelector("#result-payment-button").addEventListener("click", async
   if (!currentBooking) return;
   const note = document.querySelector("#result-note");
   const paymentButton = document.querySelector("#result-payment-button");
-  if (!currentBooking.checkout?.key_id) {
-    paymentButton.disabled = true;
-    note.textContent = "Preparing secure checkout…";
-    try {
-      currentBooking = await bookingApi("/api/bookings/checkout", {
-        reference: currentBooking.reference,
-        customer_email: currentBooking.customer_email,
-      });
-      showBooking(currentBooking);
-    } catch (error) {
-      note.textContent = error.message;
-      paymentButton.disabled = false;
-      return;
-    }
+  paymentButton.disabled = true;
+  note.textContent = "Preparing secure checkout…";
+  try {
+    currentBooking = await bookingApi("/api/bookings/checkout", {
+      reference: currentBooking.reference,
+      customer_email: currentBooking.customer_email,
+    });
+    showBooking(currentBooking);
+  } catch (error) {
+    note.textContent = error.message;
     paymentButton.disabled = false;
+    return;
   }
+  paymentButton.disabled = false;
   window.YNFPayments.open(currentBooking, {
     onVerifying: () => {
       paymentButton.hidden = true;

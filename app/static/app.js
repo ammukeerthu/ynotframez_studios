@@ -425,10 +425,6 @@ form.addEventListener("submit", async (event) => {
 async function prepareCheckout() {
   const booking = state.currentBooking;
   if (!booking) return;
-  if (booking.checkout?.key_id) {
-    openStandardCheckout(booking);
-    return;
-  }
   const paymentButton = document.querySelector("#payment-button");
   paymentButton.disabled = true;
   paymentButton.firstChild.textContent = "Preparing checkout… ";

@@ -1,6 +1,11 @@
+from contextlib import contextmanager
 from datetime import UTC, date, datetime, time, timedelta
+from hashlib import blake2b
+from threading import Lock, RLock
+from typing import Iterator
 from zoneinfo import ZoneInfo
 
+from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 
 from app.core.booking_rules import CURRENT_TERMS_VERSION, MINIMUM_BOOKING_DURATION_HOURS
@@ -27,6 +32,10 @@ class BookingUnavailableError(ValueError):
     pass
 
 
+_slot_locks: dict[str, RLock] = {}
+_slot_locks_guard = Lock()
+
+
 class BookingApplicationService:
     """Shared application service for web booking availability and confirmation."""
 
@@ -36,6 +45,25 @@ class BookingApplicationService:
         self.razorpay = RazorpayService(db)
         self.email = EmailService(db)
         self.payments = PaymentService(db)
+
+    @contextmanager
+    def booking_creation_guard(self, space_id: str, booking_date: date | str) -> Iterator[None]:
+        """Serialize writes for one studio day across threads and PostgreSQL workers."""
+        lock_name = f"ynotframez:{space_id}:{booking_date}"
+        with _slot_locks_guard:
+            process_lock = _slot_locks.setdefault(lock_name, RLock())
+        with process_lock:
+            if self.db.bind is not None and self.db.bind.dialect.name == "postgresql":
+                lock_key = int.from_bytes(
+                    blake2b(lock_name.encode("utf-8"), digest_size=8).digest(),
+                    byteorder="big",
+                    signed=True,
+                )
+                self.db.execute(
+                    text("SELECT pg_advisory_xact_lock(:lock_key)"),
+                    {"lock_key": lock_key},
+                )
+            yield
 
     def prepare_payment_link(self, booking: Booking) -> bool:
         """Create a hosted link for WhatsApp while leaving the booking unconfirmed."""
@@ -54,7 +82,6 @@ class BookingApplicationService:
                 "Payment link creation failed; booking remains pending for studio follow-up:",
                 {"booking_id": booking.id, "error": f"{type(error).__name__}: {error}"},
             )
-            self.email.send_payment_failed(booking)
             return False
         booking.payment_link = payment_link.url
         payment.provider_reference = payment_link.id
@@ -63,8 +90,6 @@ class BookingApplicationService:
     def prepare_standard_checkout(
         self,
         booking: Booking,
-        *,
-        notify_failure: bool = False,
     ) -> RazorpayCheckoutResponse | None:
         """Create or reuse the server-owned order for the website checkout modal."""
         booking.payment_mode = PaymentMode.PAY_NOW
@@ -88,8 +113,6 @@ class BookingApplicationService:
                 "Razorpay order creation failed; booking remains payment pending:",
                 {"booking_id": booking.id, "error": f"{type(error).__name__}: {error}"},
             )
-            if notify_failure:
-                self.email.send_payment_failed(booking)
             return None
         payment.razorpay_order_id = order.id
         return RazorpayCheckoutResponse(
@@ -103,6 +126,27 @@ class BookingApplicationService:
     prepare_online_payment = prepare_payment_link
 
     def confirm_paid_booking(
+        self,
+        booking: Booking,
+        provider_reference: str | None = None,
+        *,
+        razorpay_order_id: str | None = None,
+        razorpay_payment_id: str | None = None,
+        razorpay_method: str | None = None,
+    ) -> None:
+        if not booking.space_id or not booking.booking_date:
+            raise ValueError("Booking must have a studio and date before confirmation.")
+        with self.booking_creation_guard(booking.space_id, booking.booking_date):
+            self.db.refresh(booking)
+            self._confirm_paid_booking_locked(
+                booking,
+                provider_reference,
+                razorpay_order_id=razorpay_order_id,
+                razorpay_payment_id=razorpay_payment_id,
+                razorpay_method=razorpay_method,
+            )
+
+    def _confirm_paid_booking_locked(
         self,
         booking: Booking,
         provider_reference: str | None = None,
@@ -132,6 +176,7 @@ class BookingApplicationService:
                 duration_hours=booking.duration_hours or 0,
             ),
             exclude_booking_id=booking.id,
+            ignore_calendar_event_id=booking.calendar_event_id,
         )
         if not available:
             raise BookingUnavailableError(message)
@@ -145,7 +190,11 @@ class BookingApplicationService:
             razorpay_payment_id=razorpay_payment_id,
             razorpay_method=razorpay_method,
         )
-        booking.calendar_event_id = self.calendar.create_event(booking)
+        booking.calendar_event_id = (
+            self.calendar.update_event(booking)
+            if booking.calendar_event_id
+            else self.calendar.create_event(booking)
+        )
         booking.state = BookingState.CONFIRMED
         notify_new_booking(self.db, booking)
         self.email.send_booking_confirmation(booking)
@@ -173,17 +222,19 @@ class BookingApplicationService:
             reference = provider_reference.strip() if provider_reference else None
             if not reference or payment.provider_reference != reference:
                 payment.provider_reference = reference
-                self.email.send_payment_failed(booking)
 
     def record_unreservable_payment(
         self,
         booking: Booking,
-        order_id: str,
-        payment_id: str,
+        order_id: str | None,
+        payment_id: str | None,
         razorpay_method: str | None = None,
     ) -> None:
         """Release a stale hold and alert the owner when captured money needs review."""
-        booking.state = BookingState.CANCELLED
+        self.calendar.delete_event(booking.calendar_event_id, booking.space_id)
+        booking.calendar_event_id = None
+        if booking.state != BookingState.EXPIRED:
+            booking.state = BookingState.CANCELLED
         booking.payment_link = None
         self.payments.mark_refund_due(
             booking,
@@ -197,7 +248,53 @@ class BookingApplicationService:
         cutoff = datetime.now(UTC).replace(tzinfo=None) - timedelta(
             minutes=settings.razorpay_payment_hold_minutes
         )
-        return booking.created_at >= cutoff
+        hold_started_at = booking.updated_at or booking.created_at
+        return (
+            booking.state == BookingState.PAYMENT_PENDING
+            and hold_started_at is not None
+            and hold_started_at >= cutoff
+        )
+
+    def expire_payment_hold(self, booking: Booking, *, force: bool = False) -> bool:
+        """Persist the terminal state for an unpaid hold whose two-hour window ended."""
+        if not booking.space_id or not booking.booking_date:
+            return False
+        with self.booking_creation_guard(booking.space_id, booking.booking_date):
+            self.db.refresh(booking)
+            if booking.state != BookingState.PAYMENT_PENDING:
+                return False
+            if not force and self.payment_hold_active(booking):
+                return False
+            try:
+                self.calendar.delete_event(booking.calendar_event_id, booking.space_id)
+            except Exception as error:
+                print(
+                    "Calendar hold release failed; the time remains blocked for safety:",
+                    {"booking_id": booking.id, "error": f"{type(error).__name__}: {error}"},
+                )
+                return False
+            booking.calendar_event_id = None
+            booking.state = BookingState.EXPIRED
+            booking.payment_link = None
+            self.payments.void_pending(booking)
+            return True
+
+    def expire_stale_payment_holds(self) -> int:
+        """Release every stale unpaid hold; safe to call repeatedly from request paths."""
+        cutoff = datetime.now(UTC).replace(tzinfo=None) - timedelta(
+            minutes=settings.razorpay_payment_hold_minutes
+        )
+        bookings = self.db.scalars(
+            select(Booking).where(
+                Booking.state == BookingState.PAYMENT_PENDING,
+                Booking.updated_at < cutoff,
+            )
+        )
+        expired = 0
+        for booking in bookings:
+            if self.expire_payment_hold(booking):
+                expired += 1
+        return expired
 
     def check_availability(
         self,
@@ -264,6 +361,8 @@ class BookingApplicationService:
         return True, "Your selected slot is available."
 
     def get_day_availability(self, space_id: str, booking_date: date) -> DayAvailabilityResponse:
+        if self.expire_stale_payment_holds():
+            self.db.commit()
         space = get_space_by_id(space_id, self.db, include_inactive=True)
         if space is None:
             raise ValueError("Studio space not found.")
@@ -330,41 +429,65 @@ class BookingApplicationService:
         if not request.terms_accepted:
             raise ValueError("Studio terms must be accepted before booking.")
 
-        available, message = self.check_availability(request)
-        if not available:
-            raise BookingUnavailableError(message)
+        with self.booking_creation_guard(request.space_id, request.booking_date):
+            available, message = self.check_availability(request)
+            if not available:
+                raise BookingUnavailableError(message)
 
-        space = get_space_by_id(request.space_id, self.db)
-        if space is None:
-            raise ValueError("Invalid studio space.")
-        selected_purpose = next(
-            (purpose for purpose in space.booking_purposes if purpose.casefold() == request.purpose.strip().casefold()),
-            None,
-        )
-        if selected_purpose is None:
-            raise ValueError("Please choose a valid booking purpose for this studio.")
+            space = get_space_by_id(request.space_id, self.db)
+            if space is None:
+                raise ValueError("Invalid studio space.")
+            selected_purpose = next(
+                (
+                    purpose
+                    for purpose in space.booking_purposes
+                    if purpose.casefold() == request.purpose.strip().casefold()
+                ),
+                None,
+            )
+            if selected_purpose is None:
+                raise ValueError("Please choose a valid booking purpose for this studio.")
 
-        booking = Booking(
-            phone_number=request.phone_number.strip(),
-            state=BookingState.ASK_PAYMENT_MODE,
-            space_id=request.space_id,
-            booking_date=request.booking_date.isoformat(),
-            start_time=request.start_time.strftime("%H:%M"),
-            duration_hours=request.duration_hours,
-            customer_name=request.customer_name.strip(),
-            customer_email=str(request.customer_email),
-            purpose=selected_purpose,
-            terms_accepted=CURRENT_TERMS_VERSION,
-            payment_mode=PaymentMode(request.payment_mode),
-        )
-        self.db.add(booking)
-        self.db.flush()
+            booking = Booking(
+                phone_number=request.phone_number.strip(),
+                state=BookingState.ASK_PAYMENT_MODE,
+                space_id=request.space_id,
+                booking_date=request.booking_date.isoformat(),
+                start_time=request.start_time.strftime("%H:%M"),
+                duration_hours=request.duration_hours,
+                customer_name=request.customer_name.strip(),
+                customer_email=str(request.customer_email),
+                purpose=selected_purpose,
+                terms_accepted=CURRENT_TERMS_VERSION,
+                payment_mode=PaymentMode(request.payment_mode),
+            )
+            self.db.add(booking)
+            self.db.flush()
+            self.payments.ensure(booking)
+            booking.state = BookingState.PAYMENT_PENDING
 
-        self.payments.ensure(booking)
-        checkout = self.prepare_standard_checkout(booking, notify_failure=True)
-        booking.state = BookingState.PAYMENT_PENDING
-        self.db.commit()
-        self.db.refresh(booking)
+            calendar_hold_id: str | None = None
+            try:
+                calendar_hold_id = self.calendar.create_hold_event(booking)
+                booking.calendar_event_id = calendar_hold_id
+                checkout = self.prepare_standard_checkout(booking)
+                self.db.commit()
+            except Exception:
+                self.db.rollback()
+                if calendar_hold_id:
+                    try:
+                        self.calendar.delete_event(calendar_hold_id, request.space_id)
+                    except Exception as cleanup_error:
+                        print(
+                            "Orphaned Calendar hold requires manual cleanup:",
+                            {
+                                "event_id": calendar_hold_id,
+                                "error": f"{type(cleanup_error).__name__}: {cleanup_error}",
+                            },
+                        )
+                raise
+            self.db.refresh(booking)
+        self.email.send_payment_hold(booking)
 
         return self.booking_response(booking, checkout=checkout)
 
@@ -397,5 +520,9 @@ class BookingApplicationService:
             payment_mode=(booking.payment_mode or PaymentMode.PAY_NOW).value,
             payment_link=booking.payment_link,
             checkout=checkout,
-            calendar_event_id=booking.calendar_event_id,
+            calendar_event_id=(
+                booking.calendar_event_id
+                if booking.state == BookingState.CONFIRMED
+                else None
+            ),
         )
