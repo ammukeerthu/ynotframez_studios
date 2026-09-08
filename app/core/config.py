@@ -38,6 +38,7 @@ class Settings(BaseSettings):
     google_calendar_standard_small_id: str = ""
     google_calendar_premium_large_id: str = ""
     google_service_account_file: str = "./google-service-account.json"
+    google_calendar_timeout_seconds: int = 8
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 

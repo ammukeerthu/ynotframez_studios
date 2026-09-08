@@ -1,12 +1,13 @@
 from datetime import UTC, date, datetime, time, timedelta
-from functools import lru_cache
 from pathlib import Path
-from threading import RLock
+from threading import local
 from uuid import uuid4
 from zoneinfo import ZoneInfo
 
+import httplib2
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
+from google_auth_httplib2 import AuthorizedHttp
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
@@ -14,24 +15,41 @@ from app.models.booking import Booking
 from app.services.spaces import get_space_by_id
 
 
-_google_calendar_request_lock = RLock()
+_google_calendar_thread_state = local()
 
 
-@lru_cache(maxsize=4)
-def _google_calendar_client(key_file: str):
-    """Build one authorized client per service-account file for this process.
+def _google_calendar_client(key_file: str, timeout_seconds: int):
+    """Build one bounded Google client per worker thread and account file.
 
-    Reusing the client also reuses its short-lived OAuth token. Constructing a
-    new client for every availability check forces an avoidable token exchange
-    before each Calendar API request, which is especially slow on small hosts.
-    Access is serialized because google-api-python-client's HTTP transport is
-    not thread-safe.
+    ``httplib2.Http`` is not thread-safe, so sharing a single client required a
+    process-wide lock. One stalled Google request could therefore freeze every
+    public and admin availability request. Thread-local clients retain token and
+    connection reuse without coupling otherwise independent requests, while the
+    socket timeout bounds an individual failure.
     """
-    credentials = service_account.Credentials.from_service_account_file(
-        key_file,
-        scopes=GoogleCalendarService.scopes,
-    )
-    return build("calendar", "v3", credentials=credentials)
+    clients = getattr(_google_calendar_thread_state, "clients", None)
+    if clients is None:
+        clients = {}
+        _google_calendar_thread_state.clients = clients
+    cache_key = (key_file, timeout_seconds)
+    client = clients.get(cache_key)
+    if client is None:
+        credentials = service_account.Credentials.from_service_account_file(
+            key_file,
+            scopes=GoogleCalendarService.scopes,
+        )
+        transport = AuthorizedHttp(
+            credentials,
+            http=httplib2.Http(timeout=timeout_seconds),
+        )
+        client = build(
+            "calendar",
+            "v3",
+            http=transport,
+            cache_discovery=False,
+        )
+        clients[cache_key] = client
+    return client
 
 
 class GoogleCalendarService:
@@ -344,8 +362,7 @@ class GoogleCalendarService:
 
     @staticmethod
     def _execute(request):
-        with _google_calendar_request_lock:
-            return request.execute()
+        return request.execute()
 
     def _event_blocks_space(
         self,
@@ -431,7 +448,10 @@ class GoogleCalendarService:
                 "Set GOOGLE_SERVICE_ACCOUNT_FILE in your .env file."
             )
 
-        return _google_calendar_client(str(key_path.resolve()))
+        return _google_calendar_client(
+            str(key_path.resolve()),
+            max(1, settings.google_calendar_timeout_seconds),
+        )
 
     def _calendar_id_for_space(self, space_id: str | None) -> str:
         calendar_id = self.calendar_ids.get(space_id or "") or self.calendar_id

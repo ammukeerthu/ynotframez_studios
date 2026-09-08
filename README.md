@@ -216,9 +216,10 @@ CALENDAR_MODE="google"
 GOOGLE_CALENDAR_STANDARD_SMALL_ID="standard-space-calendar-id"
 GOOGLE_CALENDAR_PREMIUM_LARGE_ID="premium-space-calendar-id"
 GOOGLE_SERVICE_ACCOUNT_FILE="./google-service-account.json"
+GOOGLE_CALENDAR_TIMEOUT_SECONDS="8"
 ```
 
-Studio hours continue to come from Studio Dashboard settings. Any normal busy event placed on a dedicated studio calendar blocks that time for only that studio; events marked **Free** remain bookable. Confirmed bookings are created on the selected studio's calendar, and rescheduling or cancellation updates the same event. The legacy `GOOGLE_CALENDAR_ID` setting remains available when both studios intentionally share one calendar.
+Studio hours continue to come from Studio Dashboard settings. Any normal busy event placed on a dedicated studio calendar blocks that time for only that studio; events marked **Free** remain bookable. Confirmed bookings are created on the selected studio's calendar, and rescheduling or cancellation updates the same event. Calendar API transports are isolated per request worker and bounded by `GOOGLE_CALENDAR_TIMEOUT_SECONDS`, so one stalled Google connection cannot queue every public and admin availability view. The legacy `GOOGLE_CALENDAR_ID` setting remains available when both studios intentionally share one calendar.
 
 ## Web API
 

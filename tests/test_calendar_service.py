@@ -1,15 +1,23 @@
 import unittest
 from datetime import datetime
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 from app.models.booking import Booking
 from app.core.config import settings
-from app.services.calendar_service import GoogleCalendarService
+from app.services.calendar_service import (
+    GoogleCalendarService,
+    _google_calendar_client,
+    _google_calendar_thread_state,
+)
 
 settings.calendar_mode = "stub"
 
 
 class GoogleCalendarServiceTest(unittest.TestCase):
+    def tearDown(self) -> None:
+        if hasattr(_google_calendar_thread_state, "clients"):
+            del _google_calendar_thread_state.clients
+
     def service(self) -> GoogleCalendarService:
         service = GoogleCalendarService()
         service.calendar_id = "legacy-calendar"
@@ -27,6 +35,40 @@ class GoogleCalendarServiceTest(unittest.TestCase):
         self.assertEqual(service._calendar_id_for_space("future_space"), "legacy-calendar")
         self.assertTrue(service._uses_dedicated_calendar("standard_small"))
         self.assertFalse(service._uses_dedicated_calendar("future_space"))
+
+    @patch("app.services.calendar_service.build")
+    @patch("app.services.calendar_service.AuthorizedHttp")
+    @patch("app.services.calendar_service.httplib2.Http")
+    @patch("app.services.calendar_service.service_account.Credentials.from_service_account_file")
+    def test_google_client_reuses_a_bounded_thread_local_transport(
+        self,
+        credentials_from_file: MagicMock,
+        http: MagicMock,
+        authorized_http: MagicMock,
+        build: MagicMock,
+    ) -> None:
+        expected_client = build.return_value
+
+        first = _google_calendar_client("calendar-key.json", 8)
+        second = _google_calendar_client("calendar-key.json", 8)
+
+        self.assertIs(first, expected_client)
+        self.assertIs(second, expected_client)
+        credentials_from_file.assert_called_once_with(
+            "calendar-key.json",
+            scopes=GoogleCalendarService.scopes,
+        )
+        http.assert_called_once_with(timeout=8)
+        authorized_http.assert_called_once_with(
+            credentials_from_file.return_value,
+            http=http.return_value,
+        )
+        build.assert_called_once_with(
+            "calendar",
+            "v3",
+            http=authorized_http.return_value,
+            cache_discovery=False,
+        )
 
     def test_normal_busy_events_block_a_dedicated_studio_calendar(self) -> None:
         service = self.service()
