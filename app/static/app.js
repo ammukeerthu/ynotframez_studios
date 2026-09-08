@@ -527,7 +527,32 @@ function showConfirmation(booking, notice = "", paymentProcessing = false) {
 }
 
 document.querySelector("#payment-button").addEventListener("click", prepareCheckout);
-document.querySelector("#new-booking").addEventListener("click", () => window.location.reload());
+
+function startNewBooking() {
+  state.slotRequestController?.abort();
+  state.slotRequestController = null;
+  state.slotRequestToken += 1;
+  state.selectedSpace = null;
+  state.slots = [];
+  state.selectedSlots = [];
+  state.slotChecked = false;
+  state.currentBooking = null;
+  state.paymentNotice = "";
+
+  form.reset();
+  form.querySelectorAll(".invalid").forEach((field) => field.classList.remove("invalid"));
+  form.elements.purpose.replaceChildren(new Option("Choose a purpose", ""));
+  document.querySelector("#space-rules").hidden = true;
+  document.querySelector("#confirmation").hidden = true;
+  document.querySelector(".progress").hidden = false;
+  form.hidden = false;
+  renderSpaces();
+  syncSelectedSlots();
+  goToStep(1);
+  window.history.replaceState({}, "", "/book");
+}
+
+document.querySelector("#new-booking").addEventListener("click", startNewBooking);
 document.querySelector("#print-booking").addEventListener("click", () => window.print());
 
 const termsDialog = document.querySelector("#terms-dialog");

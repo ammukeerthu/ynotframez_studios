@@ -34,6 +34,16 @@ class BookingTermsViewTests(unittest.TestCase):
         self.assertTrue(self.pdf_path.is_file())
         self.assertTrue(self.pdf_path.read_bytes().startswith(b"%PDF"))
 
+    def test_make_another_booking_restores_the_studio_selection(self) -> None:
+        self.assertIn("function startNewBooking()", self.booking_script)
+        self.assertIn('document.querySelector("#confirmation").hidden = true;', self.booking_script)
+        self.assertIn("form.hidden = false;", self.booking_script)
+        self.assertIn("renderSpaces();", self.booking_script)
+        self.assertNotIn(
+            'document.querySelector("#new-booking").addEventListener("click", () => window.location.reload())',
+            self.booking_script,
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
