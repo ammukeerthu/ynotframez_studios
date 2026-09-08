@@ -29,6 +29,16 @@ class AdminAvailabilityViewTest(unittest.TestCase):
         self.assertIn("bookingFilters.elements.date_to.value = localDate();", self.script)
         self.assertNotIn("availabilityFilters.elements.booking_date.value = localDate(1);", self.script)
 
+    def test_booking_table_has_purpose_terms_and_persisted_column_controls(self) -> None:
+        self.assertIn('data-table-column="purpose">Purpose', self.html)
+        self.assertIn('data-table-column="terms">Terms accepted', self.html)
+        self.assertIn('value="reference" data-booking-column-toggle checked disabled', self.html)
+        self.assertIn('value="actions" data-booking-column-toggle checked disabled', self.html)
+        self.assertIn('BOOKING_COLUMN_STORAGE_KEY = "ynf_admin_booking_columns"', self.script)
+        self.assertIn('data-table-column="purpose" class="booking-purpose-cell"', self.script)
+        self.assertIn('data-table-column="terms">${terms}', self.script)
+        self.assertIn('localStorage.setItem(BOOKING_COLUMN_STORAGE_KEY', self.script)
+
     def test_blocked_tiles_expose_single_slot_unblock_menu(self) -> None:
         self.assertIn('id="slot-context-menu"', self.html)
         self.assertIn('addEventListener("contextmenu"', self.script)

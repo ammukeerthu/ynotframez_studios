@@ -9,9 +9,9 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800&amp;display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/admin.css?v=20260908-5">
+  <link rel="stylesheet" href="/static/admin.css?v=20260909-1">
   <script src="/static/studio_cache.js?v=20260908-1" defer></script>
-  <script src="/static/admin.js?v=20260909-2" defer></script>
+  <script src="/static/admin.js?v=20260909-3" defer></script>
 </head>
 <body>
   <section id="login-view" class="login-view" hidden>
@@ -106,10 +106,29 @@
           <label><span>STATUS</span><select name="status"><option value="">All statuses</option><option value="confirmed">Confirmed</option><option value="payment_pending">Payment pending</option><option value="expired">Expired</option><option value="cancelled">Cancelled</option></select></label>
           <label><span>FROM DATE</span><input name="date_from" type="date"></label>
           <label><span>TO DATE</span><input name="date_to" type="date"></label>
-          <div class="filter-actions"><button type="submit">Apply</button><a id="booking-export" href="/api/admin/bookings/export.csv">Export CSV</a></div>
+          <div class="filter-actions">
+            <button type="submit">Apply</button>
+            <a id="booking-export" href="/api/admin/bookings/export.csv">Export CSV</a>
+            <div class="booking-column-menu">
+              <button id="booking-columns-button" type="button" aria-expanded="false" aria-controls="booking-columns-panel">Columns</button>
+              <div id="booking-columns-panel" class="booking-columns-panel" hidden>
+                <p>VISIBLE COLUMNS</p>
+                <label class="column-option locked"><input type="checkbox" value="reference" data-booking-column-toggle checked disabled><span>Reference</span></label>
+                <label class="column-option"><input type="checkbox" value="customer" data-booking-column-toggle checked><span>Customer</span></label>
+                <label class="column-option"><input type="checkbox" value="studio" data-booking-column-toggle checked><span>Studio</span></label>
+                <label class="column-option"><input type="checkbox" value="schedule" data-booking-column-toggle checked><span>Date &amp; time</span></label>
+                <label class="column-option"><input type="checkbox" value="purpose" data-booking-column-toggle checked><span>Purpose</span></label>
+                <label class="column-option"><input type="checkbox" value="terms" data-booking-column-toggle checked><span>Terms accepted</span></label>
+                <label class="column-option"><input type="checkbox" value="value" data-booking-column-toggle checked><span>Value</span></label>
+                <label class="column-option"><input type="checkbox" value="payment" data-booking-column-toggle checked><span>Payment</span></label>
+                <label class="column-option"><input type="checkbox" value="status" data-booking-column-toggle checked><span>Status</span></label>
+                <label class="column-option locked"><input type="checkbox" value="actions" data-booking-column-toggle checked disabled><span>Actions</span></label>
+              </div>
+            </div>
+          </div>
         </form>
         <div class="table-wrap">
-          <table><thead><tr><th>Reference</th><th>Customer</th><th>Studio</th><th>Date & time</th><th>Value</th><th>Payment</th><th>Status</th><th>Actions</th></tr></thead><tbody id="bookings-body"><tr><td colspan="8" class="empty">Loading bookings…</td></tr></tbody></table>
+          <table id="bookings-table"><thead><tr><th data-table-column="reference">Reference</th><th data-table-column="customer">Customer</th><th data-table-column="studio">Studio</th><th data-table-column="schedule">Date &amp; time</th><th data-table-column="purpose">Purpose</th><th data-table-column="terms">Terms accepted</th><th data-table-column="value">Value</th><th data-table-column="payment">Payment</th><th data-table-column="status">Status</th><th data-table-column="actions">Actions</th></tr></thead><tbody id="bookings-body"><tr><td colspan="10" class="empty">Loading bookings…</td></tr></tbody></table>
         </div>
         <p id="booking-count" class="booking-count"></p>
       </section>

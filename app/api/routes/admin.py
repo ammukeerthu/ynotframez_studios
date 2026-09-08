@@ -912,6 +912,7 @@ def _serialize_booking(booking: Booking, db: Session) -> AdminBookingResponse:
         customer_email=booking.customer_email,
         phone_number=booking.phone_number,
         purpose=booking.purpose,
+        terms_accepted=booking.terms_accepted,
         payment_mode=booking.payment_mode.value if booking.payment_mode else None,
         payment_status=(payment.status if payment else inferred_payment_status).value,
         payment_reference=payment.provider_reference if payment else None,

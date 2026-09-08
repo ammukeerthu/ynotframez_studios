@@ -156,6 +156,7 @@ class AdminBookingResponse(BaseModel):
     customer_email: str | None
     phone_number: str
     purpose: str | None
+    terms_accepted: str | None
     payment_mode: str | None
     payment_status: str
     payment_reference: str | None

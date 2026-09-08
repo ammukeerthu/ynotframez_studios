@@ -6,6 +6,8 @@ const passwordModal = document.querySelector("#password-modal");
 const bookingModal = document.querySelector("#booking-modal");
 const bookingEditForm = document.querySelector("#booking-edit-form");
 const bookingFilters = document.querySelector("#booking-filters");
+const bookingColumnsButton = document.querySelector("#booking-columns-button");
+const bookingColumnsPanel = document.querySelector("#booking-columns-panel");
 const availabilityFilters = document.querySelector("#availability-filters");
 const availabilityBlockForm = document.querySelector("#availability-block-form");
 const slotContextMenu = document.querySelector("#slot-context-menu");
@@ -28,6 +30,10 @@ let currentAvailabilityDay = null;
 let contextSlot = null;
 const dashboardMessageTimers = new WeakMap();
 const MAX_BLOCK_DURATION_HOURS = 12;
+const BOOKING_COLUMN_STORAGE_KEY = "ynf_admin_booking_columns";
+const BOOKING_COLUMNS = ["reference", "customer", "studio", "schedule", "purpose", "terms", "value", "payment", "status", "actions"];
+const LOCKED_BOOKING_COLUMNS = new Set(["reference", "actions"]);
+let visibleBookingColumns = loadBookingColumnPreferences();
 const currency = new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 });
 const adminNavLinks = Array.from(document.querySelectorAll(".admin-shell aside nav a[href^='#']"));
 const adminSections = adminNavLinks
@@ -279,15 +285,64 @@ function setAccountMenu(open) {
   accountMenuButton.setAttribute("aria-expanded", String(open));
 }
 
+function loadBookingColumnPreferences() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(BOOKING_COLUMN_STORAGE_KEY) || "null");
+    if (Array.isArray(saved)) {
+      const visible = new Set(saved.filter((column) => BOOKING_COLUMNS.includes(column)));
+      LOCKED_BOOKING_COLUMNS.forEach((column) => visible.add(column));
+      return visible;
+    }
+  } catch (error) {
+    // Storage can be unavailable in private browsing; use the complete table in that case.
+  }
+  return new Set(BOOKING_COLUMNS);
+}
+
+function saveBookingColumnPreferences() {
+  try {
+    localStorage.setItem(BOOKING_COLUMN_STORAGE_KEY, JSON.stringify([...visibleBookingColumns]));
+  } catch (error) {
+    // The selected layout still applies for the current page when storage is unavailable.
+  }
+}
+
+function visibleBookingColumnCount() {
+  return BOOKING_COLUMNS.filter((column) => visibleBookingColumns.has(column)).length;
+}
+
+function applyBookingColumnVisibility() {
+  LOCKED_BOOKING_COLUMNS.forEach((column) => visibleBookingColumns.add(column));
+  document.querySelectorAll("#bookings-table [data-table-column]").forEach((cell) => {
+    cell.hidden = !visibleBookingColumns.has(cell.dataset.tableColumn);
+  });
+  document.querySelectorAll("[data-booking-column-toggle]").forEach((checkbox) => {
+    checkbox.checked = visibleBookingColumns.has(checkbox.value);
+  });
+  document.querySelectorAll("#bookings-body .empty").forEach((cell) => {
+    cell.colSpan = visibleBookingColumnCount();
+  });
+}
+
+function setBookingColumnsPanel(open) {
+  bookingColumnsPanel.hidden = !open;
+  bookingColumnsButton.setAttribute("aria-expanded", String(open));
+}
+
+function bookingEmptyRow(message) {
+  return `<tr><td colspan="${visibleBookingColumnCount()}" class="empty">${safe(message)}</td></tr>`;
+}
+
 async function loadBookings() {
   const query = bookingFilterQuery();
   document.querySelector("#booking-export").href = `/api/admin/bookings/export.csv?${query}`;
   const body = document.querySelector("#bookings-body");
-  body.innerHTML = '<tr><td colspan="8" class="empty">Loading bookings…</td></tr>';
+  body.innerHTML = bookingEmptyRow("Loading bookings…");
   try {
     const bookings = await api(`/api/admin/bookings?${query}`);
     adminBookings = bookings;
-    body.innerHTML = bookings.length ? bookings.map(bookingRow).join("") : '<tr><td colspan="8" class="empty">No bookings match these filters.</td></tr>';
+    body.innerHTML = bookings.length ? bookings.map(bookingRow).join("") : bookingEmptyRow("No bookings match these filters.");
+    applyBookingColumnVisibility();
     document.querySelector("#booking-count").textContent = `${bookings.length} booking${bookings.length === 1 ? "" : "s"} shown`;
   } catch (error) {
     handleDashboardError(error);
@@ -311,15 +366,21 @@ function bookingRow(booking) {
   const action = ["confirmed", "cancelled"].includes(booking.status)
     ? `<button type="button" class="manage-booking" data-booking-id="${booking.id}">Manage</button>`
     : "Not available";
+  const purpose = booking.purpose || "Not provided";
+  const terms = booking.terms_accepted
+    ? '<span class="status status-confirmed">Accepted</span>'
+    : '<span class="status status-void">Not accepted</span>';
   return `<tr>
-    <td><b>${safe(booking.reference)}</b><small>${safe(booking.payment_mode?.replaceAll("_", " ") || "No payment mode")}</small></td>
-    <td><b>${safe(booking.customer_name || "Incomplete booking")}</b><small>${safe(booking.customer_email || booking.phone_number)}</small></td>
-    <td>${safe(booking.space_name)}</td>
-    <td>${safe(date)}<small>${safe(time)}</small></td>
-    <td>${safe(currency.format(booking.total_amount))}</td>
-    <td><span class="status status-${safe(booking.payment_status)}">${safe(booking.payment_status.replaceAll("_", " "))}</span></td>
-    <td><span class="status status-${safe(booking.status)}">${safe(booking.status.replaceAll("_", " "))}</span></td>
-    <td>${action}</td>
+    <td data-table-column="reference"><b>${safe(booking.reference)}</b><small>${safe(booking.payment_mode?.replaceAll("_", " ") || "No payment mode")}</small></td>
+    <td data-table-column="customer"><b>${safe(booking.customer_name || "Incomplete booking")}</b><small>${safe(booking.customer_email || booking.phone_number)}</small></td>
+    <td data-table-column="studio">${safe(booking.space_name)}</td>
+    <td data-table-column="schedule">${safe(date)}<small>${safe(time)}</small></td>
+    <td data-table-column="purpose" class="booking-purpose-cell" title="${safeAttr(purpose)}"><span>${safe(purpose)}</span></td>
+    <td data-table-column="terms">${terms}</td>
+    <td data-table-column="value">${safe(currency.format(booking.total_amount))}</td>
+    <td data-table-column="payment"><span class="status status-${safe(booking.payment_status)}">${safe(booking.payment_status.replaceAll("_", " "))}</span></td>
+    <td data-table-column="status"><span class="status status-${safe(booking.status)}">${safe(booking.status.replaceAll("_", " "))}</span></td>
+    <td data-table-column="actions">${action}</td>
   </tr>`;
 }
 
@@ -752,6 +813,17 @@ bookingFilters.addEventListener("submit", (event) => {
   event.preventDefault();
   loadBookings();
 });
+bookingColumnsButton.addEventListener("click", () => {
+  setBookingColumnsPanel(bookingColumnsPanel.hidden);
+});
+bookingColumnsPanel.addEventListener("change", (event) => {
+  const checkbox = event.target.closest("[data-booking-column-toggle]");
+  if (!checkbox || LOCKED_BOOKING_COLUMNS.has(checkbox.value)) return;
+  if (checkbox.checked) visibleBookingColumns.add(checkbox.value);
+  else visibleBookingColumns.delete(checkbox.value);
+  saveBookingColumnPreferences();
+  applyBookingColumnVisibility();
+});
 alertBell.addEventListener("click", () => {
   setAlertPanel(alertCenter.hidden);
 });
@@ -772,11 +844,13 @@ document.querySelectorAll("[data-alert-filter]").forEach((button) => {
 document.addEventListener("click", (event) => {
   if (!event.target.closest(".alert-menu")) setAlertPanel(false);
   if (!event.target.closest(".account-menu")) setAccountMenu(false);
+  if (!event.target.closest(".booking-column-menu")) setBookingColumnsPanel(false);
 });
 document.addEventListener("keydown", (event) => {
   if (event.key === "Escape") {
     setAlertPanel(false);
     setAccountMenu(false);
+    setBookingColumnsPanel(false);
   }
 });
 desktopAlertsButton.addEventListener("click", async () => {
@@ -1119,6 +1193,7 @@ availabilityFilters.elements.booking_date.value = localDate();
 bookingFilters.elements.date_from.value = localDate();
 bookingFilters.elements.date_to.value = localDate();
 bookingEditForm.elements.booking_date.min = localDate();
+applyBookingColumnVisibility();
 setupHalfHourBlockOptions();
 setupBookingEditOptions();
 document.addEventListener("visibilitychange", () => {

@@ -400,6 +400,8 @@ class AdminAuthenticationTest(unittest.TestCase):
             self.assertEqual(updated.start_time, "13:00")
             self.assertEqual(updated.end_time, "15:00")
             self.assertEqual(updated.customer_name, "Updated Customer")
+            self.assertEqual(updated.purpose, "Updated portrait shoot")
+            self.assertEqual(updated.terms_accepted, "v1")
             self.assertEqual(updated.total_amount, 2000)
             self.assertEqual(updated.payment_status, "pending")
             self.assertTrue(old_slot)
