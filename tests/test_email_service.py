@@ -25,7 +25,8 @@ class EmailServiceTest(unittest.TestCase):
 
     def test_confirmation_contains_plain_and_html_booking_details(self) -> None:
         email_service = EmailService()
-        message = email_service._build_message(self.booking(), "confirmation")
+        with patch.object(settings, "email_bcc", ""):
+            message = email_service._build_message(self.booking(), "confirmation")
         plain = message.get_body(preferencelist=("plain",)).get_content()
         html = message.get_body(preferencelist=("html",)).get_content()
 
@@ -58,6 +59,41 @@ class EmailServiceTest(unittest.TestCase):
         self.assertEqual(logo_parts[0].get_filename(), "ynotframez-studios-white.png")
         self.assertEqual(logo_parts[0].get_content_disposition(), "inline")
         self.assertTrue(logo_parts[0]["Content-ID"])
+
+    def test_all_booking_messages_include_unique_internal_bcc_recipients(self) -> None:
+        with patch.object(
+            settings,
+            "email_bcc",
+            (
+                "ynotframezstudios@gmail.com, dipakg160892@gmail.com; "
+                "karthik2deekay@gmail.com, DIPAKG160892@gmail.com"
+            ),
+        ):
+            for message_type in EmailService.subjects:
+                with self.subTest(message_type=message_type):
+                    message = EmailService()._build_message(self.booking(), message_type)
+                    self.assertEqual(
+                        message["Bcc"],
+                        (
+                            "ynotframezstudios@gmail.com, dipakg160892@gmail.com, "
+                            "karthik2deekay@gmail.com"
+                        ),
+                    )
+
+    def test_customer_is_not_duplicated_in_bcc(self) -> None:
+        booking = self.booking()
+        booking.customer_email = "DipakG160892@gmail.com"
+        with patch.object(
+            settings,
+            "email_bcc",
+            "ynotframezstudios@gmail.com,dipakg160892@gmail.com,karthik2deekay@gmail.com",
+        ):
+            message = EmailService()._build_message(booking, "confirmation")
+
+        self.assertEqual(
+            message["Bcc"],
+            "ynotframezstudios@gmail.com, karthik2deekay@gmail.com",
+        )
 
     def test_cancellation_omits_payment_action(self) -> None:
         message = EmailService()._build_message(self.booking(), "cancellation")
@@ -136,6 +172,7 @@ class EmailServiceTest(unittest.TestCase):
         with (
             patch.object(settings, "email_mode", "smtp"),
             patch.object(settings, "studio_email", "bookings@ynotframez.example"),
+            patch.object(settings, "email_bcc", "owner@example.com,manager@example.com"),
             patch.object(settings, "smtp_host", "smtp.example.com"),
             patch.object(settings, "smtp_port", 587),
             patch.object(settings, "smtp_username", "smtp-user"),
@@ -152,6 +189,7 @@ class EmailServiceTest(unittest.TestCase):
         smtp_context.login.assert_called_once_with("smtp-user", "smtp-secret")
         sent_message = smtp_context.send_message.call_args.args[0]
         self.assertTrue(sent_message.is_multipart())
+        self.assertEqual(sent_message["Bcc"], "owner@example.com, manager@example.com")
 
     def test_smtp_failure_does_not_raise_or_cancel_booking_flow(self) -> None:
         with (

@@ -467,6 +467,7 @@ EMAIL_MODE="smtp"
 STUDIO_EMAIL="bookings@your-domain.com"
 EMAIL_FROM_NAME="YNotFramez Studios"
 EMAIL_REPLY_TO="bookings@your-domain.com"
+EMAIL_BCC="owner@example.com,manager@example.com"
 SMTP_HOST="smtp.your-provider.com"
 SMTP_PORT="587"
 SMTP_USERNAME="your-smtp-username"
@@ -477,7 +478,7 @@ SMTP_USE_SSL="false"
 
 Port 587 normally uses STARTTLS (`SMTP_USE_TLS=true`). Providers using implicit TLS commonly use port 465 with `SMTP_USE_SSL=true` and `SMTP_USE_TLS=false`. Do not enable both. SMTP credentials belong only in the ignored `.env` file or deployment environment, never in Git.
 
-Emails contain both plain-text and HTML versions. The HTML version embeds the YNotFramez Studios PNG logo on an opaque white background so it does not depend on a remote image URL and remains visible in dark-mode mail clients. Booking messages include the reference, booked studio, date, time, duration, purpose, and recorded amount. Payment-hold emails clearly say the booking is not confirmed, show the exact expiry in the studio timezone, and provide retry/contact guidance. Confirmation and update emails also include the selected studio's latest rules. Delivery failures are logged without cancelling an otherwise valid booking.
+Emails contain both plain-text and HTML versions. The HTML version embeds the YNotFramez Studios PNG logo on an opaque white background so it does not depend on a remote image URL and remains visible in dark-mode mail clients. Booking messages include the reference, booked studio, date, time, duration, purpose, and recorded amount. Payment-hold emails clearly say the booking is not confirmed, show the exact expiry in the studio timezone, and provide retry/contact guidance. Confirmation and update emails also include the selected studio's latest rules. `EMAIL_BCC` accepts comma-separated internal addresses and silently copies every booking email to them; duplicate addresses and the customer's own address are omitted. Delivery failures are logged without cancelling an otherwise valid booking.
 
 ## Security note
 

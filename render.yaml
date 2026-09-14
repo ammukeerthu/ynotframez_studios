@@ -28,6 +28,8 @@ services:
         value: YNotFramez Studios
       - key: EMAIL_REPLY_TO
         value: ynotframezstudios@gmail.com
+      - key: EMAIL_BCC
+        value: ynotframezstudios@gmail.com,dipakg160892@gmail.com,karthik2deekay@gmail.com
       - key: SMTP_HOST
         value: smtp-relay.brevo.com
       - key: SMTP_PORT

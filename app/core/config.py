@@ -9,6 +9,7 @@ class Settings(BaseSettings):
     email_mode: str = "console"
     email_from_name: str = "YNotFramez Studios"
     email_reply_to: str = ""
+    email_bcc: str = ""
     smtp_host: str = ""
     smtp_port: int = 587
     smtp_username: str = ""

@@ -114,6 +114,9 @@ class EmailService:
         message["Subject"] = subject
         message["From"] = formataddr((settings.email_from_name, settings.studio_email))
         message["To"] = booking.customer_email or ""
+        bcc_recipients = self._bcc_recipients(booking.customer_email or "")
+        if bcc_recipients:
+            message["Bcc"] = ", ".join(bcc_recipients)
         if settings.email_reply_to.strip():
             message["Reply-To"] = settings.email_reply_to.strip()
         try:
@@ -142,6 +145,19 @@ class EmailService:
                 disposition="inline",
             )
         return message
+
+    @staticmethod
+    def _bcc_recipients(primary_recipient: str) -> list[str]:
+        """Return unique internal recipients without duplicating the customer."""
+        recipients: list[str] = []
+        seen = {primary_recipient.strip().casefold()}
+        for raw_recipient in settings.email_bcc.replace(";", ",").split(","):
+            recipient = raw_recipient.strip()
+            normalized = recipient.casefold()
+            if recipient and normalized not in seen:
+                recipients.append(recipient)
+                seen.add(normalized)
+        return recipients
 
     def _deliver_smtp(self, message: EmailMessage) -> None:
         host = settings.smtp_host.strip()
