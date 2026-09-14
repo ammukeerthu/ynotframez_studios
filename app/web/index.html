@@ -6,11 +6,11 @@
   <meta name="description" content="Book a photography studio at YNotFramez Studios.">
   <title>Book a Studio | YNotFramez Studios</title>
   <link rel="icon" type="image/svg+xml" href="/static/brand/ynotframez-y.svg">
-  <link rel="stylesheet" href="/static/styles.css?v=20260908-5">
+  <link rel="stylesheet" href="/static/styles.css?v=20260914-1">
   <script src="https://checkout.razorpay.com/v1/checkout.js" defer></script>
   <script src="/static/razorpay_checkout.js" defer></script>
   <script src="/static/studio_cache.js?v=20260908-1" defer></script>
-  <script src="/static/app.js?v=20260908-6" defer></script>
+  <script src="/static/app.js?v=20260914-1" defer></script>
 </head>
 <body>
   <header class="site-header">
@@ -40,6 +40,7 @@
       <div id="live-summary" class="live-summary">
         <p>YOUR SELECTION</p>
         <dl><div><dt>Studio</dt><dd data-summary="space">Not selected</dd></div><div><dt>Date</dt><dd data-summary="date">Not selected</dd></div><div><dt>Time</dt><dd data-summary="time">Not selected</dd></div><div><dt>Estimate</dt><dd data-summary="price">₹0</dd></div></dl>
+        <button id="selected-space-preview" class="live-summary-link" type="button" hidden>View selected studio <span aria-hidden="true">→</span></button>
       </div>
     </aside>
 
@@ -124,6 +125,48 @@
       </section>
     </section>
   </main>
+
+  <dialog id="studio-preview-dialog" class="studio-preview-dialog" aria-labelledby="studio-preview-title">
+    <div class="studio-preview-frame">
+      <div class="studio-preview-media">
+        <img id="studio-preview-image" alt="">
+        <div class="studio-preview-navigation">
+          <button id="studio-preview-previous" type="button" aria-label="Previous studio image">←</button>
+          <p id="studio-preview-caption"></p>
+          <button id="studio-preview-next" type="button" aria-label="Next studio image">→</button>
+        </div>
+      </div>
+      <div class="studio-preview-content">
+        <button class="studio-preview-close" type="button" data-close-studio-preview aria-label="Close studio preview">×</button>
+        <p class="step-kicker">EXPLORE THE SPACE</p>
+        <div id="studio-preview-switcher" class="studio-preview-switcher" role="group" aria-label="Choose a studio to preview"></div>
+        <h2 id="studio-preview-title"></h2>
+        <p id="studio-preview-description" class="studio-preview-description"></p>
+        <dl class="studio-preview-facts">
+          <div><dt>Hourly rate</dt><dd id="studio-preview-rate"></dd></div>
+          <div><dt>Capacity</dt><dd id="studio-preview-capacity"></dd></div>
+          <div><dt>Dimensions</dt><dd id="studio-preview-dimensions"></dd></div>
+          <div><dt>Minimum</dt><dd id="studio-preview-minimum"></dd></div>
+        </dl>
+        <section class="studio-preview-section">
+          <h3>Amenities</h3>
+          <div id="studio-preview-amenities" class="studio-preview-tags"></div>
+        </section>
+        <section class="studio-preview-section">
+          <h3>Equipment</h3>
+          <ul id="studio-preview-equipment" class="studio-preview-list"></ul>
+        </section>
+        <details class="studio-preview-rules">
+          <summary>View studio rules</summary>
+          <p id="studio-preview-rules"></p>
+        </details>
+        <div class="studio-preview-actions">
+          <button id="studio-preview-select" class="button primary" type="button"></button>
+          <button class="button secondary" type="button" data-close-studio-preview>Continue booking</button>
+        </div>
+      </div>
+    </div>
+  </dialog>
 
   <dialog id="terms-dialog" class="terms-dialog" aria-labelledby="terms-title">
     <div class="terms-dialog-frame">

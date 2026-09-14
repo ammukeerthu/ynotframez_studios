@@ -51,6 +51,23 @@ class BookingTermsViewTests(unittest.TestCase):
         self.assertIn(interval_template, self.admin_script)
         self.assertIn("grid-template-columns: repeat(2, minmax(0, 1fr))", self.styles)
 
+    def test_booking_page_has_an_in_flow_studio_preview(self) -> None:
+        self.assertIn('id="selected-space-preview"', self.booking_html)
+        self.assertIn('id="studio-preview-dialog"', self.booking_html)
+        self.assertIn('id="studio-preview-switcher"', self.booking_html)
+        self.assertEqual(self.booking_html.count("data-close-studio-preview"), 2)
+        self.assertIn("function openStudioPreview(", self.booking_script)
+        self.assertIn("studioPreviewDialog.showModal()", self.booking_script)
+        self.assertIn("space.gallery_images", self.booking_script)
+        self.assertIn('data-preview-space-id=', self.booking_script)
+        self.assertIn('data-preview-switch-space=', self.booking_script)
+        self.assertIn(
+            "Changing the studio will clear your selected time because availability and pricing may differ.",
+            self.booking_script,
+        )
+        self.assertIn(".studio-preview-dialog", self.styles)
+        self.assertIn(".studio-preview-actions", self.styles)
+
 
 if __name__ == "__main__":
     unittest.main()

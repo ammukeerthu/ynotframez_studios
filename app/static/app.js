@@ -13,6 +13,15 @@ const state = {
   slotRequestToken: 0,
   slotRequestController: null,
 };
+const studioPreviewDialog = document.querySelector("#studio-preview-dialog");
+const studioPreviewImage = document.querySelector("#studio-preview-image");
+const studioPreviewPrevious = document.querySelector("#studio-preview-previous");
+const studioPreviewNext = document.querySelector("#studio-preview-next");
+const selectedSpacePreview = document.querySelector("#selected-space-preview");
+let previewSpace = null;
+let previewImages = [];
+let previewImageIndex = 0;
+let previewOpener = null;
 
 const currency = new Intl.NumberFormat("en-IN", {
   style: "currency",
@@ -80,20 +89,89 @@ function applySpaces(spaces, preferredSpaceId = null) {
   }
 }
 
+function updateStudioPreviewImage(index) {
+  if (!previewSpace || previewImages.length === 0) return;
+  previewImageIndex = (index + previewImages.length) % previewImages.length;
+  studioPreviewImage.src = previewImages[previewImageIndex];
+  studioPreviewImage.alt = `${previewSpace.name} studio view ${previewImageIndex + 1}`;
+  document.querySelector("#studio-preview-caption").textContent =
+    `${previewSpace.name} • ${previewImageIndex + 1} of ${previewImages.length}`;
+  const hasMultipleImages = previewImages.length > 1;
+  studioPreviewPrevious.hidden = !hasMultipleImages;
+  studioPreviewNext.hidden = !hasMultipleImages;
+}
+
+function openStudioPreview(spaceId, opener) {
+  const space = state.spaces.find((item) => item.id === spaceId);
+  if (!space) return;
+  const dialogWasOpen = studioPreviewDialog.open;
+  if (typeof studioPreviewDialog.showModal !== "function") {
+    window.open(`/studios/${encodeURIComponent(space.slug)}`, "_blank", "noopener");
+    return;
+  }
+
+  previewSpace = space;
+  if (opener) previewOpener = opener;
+  previewImages = [...new Set([space.cover_image, ...(space.gallery_images || [])].filter(Boolean))];
+  previewImageIndex = 0;
+  const switcher = document.querySelector("#studio-preview-switcher");
+  switcher.innerHTML = state.spaces.map((item) => `
+    <button type="button" data-preview-switch-space="${escapeAttribute(item.id)}" aria-pressed="${item.id === space.id}">${escapeText(item.name)}</button>
+  `).join("");
+  switcher.querySelectorAll("[data-preview-switch-space]").forEach((button) => {
+    button.addEventListener("click", () => openStudioPreview(button.dataset.previewSwitchSpace));
+  });
+  document.querySelector("#studio-preview-title").textContent = space.name;
+  document.querySelector("#studio-preview-description").textContent = space.brochure;
+  document.querySelector("#studio-preview-rate").textContent = `${currency.format(space.hourly_rate)} per hour`;
+  document.querySelector("#studio-preview-capacity").textContent = `Up to ${space.capacity} people`;
+  document.querySelector("#studio-preview-dimensions").textContent = space.dimensions;
+  document.querySelector("#studio-preview-minimum").textContent =
+    `${space.min_duration_hours} hour${space.min_duration_hours === 1 ? "" : "s"}`;
+  document.querySelector("#studio-preview-amenities").innerHTML = (space.amenities || [])
+    .map((item) => `<span>${escapeText(item)}</span>`)
+    .join("");
+  document.querySelector("#studio-preview-equipment").innerHTML = (space.equipment || [])
+    .map((item) => `<li>${escapeText(item)}</li>`)
+    .join("");
+  document.querySelector("#studio-preview-rules").textContent = space.rules;
+  const selectButton = document.querySelector("#studio-preview-select");
+  selectButton.textContent = state.selectedSpace?.id === space.id
+    ? `Continue with ${space.name}`
+    : `Select ${space.name}`;
+  updateStudioPreviewImage(0);
+  if (!dialogWasOpen) {
+    studioPreviewDialog.showModal();
+    studioPreviewDialog.querySelector(".studio-preview-close").focus();
+  } else {
+    switcher.querySelector('[aria-pressed="true"]').focus();
+  }
+}
+
+function closeStudioPreview() {
+  if (studioPreviewDialog.open) studioPreviewDialog.close();
+}
+
 function renderSpaces() {
   const list = document.querySelector("#space-list");
   list.innerHTML = state.spaces.map((space) => `
-    <label class="space-card" data-space-id="${escapeAttribute(space.id)}">
-      <input type="radio" name="space_id" value="${escapeAttribute(space.id)}" required>
-      <div class="space-visual"><img src="${escapeAttribute(space.cover_image)}" alt="${escapeAttribute(space.name)} photography studio" loading="lazy" decoding="async"></div>
-      <div class="card-top"><h3>${escapeText(space.name)}</h3><span class="selector">✓</span></div>
-      <p>${escapeText(space.brochure)}</p>
-      <div class="rate">${currency.format(space.hourly_rate)} <small>/ hour</small></div>
-    </label>
+    <article class="space-card" data-space-id="${escapeAttribute(space.id)}">
+      <label class="space-card-choice">
+        <input type="radio" name="space_id" value="${escapeAttribute(space.id)}" required>
+        <div class="space-visual"><img src="${escapeAttribute(space.cover_image)}" alt="${escapeAttribute(space.name)} photography studio" loading="lazy" decoding="async"></div>
+        <div class="card-top"><h3>${escapeText(space.name)}</h3><span class="selector">✓</span></div>
+        <p>${escapeText(space.brochure)}</p>
+        <div class="rate">${currency.format(space.hourly_rate)} <small>/ hour</small></div>
+      </label>
+      <button class="space-preview-trigger" type="button" data-preview-space-id="${escapeAttribute(space.id)}" aria-label="View photos and details for ${escapeAttribute(space.name)}">View photos &amp; details <span aria-hidden="true">→</span></button>
+    </article>
   `).join("");
 
   list.querySelectorAll("input").forEach((input) => {
     input.addEventListener("change", () => selectSpace(input.value));
+  });
+  list.querySelectorAll("[data-preview-space-id]").forEach((button) => {
+    button.addEventListener("click", () => openStudioPreview(button.dataset.previewSpaceId, button));
   });
 }
 
@@ -360,6 +438,7 @@ function updateLiveSummary() {
   document.querySelector('[data-summary="price"]').textContent = currency.format(
     (state.selectedSpace?.hourly_rate || 0) * duration
   );
+  selectedSpacePreview.hidden = !state.selectedSpace;
 }
 
 function formatDate(rawDate) {
@@ -574,6 +653,49 @@ function startNewBooking() {
 
 document.querySelector("#new-booking").addEventListener("click", startNewBooking);
 document.querySelector("#print-booking").addEventListener("click", () => window.print());
+
+selectedSpacePreview.addEventListener("click", () => {
+  if (state.selectedSpace) openStudioPreview(state.selectedSpace.id, selectedSpacePreview);
+});
+studioPreviewPrevious.addEventListener("click", () => updateStudioPreviewImage(previewImageIndex - 1));
+studioPreviewNext.addEventListener("click", () => updateStudioPreviewImage(previewImageIndex + 1));
+studioPreviewDialog.querySelectorAll("[data-close-studio-preview]").forEach((button) => {
+  button.addEventListener("click", closeStudioPreview);
+});
+studioPreviewDialog.addEventListener("click", (event) => {
+  if (event.target === studioPreviewDialog) closeStudioPreview();
+});
+studioPreviewDialog.addEventListener("keydown", (event) => {
+  if (event.key === "ArrowLeft" && previewImages.length > 1) {
+    event.preventDefault();
+    updateStudioPreviewImage(previewImageIndex - 1);
+  }
+  if (event.key === "ArrowRight" && previewImages.length > 1) {
+    event.preventDefault();
+    updateStudioPreviewImage(previewImageIndex + 1);
+  }
+});
+studioPreviewDialog.addEventListener("close", () => {
+  previewOpener?.focus();
+  previewOpener = null;
+});
+document.querySelector("#studio-preview-select").addEventListener("click", () => {
+  if (!previewSpace) return;
+  const isChangingStudio = state.selectedSpace && state.selectedSpace.id !== previewSpace.id;
+  if (
+    isChangingStudio
+    && state.selectedSlots.length > 0
+    && !window.confirm("Changing the studio will clear your selected time because availability and pricing may differ.")
+  ) return;
+
+  if (state.selectedSpace?.id !== previewSpace.id) {
+    const input = document.querySelector(`input[name="space_id"][value="${previewSpace.id}"]`);
+    if (input) input.checked = true;
+    selectSpace(previewSpace.id);
+    if (state.step > 1) goToStep(2);
+  }
+  closeStudioPreview();
+});
 
 const termsDialog = document.querySelector("#terms-dialog");
 const termsOpen = document.querySelector("#terms-open");
