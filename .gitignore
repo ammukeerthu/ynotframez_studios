@@ -8,3 +8,4 @@ __pycache__/
 google-service-account.json
 .admin_session_secret
 .deploy_secret
+.render.env
