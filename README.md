@@ -145,7 +145,7 @@ The principal mode switches are:
 
 | Setting | Safe local value | Integrated value | Purpose |
 | --- | --- | --- | --- |
-| `PUBLIC_BOOKING_ENABLED` | `false` | `true` | Shows the booking wizard instead of the maintenance page and permits public booking creation. |
+| `PUBLIC_BOOKING_ENABLED` | `false` | `true` | Shows the booking wizard instead of the maintenance page and permits public booking creation. Render manages this operational switch in the service dashboard. |
 | `EMAIL_MODE` | `console` | `smtp` | Prints email summaries locally or sends through the configured SMTP relay. |
 | `RAZORPAY_MODE` | `stub` | `api` | Uses placeholder orders or Razorpay Standard Checkout and API verification. |
 | `CALENDAR_MODE` | `stub` | `google` | Uses placeholder event IDs or the two configured Google Calendars. |
@@ -446,7 +446,7 @@ Complete and verify the full flow in Test Mode before changing Render:
 6. Deploy while the maintenance gate remains closed. Verify `/health`, the homepage, studio pages, dashboard, email delivery, both calendars, and existing-booking lookup.
 7. Perform one controlled real booking and payment. Confirm the Razorpay payment is captured, the database booking is confirmed, the Calendar hold becomes a confirmed event, the email arrives, and the booking lookup shows the actual payment method.
 8. Cancel/refund that controlled booking manually if required and reconcile the dashboard with Razorpay.
-9. Clear only deliberate test data, then set `PUBLIC_BOOKING_ENABLED=true` to open public booking.
+9. Clear only deliberate test data, then set `PUBLIC_BOOKING_ENABLED=true` in the Render service environment and deploy to open public booking.
 
 Switching Razorpay modes changes which provider data is visible; Test Mode transactions are simulated and do not appear in Live Mode. Keep the Live credentials only in Render or the ignored local `.env`, never in Git or documentation.
 
@@ -494,7 +494,7 @@ Public online booking has a production-safe maintenance switch:
 PUBLIC_BOOKING_ENABLED="false"
 ```
 
-When disabled, `/book` shows the branded maintenance page and direct public booking creation returns HTTP 503. Studio pages, the dashboard, existing-booking lookup, payment verification, webhooks, and administrative booking tools remain available. Local `.env` may use `true` for testing. Change the Render value to `true` only when the public payment and booking flow is ready to launch.
+When disabled, `/book` shows the branded maintenance page and direct public booking creation returns HTTP 503. Studio pages, the dashboard, existing-booking lookup, payment verification, webhooks, and administrative booking tools remain available. Local `.env` may use `true` for testing. In `render.yaml`, this key uses `sync: false`, so the production value is owned by the Render service environment and is preserved during Blueprint syncs. Change the Render value and deploy whenever public booking needs to be opened or placed under maintenance.
 
 This setup has no required hosting charge within the providers' free allowances, but it does not provide a production uptime or response-time SLA. Render Free sleeps after periods without inbound traffic, so the first visit after an idle period can take about a minute. Neon Free can also suspend idle compute and wakes when the app reconnects. The bounded, worker-isolated Calendar client prevents a slow Google request from queuing every public and admin availability view, but it cannot remove a Render or database cold start.
 

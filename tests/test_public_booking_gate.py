@@ -1,3 +1,4 @@
+import re
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -12,6 +13,14 @@ from app.main import booking_page
 class PublicBookingGateTests(unittest.TestCase):
     def test_public_booking_is_safe_by_default(self) -> None:
         self.assertFalse(Settings.model_fields["public_booking_enabled"].default)
+
+    def test_render_preserves_dashboard_managed_booking_gate(self) -> None:
+        manifest = Path(__file__).resolve().parents[1] / "render.yaml"
+        content = manifest.read_text(encoding="utf-8")
+        self.assertRegex(
+            content,
+            r"- key: PUBLIC_BOOKING_ENABLED\s+sync: false",
+        )
 
     def test_disabled_booking_uses_maintenance_page(self) -> None:
         with patch.object(settings, "public_booking_enabled", False):

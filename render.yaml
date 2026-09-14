@@ -18,9 +18,9 @@ services:
         value: ynotframezstudios@gmail.com
       - key: STUDIO_TIMEZONE
         value: Asia/Kolkata
-      # Production-safe gate. Change to true only when public online booking launches.
+      # Operational gate managed in Render so Blueprint syncs do not overwrite it.
       - key: PUBLIC_BOOKING_ENABLED
-        value: false
+        sync: false
 
       - key: EMAIL_MODE
         value: smtp
