@@ -13,13 +13,25 @@ class HomeViewTests(unittest.TestCase):
         cls.booking_script = (project_root / "app" / "static" / "app.js").read_text(encoding="utf-8")
         cls.studio_script = (project_root / "app" / "static" / "studio.js").read_text(encoding="utf-8")
         cls.cache_script = (project_root / "app" / "static" / "studio_cache.js").read_text(encoding="utf-8")
+        cls.marketing_styles = (project_root / "app" / "static" / "marketing.css").read_text(encoding="utf-8")
 
-    def test_studio_cards_show_only_first_five_amenities(self) -> None:
-        self.assertIn("space.amenities.slice(0, 5)", self.home_script)
+    def test_studio_cards_show_all_amenities_in_an_accessible_slider(self) -> None:
+        self.assertIn("space.amenities.map", self.home_script)
+        self.assertNotIn("space.amenities.slice(0, 5)", self.home_script)
         self.assertNotIn("sort(", self.home_script)
+        self.assertIn("data-amenities-carousel", self.home_script)
+        self.assertIn("amenities-viewport", self.home_script)
+        self.assertNotIn("Show previous", self.home_script)
+        self.assertIn("Show more", self.home_script)
+        self.assertIn("viewport.scrollBy", self.home_script)
+        self.assertIn('window.matchMedia("(prefers-reduced-motion: reduce)")', self.home_script)
+        self.assertNotIn("setInterval", self.home_script)
+        self.assertIn(".amenities-viewport", self.marketing_styles)
+        self.assertIn("overflow-x:auto", self.marketing_styles)
 
     def test_home_script_is_cache_versioned(self) -> None:
-        self.assertIn("/static/home.js?v=20260908-5", self.home_html)
+        self.assertIn("/static/home.js?v=20260914-1", self.home_html)
+        self.assertIn("/static/marketing.css?v=20260914-1", self.home_html)
 
     def test_public_pages_reuse_and_refresh_cached_studio_data(self) -> None:
         cache_asset = "/static/studio_cache.js?v=20260908-1"
