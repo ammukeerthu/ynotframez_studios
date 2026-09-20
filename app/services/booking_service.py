@@ -303,6 +303,7 @@ class BookingApplicationService:
         exclude_booking_id: int | None = None,
         ignore_calendar_event_id: str | None = None,
         enforce_duration_limits: bool = True,
+        enforce_customer_date_window: bool = True,
         calendar_events: list[dict] | None = None,
         space: StudioSpace | None = None,
         day_bookings: list[Booking] | None = None,
@@ -321,10 +322,11 @@ class BookingApplicationService:
         requested_start = datetime.combine(request.booking_date, request.start_time)
         requested_end = requested_start + timedelta(hours=request.duration_hours)
         studio_now = datetime.now(ZoneInfo(settings.studio_timezone)).replace(tzinfo=None)
-        if requested_start <= studio_now:
-            return False, "Please choose a future date and time."
-        if (request.booking_date - studio_now.date()).days > settings.future_booking_days:
-            return False, f"Bookings can be made up to {settings.future_booking_days} days in advance."
+        if enforce_customer_date_window:
+            if requested_start <= studio_now:
+                return False, "Please choose a future date and time."
+            if (request.booking_date - studio_now.date()).days > settings.future_booking_days:
+                return False, f"Bookings can be made up to {settings.future_booking_days} days in advance."
 
         if overlapping_booking(
             self.db,

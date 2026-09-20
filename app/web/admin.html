@@ -9,9 +9,9 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800&amp;display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/admin.css?v=20260909-3">
+  <link rel="stylesheet" href="/static/admin.css?v=20260917-2">
   <script src="/static/studio_cache.js?v=20260908-1" defer></script>
-  <script src="/static/admin.js?v=20260909-5" defer></script>
+  <script src="/static/admin.js?v=20260917-6" defer></script>
 </head>
 <body>
   <section id="login-view" class="login-view" hidden>
@@ -99,7 +99,7 @@
       </section>
 
       <section id="bookings" class="bookings-section">
-        <div class="section-heading"><div><p class="eyebrow">BOOKING DIRECTORY</p></div><p>Select a studio space to view its bookings.</p></div>
+        <div class="section-heading"><div><p class="eyebrow">BOOKING DIRECTORY</p></div><div class="booking-heading-actions"><p>Select a studio space to view its bookings.</p><button id="add-offline-booking-button" type="button">Add offline booking</button></div></div>
         <form id="booking-filters" class="filters">
           <label><span>STUDIO SPACE</span><select name="space_id"><option value="standard_small">Cube</option><option value="premium_large">Arena</option></select></label>
           <label><span>SEARCH</span><input name="q" placeholder="Name, email, or phone"></label>
@@ -187,6 +187,27 @@
       </div>
       <div id="booking-edit-message" class="form-message" role="alert" hidden></div>
       <div class="booking-modal-actions"><button id="cancel-booking-button" class="cancel-booking" type="button">Cancel booking</button><button id="save-booking-button" class="save-password" type="submit">Save changes <span>→</span></button></div>
+    </form>
+  </div>
+
+  <div id="offline-booking-modal" class="password-modal booking-modal" hidden>
+    <form id="offline-booking-form">
+      <button class="offline-booking-modal-close" type="button" aria-label="Close">×</button>
+      <p class="eyebrow">ADMIN BOOKING</p><h2>Create offline booking</h2>
+      <p class="offline-booking-note">Creates a confirmed booking with payment pending. No checkout link or customer email will be sent.</p>
+      <div class="edit-grid">
+        <label><span>STUDIO SPACE</span><select name="space_id" required></select></label>
+        <label><span>DATE</span><input name="booking_date" type="date" required></label>
+        <label><span>START TIME</span><select name="start_time" required></select></label>
+        <label><span>DURATION</span><select name="duration_hours" required></select></label>
+        <label><span>CUSTOMER NAME</span><input name="customer_name" minlength="2" maxlength="120" required></label>
+        <label><span>EMAIL</span><input name="customer_email" type="email" maxlength="255" required></label>
+        <label><span>PHONE</span><input name="phone_number" minlength="7" maxlength="32" required></label>
+        <label><span>PURPOSE</span><select name="purpose" required></select></label>
+        <label class="full"><span>AMOUNT CHARGED (₹)</span><input name="total_amount" type="number" min="0" max="10000000" step="1" required></label>
+      </div>
+      <div id="offline-booking-message" class="form-message" role="alert" hidden></div>
+      <div class="booking-modal-actions offline-booking-actions"><button id="create-offline-booking-button" class="save-password" type="submit">Create booking <span>→</span></button></div>
     </form>
   </div>
 

@@ -19,6 +19,7 @@ from app.models.payment import PaymentRecord, PaymentStatus
 from app.models.studio import StudioPurposeOption, StudioSetting
 from app.schemas.admin import (
     AdminBookingResponse,
+    AdminOfflineBookingCreate,
     AdminBookingUpdate,
     AdminAvailabilityBlockCreate,
     AdminAvailabilityBlockResponse,
@@ -439,6 +440,140 @@ def admin_bookings(
     return [_serialize_booking(booking, db) for booking in db.scalars(statement)]
 
 
+@router.post(
+    "/bookings/offline",
+    response_model=AdminBookingResponse,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_admin)],
+)
+def admin_create_offline_booking(
+    payload: AdminOfflineBookingCreate,
+    db: Session = Depends(get_db),
+) -> AdminBookingResponse:
+    space = get_space_by_id(payload.space_id, db, include_inactive=True)
+    if space is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Studio space not found.")
+    if not space.min_duration_hours <= payload.duration_hours <= space.max_duration_hours:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                f"Bookings for {space.name} must be between "
+                f"{space.min_duration_hours:g} and {space.max_duration_hours:g} hours."
+            ),
+        )
+
+    selected_purpose = next(
+        (
+            purpose
+            for purpose in space.booking_purposes
+            if purpose.casefold() == payload.purpose.strip().casefold()
+        ),
+        None,
+    )
+    if selected_purpose is None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Please choose a valid booking purpose for this studio.",
+        )
+
+    requested_start, requested_end = interval_for(
+        payload.booking_date,
+        payload.start_time,
+        payload.duration_hours,
+    )
+    business_start = datetime.combine(payload.booking_date, time.fromisoformat(space.opening_time))
+    business_end = datetime.combine(payload.booking_date, time.fromisoformat(space.closing_time))
+    if requested_start < business_start or requested_end > business_end:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"The booking must fit within {space.name}'s {space.opening_time} to {space.closing_time} hours.",
+        )
+
+    service = BookingApplicationService(db)
+    studio_now = datetime.now(ZoneInfo(settings.studio_timezone)).replace(tzinfo=None)
+    calendar_event_id: str | None = None
+    booking: Booking | None = None
+    try:
+        with service.booking_creation_guard(payload.space_id, payload.booking_date):
+            if overlapping_booking(
+                db,
+                payload.space_id,
+                payload.booking_date,
+                requested_start,
+                requested_end,
+            ):
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail="That studio already has a booking during the selected time.",
+                )
+            if overlapping_block(
+                db,
+                payload.space_id,
+                payload.booking_date,
+                requested_start,
+                requested_end,
+            ):
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail="That studio is blocked during the selected time.",
+                )
+
+            booking = Booking(
+                phone_number=payload.phone_number.strip(),
+                state=BookingState.CONFIRMED,
+                space_id=payload.space_id,
+                booking_date=payload.booking_date.isoformat(),
+                start_time=payload.start_time.strftime("%H:%M"),
+                duration_hours=payload.duration_hours,
+                customer_name=payload.customer_name.strip(),
+                customer_email=str(payload.customer_email),
+                purpose=selected_purpose,
+                terms_accepted=None,
+                payment_mode=PaymentMode.PAY_AT_STUDIO,
+            )
+            if requested_start > studio_now and not service.calendar.is_available(booking, space=space):
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail="That time is unavailable in the studio calendar.",
+                )
+
+            db.add(booking)
+            db.flush()
+            db.add(
+                PaymentRecord(
+                    booking_id=booking.id,
+                    mode=PaymentMode.PAY_AT_STUDIO,
+                    amount=payload.total_amount,
+                    status=PaymentStatus.PENDING,
+                )
+            )
+            calendar_event_id = service.calendar.create_event(booking)
+            booking.calendar_event_id = calendar_event_id
+            db.commit()
+    except HTTPException:
+        db.rollback()
+        raise
+    except Exception as error:
+        db.rollback()
+        if calendar_event_id:
+            try:
+                service.calendar.delete_event(calendar_event_id, payload.space_id)
+            except Exception as cleanup_error:
+                print(
+                    "Offline booking calendar cleanup failed:",
+                    {"event_id": calendar_event_id, "error": f"{type(cleanup_error).__name__}: {cleanup_error}"},
+                )
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="The offline booking could not be created. Please try again.",
+        ) from error
+
+    if booking is None:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Booking creation failed.")
+    db.refresh(booking)
+    return _serialize_booking(booking, db)
+
+
 @router.get("/bookings/export.csv", dependencies=[Depends(require_admin)])
 def admin_export_bookings(
     space_id: str | None = None,
@@ -560,7 +695,8 @@ def admin_update_booking(
             status_code=status.HTTP_409_CONFLICT,
             detail="Only confirmed bookings can be edited.",
         )
-    if get_space_by_id(payload.space_id, db) is None:
+    target_space = get_space_by_id(payload.space_id, db)
+    if target_space is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Studio space not found.")
     if (
         payload.customer_name.strip() != (booking.customer_name or "")
@@ -582,6 +718,12 @@ def admin_update_booking(
         booking.duration_hours,
     ) != (payload.space_id, new_date, new_time, payload.duration_hours)
     previous_space_id = booking.space_id
+    studio_changed = previous_space_id != payload.space_id
+    if studio_changed and (previous_space_id, payload.space_id) != ("standard_small", "premium_large"):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Studio downgrades are not allowed. Arena bookings must remain in Arena.",
+        )
     service = BookingApplicationService(db)
     if schedule_changed:
         available, message = service.check_availability(
@@ -593,28 +735,51 @@ def admin_update_booking(
             ),
             exclude_booking_id=booking.id,
             ignore_calendar_event_id=booking.calendar_event_id,
+            enforce_customer_date_window=False,
         )
         if not available:
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=message)
 
-    booking.space_id = payload.space_id
-    booking.booking_date = new_date
-    booking.start_time = new_time
-    booking.customer_email = str(payload.customer_email)
+    existing_payment = service.payments.get(booking.id)
+    target_amount = int(round(target_space.hourly_rate * payload.duration_hours))
+    if (
+        studio_changed
+        and existing_payment is not None
+        and existing_payment.amount != target_amount
+        and existing_payment.status != PaymentStatus.PENDING
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="The studio cannot be changed after payment because the new studio has a different price.",
+        )
+
     try:
-        payment_record = service.payments.sync_pending_amount(booking)
+        booking.space_id = payload.space_id
+        booking.booking_date = new_date
+        booking.start_time = new_time
+        booking.customer_email = str(payload.customer_email)
+        payment_record = (
+            service.payments.sync_pending_amount(booking)
+            if studio_changed or booking.payment_mode != PaymentMode.PAY_AT_STUDIO
+            else service.payments.ensure(booking)
+        )
+        if booking.payment_mode == PaymentMode.PAY_NOW and payment_record.status == PaymentStatus.PENDING:
+            service.prepare_online_payment(booking)
+            payment_record.mode = booking.payment_mode
+        booking.calendar_event_id = service.calendar.update_event(booking, previous_space_id=previous_space_id)
+        service.email.send_booking_updated(booking)
+        db.commit()
     except PaymentLifecycleError as error:
         db.rollback()
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(error)) from error
-    if booking.payment_mode == PaymentMode.PAY_NOW and payment_record.status == PaymentStatus.PENDING:
-        service.prepare_online_payment(booking)
-        payment_record.mode = booking.payment_mode
-    booking.calendar_event_id = service.calendar.update_event(booking, previous_space_id=previous_space_id)
-    service.email.send_booking_updated(booking)
-    db.commit()
+    except Exception as error:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="The booking could not be updated. Its original schedule and payment amount were retained.",
+        ) from error
     db.refresh(booking)
     return _serialize_booking(booking, db)
-
 
 @router.post(
     "/bookings/{booking_id}/cancel",
@@ -676,7 +841,6 @@ def admin_update_payment(
     db.commit()
     db.refresh(booking)
     return _serialize_booking(booking, db)
-
 
 @router.get(
     "/availability",
@@ -932,7 +1096,7 @@ def _serialize_booking(booking: Booking, db: Session) -> AdminBookingResponse:
         payment_mode=booking.payment_mode.value if booking.payment_mode else None,
         payment_status=(payment.status if payment else inferred_payment_status).value,
         payment_reference=payment.provider_reference if payment else None,
-        total_amount=_booking_amount(booking, db),
+        total_amount=payment.amount if payment else _booking_amount(booking, db),
         created_at=booking.created_at.isoformat(),
     )
 

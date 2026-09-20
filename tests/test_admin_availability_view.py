@@ -45,6 +45,15 @@ class AdminAvailabilityViewTest(unittest.TestCase):
         self.assertIn('bookingEditForm.elements.booking_date.addEventListener("change"', self.script)
         self.assertIn('slot.status === "available" && availableHalfHours >= requiredHalfHours', self.script)
         self.assertIn("insufficient time", self.script)
+        self.assertIn("isCurrentStart", self.script)
+        self.assertIn('" (current booking)"', self.script)
+        self.assertIn("currentStartExists ? previous", self.script)
+        self.assertIn("canKeepCurrentSchedule", self.script)
+        self.assertIn("syncBookingEditPaymentEstimate", self.script)
+        self.assertIn('" after studio change"', self.script)
+        self.assertIn("configureBookingStudioOptions(booking)", self.script)
+        self.assertIn('booking.space_id === "standard_small" && option.value === "premium_large"', self.script)
+        self.assertIn('" (downgrade unavailable)"', self.script)
         self.assertIn(".booking-modal select option:disabled", self.styles)
 
     def test_manage_booking_keeps_identity_duration_and_purpose_read_only(self) -> None:
@@ -55,6 +64,20 @@ class AdminAvailabilityViewTest(unittest.TestCase):
         self.assertIn('name="purpose" maxlength="1000" readonly', self.html)
         self.assertIn("Number(bookingEditForm.elements.duration_hours.value)", self.script)
         self.assertIn(".booking-modal input[readonly]", self.styles)
+
+    def test_admin_can_open_and_submit_offline_booking_modal(self) -> None:
+        self.assertIn('id="add-offline-booking-button"', self.html)
+        self.assertIn('id="offline-booking-modal"', self.html)
+        self.assertIn('id="offline-booking-form"', self.html)
+        self.assertIn('name="total_amount" type="number"', self.html)
+        self.assertIn('api("/api/admin/bookings/offline"', self.script)
+        self.assertIn("setupOfflineBookingOptions", self.script)
+        self.assertNotIn('offlineBookingForm.elements.booking_date.min', self.script)
+
+    def test_manage_booking_has_no_razorpay_payment_qr_controls(self) -> None:
+        self.assertNotIn('id="show-payment-qr-button"', self.html)
+        self.assertNotIn('id="payment-qr-modal"', self.html)
+        self.assertNotIn("/payment-qr", self.script)
 
     def test_blocked_tiles_expose_single_slot_unblock_menu(self) -> None:
         self.assertIn('id="slot-context-menu"', self.html)

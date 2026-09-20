@@ -249,15 +249,30 @@ class GoogleCalendarService:
         if booking.calendar_event_id and not booking.calendar_event_id.startswith("gcal_stub_"):
             previous_calendar_id = self._calendar_id_for_space(previous_space_id or booking.space_id)
             if previous_calendar_id != calendar_id:
-                self._execute(
-                    self.service.events().delete(
-                        calendarId=previous_calendar_id,
-                        eventId=booking.calendar_event_id,
-                    )
-                )
                 created = self._execute(
                     self.service.events().insert(calendarId=calendar_id, body=body)
                 )
+                try:
+                    self._execute(
+                        self.service.events().delete(
+                            calendarId=previous_calendar_id,
+                            eventId=booking.calendar_event_id,
+                        )
+                    )
+                except Exception:
+                    try:
+                        self._execute(
+                            self.service.events().delete(
+                                calendarId=calendar_id,
+                                eventId=created["id"],
+                            )
+                        )
+                    except Exception as cleanup_error:
+                        print(
+                            "Moved calendar event cleanup failed:",
+                            {"event_id": created.get("id"), "error": str(cleanup_error)},
+                        )
+                    raise
                 return created["id"]
             updated = self._execute(
                 self.service.events().update(

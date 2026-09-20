@@ -164,6 +164,25 @@ class AdminBookingResponse(BaseModel):
     created_at: str
 
 
+class AdminOfflineBookingCreate(BaseModel):
+    space_id: str = Field(min_length=1, max_length=64)
+    booking_date: date
+    start_time: time
+    duration_hours: float = Field(ge=MINIMUM_BOOKING_DURATION_HOURS, le=12, multiple_of=0.5)
+    customer_name: str = Field(min_length=2, max_length=120)
+    customer_email: EmailStr
+    phone_number: str = Field(min_length=7, max_length=32)
+    purpose: str = Field(min_length=3, max_length=1000)
+    total_amount: int = Field(ge=0, le=10_000_000)
+
+    @field_validator("start_time")
+    @classmethod
+    def require_half_hour(cls, value: time) -> time:
+        if value.minute not in {0, 30} or value.second or value.microsecond:
+            raise ValueError("Start time must be on the hour or half hour.")
+        return value
+
+
 class AdminBookingUpdate(BaseModel):
     space_id: str = Field(min_length=1, max_length=64)
     booking_date: date

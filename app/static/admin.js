@@ -5,6 +5,8 @@ const setupForm = document.querySelector("#admin-setup-form");
 const passwordModal = document.querySelector("#password-modal");
 const bookingModal = document.querySelector("#booking-modal");
 const bookingEditForm = document.querySelector("#booking-edit-form");
+const offlineBookingModal = document.querySelector("#offline-booking-modal");
+const offlineBookingForm = document.querySelector("#offline-booking-form");
 const bookingFilters = document.querySelector("#booking-filters");
 const bookingColumnsButton = document.querySelector("#booking-columns-button");
 const bookingColumnsPanel = document.querySelector("#booking-columns-panel");
@@ -417,11 +419,66 @@ function studioById(spaceId) {
   return studioSettings.find((studio) => studio.id === spaceId);
 }
 
+function setupOfflineBookingOptions({ refreshAmount = true } = {}) {
+  if (!studioSettings.length) return;
+  const studio = studioById(offlineBookingForm.elements.space_id.value) || studioSettings[0];
+  offlineBookingForm.elements.space_id.value = studio.id;
+
+  const startSelect = offlineBookingForm.elements.start_time;
+  const previousStart = startSelect.value;
+  const openingIndex = timeToMinutes(studio.opening_time) / 30;
+  const latestStartIndex = (timeToMinutes(studio.closing_time) / 30) - (studio.min_duration_hours * 2);
+  startSelect.innerHTML = halfHourOptions(previousStart, openingIndex, latestStartIndex + 1);
+  if (!startSelect.value && startSelect.options.length) startSelect.selectedIndex = 0;
+
+  const startMinutes = timeToMinutes(startSelect.value || studio.opening_time);
+  const remainingHours = (timeToMinutes(studio.closing_time) - startMinutes) / 60;
+  const maximumDuration = Math.min(studio.max_duration_hours, remainingHours);
+  const durationSelect = offlineBookingForm.elements.duration_hours;
+  const previousDuration = Number(durationSelect.value || studio.min_duration_hours);
+  const durationCount = Math.max(0, Math.floor((maximumDuration - studio.min_duration_hours) * 2) + 1);
+  durationSelect.innerHTML = Array.from({ length: durationCount }, (_, index) => {
+    const value = studio.min_duration_hours + (index / 2);
+    return `<option value="${value}">${value} hour${value === 1 ? "" : "s"}</option>`;
+  }).join("");
+  durationSelect.value = String(Math.min(Math.max(previousDuration, studio.min_duration_hours), maximumDuration));
+
+  const purposeSelect = offlineBookingForm.elements.purpose;
+  const previousPurpose = purposeSelect.value;
+  purposeSelect.innerHTML = studio.booking_purposes.map((purpose) =>
+    `<option value="${safeAttr(purpose)}">${safe(purpose)}</option>`
+  ).join("");
+  if (studio.booking_purposes.includes(previousPurpose)) purposeSelect.value = previousPurpose;
+
+  if (refreshAmount) {
+    offlineBookingForm.elements.total_amount.value = String(
+      Math.round(studio.hourly_rate * Number(durationSelect.value || 0)),
+    );
+  }
+}
+
+function openOfflineBookingModal() {
+  offlineBookingForm.reset();
+  offlineBookingForm.elements.booking_date.value = localDate();
+  const filteredSpace = bookingFilters.elements.space_id.value;
+  if (studioSettings.some((studio) => studio.id === filteredSpace && studio.is_active)) {
+    offlineBookingForm.elements.space_id.value = filteredSpace;
+  }
+  setupOfflineBookingOptions();
+  const message = document.querySelector("#offline-booking-message");
+  message.textContent = "";
+  message.hidden = true;
+  document.querySelector("#create-offline-booking-button").disabled = false;
+  offlineBookingModal.hidden = false;
+  offlineBookingForm.elements.customer_name.focus();
+}
+
 function syncStudioSelects() {
   const selects = [
     bookingFilters.elements.space_id,
     availabilityFilters.elements.space_id,
     bookingEditForm.elements.space_id,
+    offlineBookingForm.elements.space_id,
   ];
   selects.forEach((select) => {
     const previous = select.value;
@@ -432,6 +489,7 @@ function syncStudioSelects() {
   });
   setupHalfHourBlockOptions();
   setupBookingEditOptions();
+  setupOfflineBookingOptions();
 }
 
 async function loadStudioSettings() {
@@ -613,7 +671,14 @@ function setupBookingEditOptions(preferredStart = "") {
     && currentBookingEditDay.space_id === studio.id
     && currentBookingEditDay.booking_date === selectedDate;
   if (!dayIsLoaded) {
-    startSelect.innerHTML = '<option value="">Checking live availability…</option>';
+    const currentStart = preferredStart || startSelect.value;
+    if (currentStart) {
+      const currentEnd = minutesToTime(timeToMinutes(currentStart) + 30);
+      startSelect.innerHTML = `<option value="${safeAttr(currentStart)}">${displayTime(currentStart)} - ${displayTime(currentEnd)} (checking availability)</option>`;
+      startSelect.value = currentStart;
+    } else {
+      startSelect.innerHTML = '<option value="">Checking live availability…</option>';
+    }
     startSelect.disabled = true;
     document.querySelector("#save-booking-button").disabled = true;
     return;
@@ -621,17 +686,40 @@ function setupBookingEditOptions(preferredStart = "") {
 
   const previous = preferredStart || startSelect.value;
   const requiredHalfHours = Number(bookingEditForm.elements.duration_hours.value) * 2;
+  const originalBooking = adminBookings.find(
+    (booking) => booking.id === Number(bookingEditForm.elements.booking_id.value),
+  );
   const validStarts = new Set();
   startSelect.innerHTML = currentBookingEditDay.slots.map((slot) => {
+    const isCurrentStart = slot.start_time === previous;
     const availableHalfHours = availableEditHalfHoursFrom(slot.start_time);
-    const selectable = slot.status === "available" && availableHalfHours >= requiredHalfHours;
+    const slotIndex = currentBookingEditDay.slots.findIndex(
+      (candidate) => candidate.start_time === slot.start_time,
+    );
+    const currentInterval = currentBookingEditDay.slots.slice(slotIndex, slotIndex + requiredHalfHours);
+    const canKeepCurrentSchedule = Boolean(
+      isCurrentStart
+      && originalBooking
+      && originalBooking.booking_date === selectedDate
+      && originalBooking.start_time === slot.start_time
+      && currentInterval.length === requiredHalfHours
+      && currentInterval.every((candidate) => ["available", "past"].includes(candidate.status)),
+    );
+    const selectable = (
+      slot.status === "available" && availableHalfHours >= requiredHalfHours
+    ) || canKeepCurrentSchedule;
     if (selectable) validStarts.add(slot.start_time);
-    const suffix = selectable
+    const suffix = canKeepCurrentSchedule && slot.status !== "available"
+      ? " (current booking)"
+      : selectable
       ? ""
-      : ` (${slot.status === "available" ? "insufficient time" : slot.status.replaceAll("_", " ")})`;
+      : isCurrentStart
+        ? " (current booking)"
+        : ` (${slot.status === "available" ? "insufficient time" : slot.status.replaceAll("_", " ")})`;
     return `<option value="${safeAttr(slot.start_time)}"${selectable ? "" : " disabled"}>${displayTime(slot.start_time)} - ${displayTime(slot.end_time)}${safe(suffix)}</option>`;
   }).join("");
-  startSelect.value = validStarts.has(previous) ? previous : [...validStarts][0] || "";
+  const currentStartExists = currentBookingEditDay.slots.some((slot) => slot.start_time === previous);
+  startSelect.value = currentStartExists ? previous : [...validStarts][0] || "";
   startSelect.disabled = validStarts.size === 0;
   syncBookingEditSaveState();
 }
@@ -639,7 +727,37 @@ function setupBookingEditOptions(preferredStart = "") {
 function syncBookingEditSaveState() {
   const startSelect = bookingEditForm.elements.start_time;
   const saveButton = document.querySelector("#save-booking-button");
-  saveButton.disabled = startSelect.disabled || !startSelect.value;
+  saveButton.disabled = startSelect.disabled || !startSelect.value || Boolean(startSelect.selectedOptions[0]?.disabled);
+}
+
+function syncBookingEditPaymentEstimate() {
+  const booking = adminBookings.find(
+    (item) => item.id === Number(bookingEditForm.elements.booking_id.value),
+  );
+  if (!booking) return;
+  const selectedSpace = studioById(bookingEditForm.elements.space_id.value);
+  const studioChanged = Boolean(selectedSpace && selectedSpace.id !== booking.space_id);
+  const recalculatesPendingAmount = studioChanged && booking.payment_status === "pending";
+  const amount = recalculatesPendingAmount
+    ? Math.round(selectedSpace.hourly_rate * Number(bookingEditForm.elements.duration_hours.value || 0))
+    : booking.total_amount;
+  const suffix = recalculatesPendingAmount ? " after studio change" : "";
+  document.querySelector("#booking-payment-summary").textContent =
+    `${booking.payment_mode?.replaceAll("_", " ") || "No mode"} · ${currency.format(amount)}${suffix}`;
+}
+
+function configureBookingStudioOptions(booking) {
+  const studioSelect = bookingEditForm.elements.space_id;
+  Array.from(studioSelect.options).forEach((option) => {
+    const isCurrentStudio = option.value === booking.space_id;
+    const isCubeToArenaUpgrade = booking.space_id === "standard_small" && option.value === "premium_large";
+    option.disabled = !isCurrentStudio && !isCubeToArenaUpgrade;
+    const studio = studioById(option.value);
+    option.textContent = studio?.name || (option.value === "standard_small" ? "Cube" : "Arena");
+    if (option.disabled && booking.space_id === "premium_large" && option.value === "standard_small") {
+      option.textContent += " (downgrade unavailable)";
+    }
+  });
 }
 
 async function loadBookingEditAvailability(preferredStart = "") {
@@ -695,6 +813,7 @@ function openBookingModal(bookingId) {
   bookingEditForm.reset();
   bookingEditForm.elements.booking_id.value = booking.id;
   bookingEditForm.elements.space_id.value = booking.space_id;
+  configureBookingStudioOptions(booking);
   bookingEditForm.elements.booking_date.value = booking.booking_date;
   const bookingSlotEnd = minutesToTime(timeToMinutes(booking.start_time) + 30);
   bookingEditForm.elements.start_time.innerHTML = `<option value="${safeAttr(booking.start_time)}">${displayTime(booking.start_time)} - ${displayTime(bookingSlotEnd)}</option>`;
@@ -710,8 +829,7 @@ function openBookingModal(bookingId) {
   document.querySelector("#save-booking-button").hidden = !editable;
   document.querySelector("#cancel-booking-button").hidden = !editable;
   document.querySelector("#booking-payment-status").textContent = booking.payment_status.replaceAll("_", " ");
-  document.querySelector("#booking-payment-summary").textContent =
-    `${booking.payment_mode?.replaceAll("_", " ") || "No mode"} · ${currency.format(booking.total_amount)}`;
+  syncBookingEditPaymentEstimate();
   document.querySelector("#payment-reference").value = booking.payment_reference || "";
   const paymentAction = document.querySelector("#payment-action-button");
   if (booking.payment_status === "pending" && ["payment_pending", "confirmed"].includes(booking.status)) {
@@ -878,6 +996,62 @@ bookingFilters.addEventListener("submit", (event) => {
   event.preventDefault();
   loadBookings();
 });
+document.querySelector("#add-offline-booking-button").addEventListener("click", openOfflineBookingModal);
+document.querySelector(".offline-booking-modal-close").addEventListener("click", () => {
+  offlineBookingModal.hidden = true;
+});
+offlineBookingModal.addEventListener("click", (event) => {
+  if (event.target === offlineBookingModal) offlineBookingModal.hidden = true;
+});
+offlineBookingForm.elements.space_id.addEventListener("change", () => setupOfflineBookingOptions());
+offlineBookingForm.elements.start_time.addEventListener("change", () => setupOfflineBookingOptions());
+offlineBookingForm.elements.duration_hours.addEventListener("change", () => {
+  const studio = studioById(offlineBookingForm.elements.space_id.value);
+  if (!studio) return;
+  offlineBookingForm.elements.total_amount.value = String(
+    Math.round(studio.hourly_rate * Number(offlineBookingForm.elements.duration_hours.value || 0)),
+  );
+});
+offlineBookingForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const data = new FormData(offlineBookingForm);
+  const button = document.querySelector("#create-offline-booking-button");
+  const message = document.querySelector("#offline-booking-message");
+  button.disabled = true;
+  message.hidden = true;
+  try {
+    const booking = await api("/api/admin/bookings/offline", {
+      method: "POST",
+      body: JSON.stringify({
+        space_id: data.get("space_id"),
+        booking_date: data.get("booking_date"),
+        start_time: data.get("start_time"),
+        duration_hours: Number(data.get("duration_hours")),
+        customer_name: data.get("customer_name"),
+        customer_email: data.get("customer_email"),
+        phone_number: data.get("phone_number"),
+        purpose: data.get("purpose"),
+        total_amount: Number(data.get("total_amount")),
+      }),
+    });
+    offlineBookingModal.hidden = true;
+    bookingFilters.elements.space_id.value = booking.space_id;
+    bookingFilters.elements.q.value = "";
+    bookingFilters.elements.status.value = "";
+    bookingFilters.elements.date_from.value = booking.booking_date;
+    bookingFilters.elements.date_to.value = booking.booking_date;
+    showDashboardMessage(
+      "#dashboard-message",
+      `${booking.reference} created as a confirmed offline booking. Payment is pending.`,
+    );
+    await Promise.all([loadOverview(), loadBookings(), loadAvailability()]);
+  } catch (error) {
+    message.textContent = error.message;
+    message.hidden = false;
+  } finally {
+    button.disabled = false;
+  }
+});
 bookingColumnsButton.addEventListener("click", () => {
   setBookingColumnsPanel(bookingColumnsPanel.hidden);
 });
@@ -916,6 +1090,8 @@ document.addEventListener("keydown", (event) => {
     setAlertPanel(false);
     setAccountMenu(false);
     setBookingColumnsPanel(false);
+    bookingModal.hidden = true;
+    offlineBookingModal.hidden = true;
   }
 });
 desktopAlertsButton.addEventListener("click", async () => {
@@ -1066,7 +1242,10 @@ availabilityFilters.querySelector('select[name="space_id"]').addEventListener("c
 });
 availabilityFilters.querySelector('input[name="booking_date"]').addEventListener("change", loadAvailability);
 availabilityBlockForm.elements.start_time.addEventListener("change", syncBlockDurationOptions);
-bookingEditForm.elements.space_id.addEventListener("change", () => loadBookingEditAvailability());
+bookingEditForm.elements.space_id.addEventListener("change", () => {
+  syncBookingEditPaymentEstimate();
+  loadBookingEditAvailability();
+});
 bookingEditForm.elements.booking_date.addEventListener("change", () => loadBookingEditAvailability());
 bookingEditForm.elements.start_time.addEventListener("change", syncBookingEditSaveState);
 availabilityBlockForm.addEventListener("submit", async (event) => {

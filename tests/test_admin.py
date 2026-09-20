@@ -6,6 +6,7 @@ from http.cookies import SimpleCookie
 from io import StringIO
 from pathlib import Path
 from unittest.mock import patch
+from zoneinfo import ZoneInfo
 
 from fastapi import HTTPException, Response
 from sqlalchemy import create_engine, select
@@ -19,6 +20,7 @@ from app.api.routes.admin import (
     admin_cancel_booking,
     admin_change_password,
     admin_create_availability_block,
+    admin_create_offline_booking,
     admin_delete_availability_block,
     admin_delete_availability_block_slot,
     admin_export_bookings,
@@ -37,9 +39,11 @@ from app.models.admin import AdminUser
 from app.models.availability import AvailabilityBlock
 from app.models.booking import Booking, BookingState
 from app.models.notification import AdminNotification
+from app.models.payment import PaymentRecord, PaymentStatus
 from app.schemas.admin import (
     AdminChangePasswordRequest,
     AdminAvailabilityBlockCreate,
+    AdminOfflineBookingCreate,
     AdminBookingUpdate,
     AdminLoginRequest,
     AdminPaymentUpdate,
@@ -490,6 +494,203 @@ class AdminAuthenticationTest(unittest.TestCase):
 
             unpaid_cancelled = admin_cancel_booking(second.id, db)
             self.assertEqual(unpaid_cancelled.payment_status, "void")
+
+    def test_admin_can_create_past_current_and_future_offline_bookings(self) -> None:
+        engine = create_engine(
+            "sqlite://",
+            connect_args={"check_same_thread": False},
+            poolclass=StaticPool,
+        )
+        self.addCleanup(engine.dispose)
+        Base.metadata.create_all(engine)
+        studio_today = datetime.now(ZoneInfo(settings.studio_timezone)).date()
+
+        with Session(engine) as db:
+            created = []
+            for booking_date, start_time, amount, email in (
+                (studio_today - timedelta(days=30), time(9), 1750, "past@example.com"),
+                (studio_today, time(12), 2000, "today@example.com"),
+                (studio_today + timedelta(days=30), time(15), 2250, "future@example.com"),
+            ):
+                created.append(
+                    admin_create_offline_booking(
+                        AdminOfflineBookingCreate(
+                            space_id="standard_small",
+                            booking_date=booking_date,
+                            start_time=start_time,
+                            duration_hours=2,
+                            customer_name="Offline Customer",
+                            customer_email=email,
+                            phone_number="+919999999999",
+                            purpose="Fashion Shoot",
+                            total_amount=amount,
+                        ),
+                        db,
+                    )
+                )
+
+            self.assertEqual([item.status for item in created], ["confirmed"] * 3)
+            self.assertEqual([item.payment_status for item in created], ["pending"] * 3)
+            self.assertEqual([item.total_amount for item in created], [1750, 2000, 2250])
+            self.assertEqual([item.payment_mode for item in created], ["pay_at_studio"] * 3)
+            self.assertTrue(db.get(Booking, created[0].id).calendar_event_id.startswith("gcal_stub_"))
+            self.assertTrue(db.get(Booking, created[1].id).calendar_event_id.startswith("gcal_stub_"))
+            self.assertTrue(db.get(Booking, created[2].id).calendar_event_id.startswith("gcal_stub_"))
+
+            manually_paid = admin_update_payment(
+                created[1].id,
+                AdminPaymentUpdate(status="paid", provider_reference="CASH-OFFLINE-001"),
+                db,
+            )
+            self.assertEqual(manually_paid.payment_status, "paid")
+
+            payment = db.scalar(
+                select(PaymentRecord).where(PaymentRecord.booking_id == created[0].id)
+            )
+            self.assertIsNotNone(payment)
+            self.assertEqual(payment.status, PaymentStatus.PENDING)
+            self.assertEqual(payment.amount, 1750)
+
+            past_moved = admin_update_booking(
+                created[0].id,
+                AdminBookingUpdate(
+                    space_id="premium_large",
+                    booking_date=studio_today - timedelta(days=30),
+                    start_time=time(9),
+                    duration_hours=2,
+                    customer_name="Offline Customer",
+                    customer_email="past@example.com",
+                    phone_number="+919999999999",
+                    purpose="Fashion Shoot",
+                ),
+                db,
+            )
+            self.assertEqual(past_moved.space_id, "premium_large")
+            self.assertEqual(past_moved.total_amount, 3000)
+
+            with self.assertRaises(HTTPException) as downgrade:
+                admin_update_booking(
+                    created[0].id,
+                    AdminBookingUpdate(
+                        space_id="standard_small",
+                        booking_date=studio_today - timedelta(days=30),
+                        start_time=time(9),
+                        duration_hours=2,
+                        customer_name="Offline Customer",
+                        customer_email="past@example.com",
+                        phone_number="+919999999999",
+                        purpose="Fashion Shoot",
+                    ),
+                    db,
+                )
+            self.assertEqual(downgrade.exception.status_code, 409)
+            self.assertIn("downgrades are not allowed", downgrade.exception.detail)
+            db.refresh(payment)
+            self.assertEqual(db.get(Booking, created[0].id).space_id, "premium_large")
+            self.assertEqual(payment.amount, 3000)
+
+            rescheduled = admin_update_booking(
+                created[2].id,
+                AdminBookingUpdate(
+                    space_id="standard_small",
+                    booking_date=studio_today + timedelta(days=30),
+                    start_time=time(17),
+                    duration_hours=2,
+                    customer_name="Offline Customer",
+                    customer_email="future@example.com",
+                    phone_number="+919999999999",
+                    purpose="Fashion Shoot",
+                ),
+                db,
+            )
+            self.assertEqual(rescheduled.start_time, "17:00")
+            self.assertEqual(rescheduled.total_amount, 2250)
+            future_payment = db.scalar(
+                select(PaymentRecord).where(PaymentRecord.booking_id == created[2].id)
+            )
+
+            arena_conflict = admin_create_offline_booking(
+                AdminOfflineBookingCreate(
+                    space_id="premium_large",
+                    booking_date=studio_today + timedelta(days=30),
+                    start_time=time(17),
+                    duration_hours=2,
+                    customer_name="Arena Customer",
+                    customer_email="arena@example.com",
+                    phone_number="+917777777777",
+                    purpose="Fashion Shoot",
+                    total_amount=3000,
+                ),
+                db,
+            )
+            with self.assertRaises(HTTPException) as unavailable_studio:
+                admin_update_booking(
+                    created[2].id,
+                    AdminBookingUpdate(
+                        space_id="premium_large",
+                        booking_date=studio_today + timedelta(days=30),
+                        start_time=time(17),
+                        duration_hours=2,
+                        customer_name="Offline Customer",
+                        customer_email="future@example.com",
+                        phone_number="+919999999999",
+                        purpose="Fashion Shoot",
+                    ),
+                    db,
+                )
+            self.assertEqual(unavailable_studio.exception.status_code, 409)
+            unchanged = db.get(Booking, created[2].id)
+            unchanged_payment = db.scalar(
+                select(PaymentRecord).where(PaymentRecord.booking_id == created[2].id)
+            )
+            self.assertEqual(unchanged.space_id, "standard_small")
+            self.assertEqual(unchanged_payment.amount, 2250)
+
+            admin_cancel_booking(arena_conflict.id, db)
+            moved = admin_update_booking(
+                created[2].id,
+                AdminBookingUpdate(
+                    space_id="premium_large",
+                    booking_date=studio_today + timedelta(days=30),
+                    start_time=time(17),
+                    duration_hours=2,
+                    customer_name="Offline Customer",
+                    customer_email="future@example.com",
+                    phone_number="+919999999999",
+                    purpose="Fashion Shoot",
+                ),
+                db,
+            )
+            self.assertEqual(moved.space_id, "premium_large")
+            self.assertEqual(moved.total_amount, 3000)
+            db.refresh(future_payment)
+            self.assertEqual(future_payment.amount, 3000)
+
+            paid = admin_update_payment(
+                created[0].id,
+                AdminPaymentUpdate(status="paid", provider_reference="UPI-OFFLINE-001"),
+                db,
+            )
+            self.assertEqual(paid.payment_status, "paid")
+            self.assertEqual(paid.payment_reference, "UPI-OFFLINE-001")
+            self.assertEqual(paid.total_amount, 3000)
+
+            with self.assertRaises(HTTPException) as conflict:
+                admin_create_offline_booking(
+                    AdminOfflineBookingCreate(
+                        space_id="standard_small",
+                        booking_date=studio_today,
+                        start_time=time(12, 30),
+                        duration_hours=2,
+                        customer_name="Conflicting Customer",
+                        customer_email="conflict@example.com",
+                        phone_number="+918888888888",
+                        purpose="Fashion Shoot",
+                        total_amount=2000,
+                    ),
+                    db,
+                )
+            self.assertEqual(conflict.exception.status_code, 409)
 
     def test_csv_export_uses_studio_and_date_filters_and_sanitizes_spreadsheet_formulas(self) -> None:
         engine = create_engine(

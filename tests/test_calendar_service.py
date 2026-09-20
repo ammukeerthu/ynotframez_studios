@@ -169,6 +169,30 @@ class GoogleCalendarServiceTest(unittest.TestCase):
         self.assertEqual(events.insert.call_args.kwargs["calendarId"], "premium-calendar")
         self.assertEqual(event_id, "new-premium-event")
 
+    def test_failed_destination_calendar_insert_keeps_the_original_event(self) -> None:
+        service = self.service()
+        service.mode = "google"
+        service.service = MagicMock()
+        events = service.service.events.return_value
+        events.insert.return_value.execute.side_effect = RuntimeError("destination unavailable")
+        booking = Booking(
+            id=42,
+            phone_number="+919999999999",
+            space_id="premium_large",
+            booking_date="2026-09-20",
+            start_time="14:30",
+            duration_hours=1.5,
+            customer_name="Calendar Customer",
+            customer_email="calendar@example.com",
+            purpose="Fashion Shoot",
+            calendar_event_id="old-standard-event",
+        )
+
+        with self.assertRaisesRegex(RuntimeError, "destination unavailable"):
+            service.update_event(booking, previous_space_id="standard_small")
+
+        events.delete.assert_not_called()
+
     def test_updating_a_legacy_stub_booking_creates_its_first_live_event(self) -> None:
         service = self.service()
         service.mode = "google"

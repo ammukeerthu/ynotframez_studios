@@ -35,6 +35,16 @@ class BodyRequest:
 
 class RazorpayCheckoutFlowTest(unittest.TestCase):
     def setUp(self) -> None:
+        # Tests must never inherit live SMTP, Google Calendar, or Razorpay modes
+        # from a developer's local .env file.
+        for setting_name, test_value in (
+            ("email_mode", "console"),
+            ("calendar_mode", "stub"),
+            ("razorpay_mode", "stub"),
+        ):
+            setting_patch = patch.object(settings, setting_name, test_value)
+            setting_patch.start()
+            self.addCleanup(setting_patch.stop)
         self.engine = create_engine(
             "sqlite://",
             connect_args={"check_same_thread": False},
@@ -43,21 +53,20 @@ class RazorpayCheckoutFlowTest(unittest.TestCase):
         Base.metadata.create_all(self.engine)
         self.db = Session(self.engine)
         self.booking_date = date.today() + timedelta(days=30)
-        with patch.object(settings, "razorpay_mode", "stub"):
-            self.created = BookingApplicationService(self.db).create_booking(
-                WebBookingCreate(
-                    space_id="standard_small",
-                    booking_date=self.booking_date,
-                    start_time=time(14, 30),
-                    duration_hours=2,
-                    customer_name="Checkout Customer",
-                    customer_email="checkout@example.com",
-                    phone_number="+919999999999",
-                    purpose="Family Portraits",
-                    terms_accepted=True,
-                    payment_mode="pay_now",
-                )
+        self.created = BookingApplicationService(self.db).create_booking(
+            WebBookingCreate(
+                space_id="standard_small",
+                booking_date=self.booking_date,
+                start_time=time(14, 30),
+                duration_hours=2,
+                customer_name="Checkout Customer",
+                customer_email="checkout@example.com",
+                phone_number="+919999999999",
+                purpose="Family Portraits",
+                terms_accepted=True,
+                payment_mode="pay_now",
             )
+        )
         self.booking = self.db.get(Booking, self.created.id)
         self.record = PaymentService(self.db).get(self.created.id)
         self.order_id = self.record.razorpay_order_id
