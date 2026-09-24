@@ -163,6 +163,7 @@ SPACES = {
             "Product Shoot",
             "Lifestyle Shoot",
             "Baby Shoot",
+            "Family Shoots",
             "Reels & Content Creation",
             "Music / Video Production",
             "Creative / Conceptual Shoot",
@@ -279,6 +280,27 @@ def seed_studio_settings(db: Session, commit: bool = True) -> None:
     # because these models intentionally do not maintain ORM relationships;
     # PostgreSQL enforces the foreign key while SQLite commonly does not.
     db.flush()
+
+    # Add this requested Arena option to existing databases without replacing
+    # any owner-managed purpose labels or changing their current order.
+    arena_purposes = list(
+        db.scalars(
+            select(StudioPurposeOption)
+            .where(StudioPurposeOption.space_id == "premium_large")
+            .order_by(StudioPurposeOption.sort_order, StudioPurposeOption.id)
+        )
+    )
+    arena_family_purpose = "Family Shoots"
+    if arena_purposes and arena_family_purpose.casefold() not in {
+        purpose.label.casefold() for purpose in arena_purposes
+    }:
+        db.add(
+            StudioPurposeOption(
+                space_id="premium_large",
+                label=arena_family_purpose,
+                sort_order=max(purpose.sort_order for purpose in arena_purposes) + 1,
+            )
+        )
 
     for space in SPACES.values():
         if space.id not in purpose_space_ids:

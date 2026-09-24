@@ -18,6 +18,12 @@ class StudioSpaceTest(unittest.TestCase):
     def test_unknown_slug_returns_none(self) -> None:
         self.assertIsNone(get_space_by_slug("not-a-studio"))
 
+    def test_arena_defaults_include_family_shoots(self) -> None:
+        arena = get_space_by_slug("arena")
+
+        self.assertIsNotNone(arena)
+        self.assertIn("Family Shoots", arena.booking_purposes)
+
     def test_old_public_slug_remains_compatible(self) -> None:
         space = get_space_by_slug("standard-small-space")
 

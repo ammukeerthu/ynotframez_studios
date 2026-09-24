@@ -9,9 +9,9 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800&amp;display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/admin.css?v=20260917-2">
+  <link rel="stylesheet" href="/static/admin.css?v=20260924-1">
   <script src="/static/studio_cache.js?v=20260908-1" defer></script>
-  <script src="/static/admin.js?v=20260917-6" defer></script>
+  <script src="/static/admin.js?v=20260924-1" defer></script>
 </head>
 <body>
   <section id="login-view" class="login-view" hidden>
@@ -24,7 +24,7 @@
       <a href="/" class="admin-brand login-panel-brand" aria-label="YNotFramez Studios home"><img class="brand-logo" src="/static/brand/ynotframez-logo.png" alt="YNotFramez Studios" width="10101" height="1632"></a>
       <form id="admin-login-form">
         <p class="eyebrow">SECURE ACCESS</p><h2>Welcome back.</h2><p class="form-copy">Sign in to view studio bookings and activity.</p>
-        <label><span>Username</span><input name="username" autocomplete="username" value="admin" required></label>
+        <label><span>Username</span><input name="username" autocomplete="username" required></label>
         <label><span>Password</span><input name="password" type="password" autocomplete="current-password" required></label>
         <div id="login-message" class="form-message" role="alert" hidden></div>
         <button id="login-button" type="submit">Sign in <span>→</span></button>
@@ -44,7 +44,7 @@
   <div id="dashboard-view" class="admin-shell" hidden>
     <aside>
       <a id="dashboard-home-link" href="#overview" class="admin-brand" aria-label="Studio Dashboard overview"><img class="brand-logo" src="/static/brand/ynotframez-logo.png" alt="YNotFramez Studios" width="10101" height="1632"></a>
-      <nav><a class="active" href="#overview">Overview</a><a href="#bookings">Bookings</a><a href="#availability">Availability</a><a href="#settings">Studio settings</a></nav>
+      <nav><a class="active" href="#overview">Overview</a><a href="#bookings">Bookings</a><a href="#availability">Availability</a><a data-owner-only href="#settings">Studio settings</a></nav>
       <div class="admin-user">
         <div class="admin-user-identity"><p>Signed in as</p><b id="admin-username">admin</b></div>
         <div class="account-menu">
@@ -99,7 +99,7 @@
       </section>
 
       <section id="bookings" class="bookings-section">
-        <div class="section-heading"><div><p class="eyebrow">BOOKING DIRECTORY</p></div><div class="booking-heading-actions"><p>Select a studio space to view its bookings.</p><button id="add-offline-booking-button" type="button">Add offline booking</button></div></div>
+        <div class="section-heading"><div><p class="eyebrow">BOOKING DIRECTORY</p></div><div class="booking-heading-actions"><p>Select a studio space to view its bookings.</p><button id="add-offline-booking-button" data-owner-only type="button">Add offline booking</button></div></div>
         <form id="booking-filters" class="filters">
           <label><span>STUDIO SPACE</span><select name="space_id"><option value="standard_small">Cube</option><option value="premium_large">Arena</option></select></label>
           <label><span>SEARCH</span><input name="q" placeholder="Name, email, or phone"></label>
@@ -157,7 +157,17 @@
         </div>
       </section>
 
-      <section id="settings" class="settings-section">
+      <section id="settings" class="settings-section" data-owner-only>
+        <div class="section-heading"><div><p class="eyebrow">STAFF ACCESS</p></div><p>Add up to two view-only users. They can export bookings and block or reopen studio time.</p></div>
+        <div id="staff-users-message" class="dashboard-message" hidden></div>
+        <div class="staff-access-panel">
+          <form id="staff-user-form" class="staff-user-form">
+            <label><span>USERNAME</span><input name="username" minlength="3" maxlength="120" pattern="[A-Za-z0-9_.-]+" autocomplete="off" required></label>
+            <label><span>TEMPORARY PASSWORD</span><input name="password" type="password" minlength="10" maxlength="500" autocomplete="new-password" required></label>
+            <button id="add-staff-user-button" type="submit">Add staff user</button>
+          </form>
+          <div id="staff-users-list" class="staff-users-list"><p class="settings-empty">Loading staff users&hellip;</p></div>
+        </div>
         <div class="section-heading"><div><p class="eyebrow">STUDIO CATALOGUE</p></div><p>Changes will be immediately applied.</p></div>
         <div id="studio-settings-message" class="dashboard-message" hidden></div>
         <div id="studio-settings-list" class="studio-settings-list"><p class="settings-empty">Loading studio settings…</p></div>

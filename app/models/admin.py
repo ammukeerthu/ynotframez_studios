@@ -17,6 +17,7 @@ class AdminUser(Base):
     username: Mapped[str] = mapped_column(String(120), unique=True, index=True)
     password_salt: Mapped[str] = mapped_column(String(64))
     password_hash: Mapped[str] = mapped_column(String(128))
+    role: Mapped[str] = mapped_column(String(20), default="owner", server_default="owner")
     session_version: Mapped[int] = mapped_column(Integer, default=1)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, onupdate=utc_now)

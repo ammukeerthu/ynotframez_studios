@@ -68,6 +68,41 @@ class DatabaseConfigurationTests(unittest.TestCase):
         finally:
             engine.dispose()
 
+    def test_existing_admin_users_are_migrated_as_owners(self) -> None:
+        engine = create_engine(
+            "sqlite://",
+            connect_args={"check_same_thread": False},
+            poolclass=StaticPool,
+        )
+        try:
+            with engine.begin() as connection:
+                connection.execute(
+                    text(
+                        "CREATE TABLE admin_users ("
+                        "id INTEGER PRIMARY KEY, username VARCHAR(120), password_salt VARCHAR(64), "
+                        "password_hash VARCHAR(128), session_version INTEGER, "
+                        "created_at DATETIME, updated_at DATETIME)"
+                    )
+                )
+                connection.execute(
+                    text(
+                        "INSERT INTO admin_users "
+                        "(id, username, password_salt, password_hash, session_version) "
+                        "VALUES (1, 'owner', 'salt', 'hash', 1)"
+                    )
+                )
+
+            apply_schema_compatibility_updates(engine)
+            apply_schema_compatibility_updates(engine)
+
+            columns = {column["name"] for column in inspect(engine).get_columns("admin_users")}
+            with engine.connect() as connection:
+                role = connection.scalar(text("SELECT role FROM admin_users WHERE id = 1"))
+            self.assertIn("role", columns)
+            self.assertEqual(role, "owner")
+        finally:
+            engine.dispose()
+
     def test_seed_orders_studios_before_foreign_key_purpose_options(self) -> None:
         engine = create_engine(
             "sqlite://",
@@ -86,7 +121,7 @@ class DatabaseConfigurationTests(unittest.TestCase):
             with Session(engine) as db:
                 seed_studio_settings(db)
                 self.assertEqual(db.scalar(select(func.count()).select_from(StudioSetting)), 2)
-                self.assertEqual(db.scalar(select(func.count()).select_from(StudioPurposeOption)), 22)
+                self.assertEqual(db.scalar(select(func.count()).select_from(StudioPurposeOption)), 23)
         finally:
             engine.dispose()
 

@@ -41,6 +41,13 @@ def apply_schema_compatibility_updates(target_engine: Engine | None = None) -> N
         # This DDL must commit before application requests can write the new value.
         with migration_engine.connect().execution_options(isolation_level="AUTOCOMMIT") as connection:
             connection.execute(text("ALTER TYPE bookingstate ADD VALUE IF NOT EXISTS 'EXPIRED'"))
+    if "admin_users" in inspector.get_table_names():
+        admin_columns = {column["name"] for column in inspector.get_columns("admin_users")}
+        if "role" not in admin_columns:
+            with migration_engine.begin() as connection:
+                connection.execute(
+                    text("ALTER TABLE admin_users ADD COLUMN role VARCHAR(20) NOT NULL DEFAULT 'owner'")
+                )
     if "payment_records" not in inspector.get_table_names():
         return
     columns = {column["name"] for column in inspector.get_columns("payment_records")}

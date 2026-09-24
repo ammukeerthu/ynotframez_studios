@@ -23,7 +23,24 @@ class AdminChangePasswordRequest(BaseModel):
 class AdminSessionResponse(BaseModel):
     authenticated: bool
     username: str | None = None
+    role: str | None = None
     setup_required: bool = False
+
+
+class AdminStaffUserCreate(BaseModel):
+    username: str = Field(min_length=3, max_length=120, pattern=r"^[A-Za-z0-9_.-]+$")
+    password: str = Field(min_length=10, max_length=500)
+
+
+class AdminStaffPasswordReset(BaseModel):
+    password: str = Field(min_length=10, max_length=500)
+
+
+class AdminStaffUserResponse(BaseModel):
+    id: int
+    username: str
+    role: str
+    created_at: str
 
 
 class AdminOverviewResponse(BaseModel):

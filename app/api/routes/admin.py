@@ -6,7 +6,7 @@ from datetime import UTC, date, datetime, time, timedelta
 from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Cookie, Depends, HTTPException, Query, Response, status
-from sqlalchemy import delete, or_, select
+from sqlalchemy import delete, func, or_, select
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
@@ -33,6 +33,9 @@ from app.schemas.admin import (
     AdminPaymentUpdate,
     AdminSessionResponse,
     AdminSetupRequest,
+    AdminStaffPasswordReset,
+    AdminStaffUserCreate,
+    AdminStaffUserResponse,
     AdminStudioResponse,
     AdminStudioUpdate,
 )
@@ -50,6 +53,9 @@ from app.services.spaces import get_space_by_id, invalidate_public_space_cache, 
 
 router = APIRouter(prefix="/api/admin", tags=["Admin"])
 SESSION_COOKIE = "ynf_admin_session"
+OWNER_ROLE = "owner"
+STAFF_ROLE = "staff"
+MAX_STAFF_USERS = 2
 
 
 def require_admin(
@@ -59,6 +65,15 @@ def require_admin(
     user = _session_user(session_token, db)
     if user is None:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Admin sign-in required.")
+    return user
+
+
+def require_owner(user: AdminUser = Depends(require_admin)) -> AdminUser:
+    if user.role != OWNER_ROLE:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Owner access is required for this action.",
+        )
     return user
 
 
@@ -75,13 +90,19 @@ def admin_setup(
         username=payload.username.strip(),
         password_salt=salt,
         password_hash=password_hash,
+        role=OWNER_ROLE,
         session_version=1,
     )
     db.add(user)
     db.commit()
     db.refresh(user)
     _set_session_cookie(response, user)
-    return AdminSessionResponse(authenticated=True, username=user.username, setup_required=False)
+    return AdminSessionResponse(
+        authenticated=True,
+        username=user.username,
+        role=user.role,
+        setup_required=False,
+    )
 
 
 @router.post("/login", response_model=AdminSessionResponse)
@@ -94,7 +115,7 @@ def admin_login(
     if user is None or not verify_admin_password(payload.password, user.password_salt, user.password_hash):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid username or password.")
     _set_session_cookie(response, user)
-    return AdminSessionResponse(authenticated=True, username=user.username)
+    return AdminSessionResponse(authenticated=True, username=user.username, role=user.role)
 
 
 @router.post("/logout", response_model=AdminSessionResponse)
@@ -113,6 +134,7 @@ def admin_session(
     return AdminSessionResponse(
         authenticated=user is not None,
         username=user.username if user else None,
+        role=user.role if user else None,
         setup_required=setup_required,
     )
 
@@ -135,7 +157,89 @@ def admin_change_password(
     db.commit()
     db.refresh(user)
     _set_session_cookie(response, user)
-    return AdminSessionResponse(authenticated=True, username=user.username)
+    return AdminSessionResponse(authenticated=True, username=user.username, role=user.role)
+
+
+@router.get("/staff-users", response_model=list[AdminStaffUserResponse])
+def admin_staff_users(
+    _owner: AdminUser = Depends(require_owner),
+    db: Session = Depends(get_db),
+) -> list[AdminStaffUserResponse]:
+    users = db.scalars(
+        select(AdminUser).where(AdminUser.role == STAFF_ROLE).order_by(AdminUser.created_at, AdminUser.id)
+    )
+    return [_serialize_staff_user(user) for user in users]
+
+
+@router.post(
+    "/staff-users",
+    response_model=AdminStaffUserResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def admin_create_staff_user(
+    payload: AdminStaffUserCreate,
+    _owner: AdminUser = Depends(require_owner),
+    db: Session = Depends(get_db),
+) -> AdminStaffUserResponse:
+    username = payload.username.strip()
+    # Serialize staff creation per owner so concurrent requests cannot exceed the two-user limit.
+    db.execute(select(AdminUser.id).where(AdminUser.id == _owner.id).with_for_update())
+    existing = db.scalar(select(AdminUser).where(func.lower(AdminUser.username) == username.lower()))
+    if existing is not None:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="That username is already in use.")
+    staff_count = db.scalar(
+        select(func.count()).select_from(AdminUser).where(AdminUser.role == STAFF_ROLE)
+    ) or 0
+    if staff_count >= MAX_STAFF_USERS:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"A maximum of {MAX_STAFF_USERS} staff users is allowed.",
+        )
+    salt, password_hash = hash_admin_password(payload.password)
+    user = AdminUser(
+        username=username,
+        password_salt=salt,
+        password_hash=password_hash,
+        role=STAFF_ROLE,
+        session_version=1,
+    )
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+    return _serialize_staff_user(user)
+
+
+@router.post("/staff-users/{user_id}/reset-password", response_model=AdminStaffUserResponse)
+def admin_reset_staff_password(
+    user_id: int,
+    payload: AdminStaffPasswordReset,
+    _owner: AdminUser = Depends(require_owner),
+    db: Session = Depends(get_db),
+) -> AdminStaffUserResponse:
+    user = db.get(AdminUser, user_id)
+    if user is None or user.role != STAFF_ROLE:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Staff user not found.")
+    salt, password_hash = hash_admin_password(payload.password)
+    user.password_salt = salt
+    user.password_hash = password_hash
+    user.session_version += 1
+    db.commit()
+    db.refresh(user)
+    return _serialize_staff_user(user)
+
+
+@router.delete("/staff-users/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
+def admin_delete_staff_user(
+    user_id: int,
+    _owner: AdminUser = Depends(require_owner),
+    db: Session = Depends(get_db),
+) -> Response:
+    user = db.get(AdminUser, user_id)
+    if user is None or user.role != STAFF_ROLE:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Staff user not found.")
+    db.delete(user)
+    db.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.get(
@@ -152,7 +256,7 @@ def admin_studios(db: Session = Depends(get_db)) -> list[AdminStudioResponse]:
 @router.put(
     "/studios/{space_id}",
     response_model=AdminStudioResponse,
-    dependencies=[Depends(require_admin)],
+    dependencies=[Depends(require_owner)],
 )
 def admin_update_studio(
     space_id: str,
@@ -207,6 +311,15 @@ def _set_session_cookie(response: Response, user: AdminUser) -> None:
         secure=settings.admin_cookie_secure,
         samesite="strict",
         path="/",
+    )
+
+
+def _serialize_staff_user(user: AdminUser) -> AdminStaffUserResponse:
+    return AdminStaffUserResponse(
+        id=user.id,
+        username=user.username,
+        role=user.role,
+        created_at=user.created_at.isoformat(),
     )
 
 
@@ -444,7 +557,7 @@ def admin_bookings(
     "/bookings/offline",
     response_model=AdminBookingResponse,
     status_code=status.HTTP_201_CREATED,
-    dependencies=[Depends(require_admin)],
+    dependencies=[Depends(require_owner)],
 )
 def admin_create_offline_booking(
     payload: AdminOfflineBookingCreate,
@@ -680,7 +793,7 @@ def _filtered_booking_statement(
 @router.patch(
     "/bookings/{booking_id}",
     response_model=AdminBookingResponse,
-    dependencies=[Depends(require_admin)],
+    dependencies=[Depends(require_owner)],
 )
 def admin_update_booking(
     booking_id: int,
@@ -784,7 +897,7 @@ def admin_update_booking(
 @router.post(
     "/bookings/{booking_id}/cancel",
     response_model=AdminBookingResponse,
-    dependencies=[Depends(require_admin)],
+    dependencies=[Depends(require_owner)],
 )
 def admin_cancel_booking(
     booking_id: int,
@@ -813,7 +926,7 @@ def admin_cancel_booking(
 @router.post(
     "/bookings/{booking_id}/payment",
     response_model=AdminBookingResponse,
-    dependencies=[Depends(require_admin)],
+    dependencies=[Depends(require_owner)],
 )
 def admin_update_payment(
     booking_id: int,

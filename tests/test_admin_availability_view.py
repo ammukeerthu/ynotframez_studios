@@ -39,6 +39,14 @@ class AdminAvailabilityViewTest(unittest.TestCase):
         self.assertIn('data-table-column="terms">${terms}', self.script)
         self.assertIn('localStorage.setItem(BOOKING_COLUMN_STORAGE_KEY', self.script)
 
+    def test_booking_directory_uses_responsive_contained_layout(self) -> None:
+        self.assertIn("@media(max-width:1600px){.bookings-section .filters", self.styles)
+        self.assertIn("repeat(3,minmax(0,1fr))", self.styles)
+        self.assertIn("@media(max-width:1200px){.bookings-section .filters", self.styles)
+        self.assertIn("repeat(2,minmax(0,1fr))", self.styles)
+        self.assertIn("grid-template-columns:235px minmax(0,1fr)", self.styles)
+        self.assertIn(".table-wrap { width:100%; max-width:100%;", self.styles)
+
     def test_manage_booking_uses_live_reschedule_availability(self) -> None:
         self.assertIn("exclude_booking_id: bookingId", self.script)
         self.assertIn("loadBookingEditAvailability(booking.start_time)", self.script)
@@ -78,6 +86,18 @@ class AdminAvailabilityViewTest(unittest.TestCase):
         self.assertNotIn('id="show-payment-qr-button"', self.html)
         self.assertNotIn('id="payment-qr-modal"', self.html)
         self.assertNotIn("/payment-qr", self.script)
+
+    def test_staff_access_hides_owner_controls_and_keeps_exports_and_blocks(self) -> None:
+        self.assertIn('id="staff-user-form"', self.html)
+        self.assertIn('id="staff-users-list"', self.html)
+        self.assertIn('href="#settings"', self.html)
+        self.assertIn('id="settings" class="settings-section" data-owner-only', self.html)
+        self.assertIn('id="add-offline-booking-button" data-owner-only', self.html)
+        self.assertIn('id="booking-export" href="/api/admin/bookings/export.csv"', self.html)
+        self.assertIn('id="availability-block-form"', self.html)
+        self.assertIn('currentAdminRole = session.role === "owner" ? "owner" : "staff"', self.script)
+        self.assertIn('document.querySelectorAll("[data-owner-only]")', self.script)
+        self.assertIn('const editable = isOwner() && booking.status === "confirmed";', self.script)
 
     def test_blocked_tiles_expose_single_slot_unblock_menu(self) -> None:
         self.assertIn('id="slot-context-menu"', self.html)

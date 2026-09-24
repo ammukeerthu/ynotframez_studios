@@ -16,21 +16,28 @@ from sqlalchemy.pool import StaticPool
 from app.api.routes.admin import (
     SESSION_COOKIE,
     _session_user,
+    router,
     admin_availability,
     admin_cancel_booking,
     admin_change_password,
     admin_create_availability_block,
     admin_create_offline_booking,
+    admin_create_staff_user,
     admin_delete_availability_block,
     admin_delete_availability_block_slot,
+    admin_delete_staff_user,
     admin_export_bookings,
     admin_login,
     admin_overview,
     admin_alerts,
     admin_read_alert,
+    admin_reset_staff_password,
     admin_setup,
+    admin_staff_users,
     admin_update_booking,
     admin_update_payment,
+    require_owner,
+    require_admin,
     _operational_alerts,
 )
 from app.core.config import settings
@@ -48,6 +55,8 @@ from app.schemas.admin import (
     AdminLoginRequest,
     AdminPaymentUpdate,
     AdminSetupRequest,
+    AdminStaffPasswordReset,
+    AdminStaffUserCreate,
 )
 from app.schemas.booking import AvailabilityRequest, WebBookingCreate
 from app.services.admin_auth import (
@@ -136,7 +145,9 @@ class AdminAuthenticationTest(unittest.TestCase):
             old_token = cookie_value(setup_response)
 
             self.assertTrue(result.authenticated)
+            self.assertEqual(result.role, "owner")
             self.assertIsNotNone(user)
+            self.assertEqual(user.role, "owner")
             self.assertNotEqual(user.password_hash, "first-password-123")
             self.assertIsNotNone(_session_user(old_token, db))
 
@@ -180,6 +191,109 @@ class AdminAuthenticationTest(unittest.TestCase):
                 db,
             )
             self.assertTrue(login_result.authenticated)
+            self.assertEqual(login_result.role, "owner")
+
+    def test_owner_can_manage_up_to_two_staff_users(self) -> None:
+        engine = create_engine(
+            "sqlite://",
+            connect_args={"check_same_thread": False},
+            poolclass=StaticPool,
+        )
+        self.addCleanup(engine.dispose)
+        Base.metadata.create_all(engine)
+        secret = "test-secret-that-is-long-enough-for-sessions"
+
+        with Session(engine) as db, patch.object(settings, "admin_session_secret", secret):
+            get_session_secret.cache_clear()
+            admin_setup(
+                AdminSetupRequest(username="owner", password="owner-password-123"),
+                Response(),
+                db,
+            )
+            owner = db.scalar(select(AdminUser).where(AdminUser.username == "owner"))
+            first = admin_create_staff_user(
+                AdminStaffUserCreate(username="frontdesk", password="staff-password-123"),
+                owner,
+                db,
+            )
+            second = admin_create_staff_user(
+                AdminStaffUserCreate(username="operations", password="staff-password-456"),
+                owner,
+                db,
+            )
+
+            self.assertEqual(first.role, "staff")
+            self.assertEqual([user.username for user in admin_staff_users(owner, db)], ["frontdesk", "operations"])
+            staff_login = admin_login(
+                AdminLoginRequest(username="frontdesk", password="staff-password-123"),
+                Response(),
+                db,
+            )
+            self.assertEqual(staff_login.role, "staff")
+
+            with self.assertRaises(HTTPException) as duplicate:
+                admin_create_staff_user(
+                    AdminStaffUserCreate(username="FrontDesk", password="another-password-123"),
+                    owner,
+                    db,
+                )
+            self.assertEqual(duplicate.exception.status_code, 409)
+
+            with self.assertRaises(HTTPException) as too_many:
+                admin_create_staff_user(
+                    AdminStaffUserCreate(username="thirduser", password="third-password-123"),
+                    owner,
+                    db,
+                )
+            self.assertEqual(too_many.exception.status_code, 409)
+
+            staff = db.get(AdminUser, first.id)
+            with self.assertRaises(HTTPException) as forbidden:
+                require_owner(staff)
+            self.assertEqual(forbidden.exception.status_code, 403)
+
+            old_token = create_admin_session(staff.username, staff.session_version)
+            admin_reset_staff_password(
+                staff.id,
+                AdminStaffPasswordReset(password="replacement-password-789"),
+                owner,
+                db,
+            )
+            self.assertIsNone(_session_user(old_token, db))
+            self.assertTrue(
+                verify_admin_password("replacement-password-789", staff.password_salt, staff.password_hash)
+            )
+
+            admin_delete_staff_user(second.id, owner, db)
+            self.assertEqual([user.username for user in admin_staff_users(owner, db)], ["frontdesk"])
+
+    def test_owner_only_mutations_and_staff_block_permissions_are_declared(self) -> None:
+        owner_only = {
+            ("/api/admin/staff-users", "GET"),
+            ("/api/admin/staff-users", "POST"),
+            ("/api/admin/staff-users/{user_id}/reset-password", "POST"),
+            ("/api/admin/staff-users/{user_id}", "DELETE"),
+            ("/api/admin/studios/{space_id}", "PUT"),
+            ("/api/admin/bookings/offline", "POST"),
+            ("/api/admin/bookings/{booking_id}", "PATCH"),
+            ("/api/admin/bookings/{booking_id}/cancel", "POST"),
+            ("/api/admin/bookings/{booking_id}/payment", "POST"),
+        }
+        staff_block_access = {
+            ("/api/admin/availability/blocks", "POST"),
+            ("/api/admin/availability/blocks/{block_id}/slot", "DELETE"),
+            ("/api/admin/availability/blocks/{block_id}", "DELETE"),
+        }
+        routes = {
+            (route.path, method): route
+            for route in router.routes
+            for method in route.methods
+        }
+
+        for key in owner_only:
+            self.assertIn(require_owner, [dependency.call for dependency in routes[key].dependant.dependencies])
+        for key in staff_block_access:
+            self.assertIn(require_admin, [dependency.call for dependency in routes[key].dependant.dependencies])
 
     def test_admin_can_block_and_reopen_studio_time(self) -> None:
         engine = create_engine(

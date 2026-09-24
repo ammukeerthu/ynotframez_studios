@@ -21,8 +21,11 @@ const desktopAlertsButton = document.querySelector("#desktop-alerts-button");
 const accountMenuButton = document.querySelector("#account-menu-button");
 const accountMenuPanel = document.querySelector("#account-menu-panel");
 const dashboardHomeLink = document.querySelector("#dashboard-home-link");
+const staffUserForm = document.querySelector("#staff-user-form");
+const staffUsersList = document.querySelector("#staff-users-list");
 let adminBookings = [];
 let studioSettings = [];
+let currentAdminRole = "staff";
 let alertPollTimer = null;
 let alertsPayload = { unread_count: 0, new_bookings: [], operational: [] };
 let alertFilter = "all";
@@ -98,13 +101,26 @@ function showSetup(message = "") {
   messageBox.hidden = !message;
 }
 
-async function showDashboard(username) {
+function isOwner() {
+  return currentAdminRole === "owner";
+}
+
+function applyRolePermissions() {
+  document.querySelectorAll("[data-owner-only]").forEach((element) => {
+    element.hidden = !isOwner();
+  });
+}
+
+async function showDashboard(session) {
   loginView.hidden = true;
+  currentAdminRole = session.role === "owner" ? "owner" : "staff";
+  applyRolePermissions();
   const initialSection = showAdminSection(window.location.hash.slice(1));
   dashboardView.hidden = false;
-  document.querySelector("#admin-username").textContent = username || "admin";
+  document.querySelector("#admin-username").textContent = session.username || "admin";
   await loadStudioSettings();
   const initialLoads = [loadOverview(), loadBookings(), loadAlerts()];
+  if (isOwner()) initialLoads.push(loadStaffUsers());
   if (initialSection === "availability") initialLoads.push(loadAvailability());
   await Promise.all(initialLoads);
   startAlertPolling();
@@ -121,7 +137,8 @@ function setActiveNavigation(sectionId) {
 }
 
 function showAdminSection(sectionId, scrollToTop = false) {
-  const activeSection = adminSections.find((section) => section.id === sectionId) || adminSections[0];
+  const allowedSections = adminSections.filter((section) => isOwner() || !section.hasAttribute("data-owner-only"));
+  const activeSection = allowedSections.find((section) => section.id === sectionId) || allowedSections[0];
   if (!activeSection) return null;
   adminSections.forEach((section) => {
     section.hidden = section !== activeSection;
@@ -369,7 +386,7 @@ function bookingRow(booking) {
   const date = booking.booking_date ? formatDate(booking.booking_date) : "Not scheduled";
   const time = booking.start_time ? `${displayTime(booking.start_time)} to ${displayTime(booking.end_time)}` : "Not available";
   const action = ["confirmed", "cancelled"].includes(booking.status)
-    ? `<button type="button" class="manage-booking" data-booking-id="${booking.id}">Manage</button>`
+    ? `<button type="button" class="manage-booking" data-booking-id="${booking.id}">${isOwner() ? "Manage" : "View"}</button>`
     : "Not available";
   const purpose = booking.purpose || "Not provided";
   const terms = booking.terms_accepted
@@ -494,13 +511,13 @@ function syncStudioSelects() {
 
 async function loadStudioSettings() {
   const root = document.querySelector("#studio-settings-list");
-  root.innerHTML = '<p class="settings-empty">Loading studio settings…</p>';
+  if (isOwner()) root.innerHTML = '<p class="settings-empty">Loading studio settings…</p>';
   try {
     studioSettings = await api("/api/admin/studios");
-    renderStudioSettings();
+    if (isOwner()) renderStudioSettings();
     syncStudioSelects();
   } catch (error) {
-    root.innerHTML = `<p class="settings-empty">${safe(error.message)}</p>`;
+    if (isOwner()) root.innerHTML = `<p class="settings-empty">${safe(error.message)}</p>`;
     handleDashboardError(error);
   }
 }
@@ -532,6 +549,41 @@ function renderStudioSettings() {
       </div>
         <div class="studio-settings-actions"><button type="submit">Save studio settings</button></div>
     </form>
+  `).join("");
+}
+
+async function loadStaffUsers() {
+  if (!isOwner()) return;
+  staffUsersList.innerHTML = '<p class="settings-empty">Loading staff users&hellip;</p>';
+  try {
+    const users = await api("/api/admin/staff-users");
+    renderStaffUsers(users);
+  } catch (error) {
+    staffUsersList.innerHTML = `<p class="settings-empty">${safe(error.message)}</p>`;
+    handleDashboardError(error);
+  }
+}
+
+function renderStaffUsers(users) {
+  const addButton = document.querySelector("#add-staff-user-button");
+  addButton.disabled = users.length >= 2;
+  addButton.textContent = users.length >= 2 ? "Two-user limit reached" : "Add staff user";
+  if (!users.length) {
+    staffUsersList.innerHTML = '<p class="settings-empty">No staff users have been added.</p>';
+    return;
+  }
+  staffUsersList.innerHTML = users.map((user) => `
+    <article class="staff-user-card" data-staff-user-id="${user.id}">
+      <div class="staff-user-card-head">
+        <div><h3>${safe(user.username)}</h3><p>View, export, block &amp; unblock access</p></div>
+        <span class="status status-confirmed">Staff</span>
+      </div>
+      <div class="staff-user-card-actions">
+        <label><span>New password</span><input data-staff-password type="password" minlength="10" maxlength="500" autocomplete="new-password" placeholder="At least 10 characters"></label>
+        <button type="button" data-reset-staff-password>Reset password</button>
+        <button class="staff-delete" type="button" data-delete-staff-user>Remove</button>
+      </div>
+    </article>
   `).join("");
 }
 
@@ -823,20 +875,22 @@ function openBookingModal(bookingId) {
   bookingEditForm.elements.customer_email.value = booking.customer_email || "";
   bookingEditForm.elements.phone_number.value = booking.phone_number || "";
   bookingEditForm.elements.purpose.value = booking.purpose || "";
-  const editable = booking.status === "confirmed";
+  const editable = isOwner() && booking.status === "confirmed";
   bookingEditForm.querySelectorAll(".edit-grid input,.edit-grid select,.edit-grid textarea")
     .forEach((field) => { field.disabled = !editable; });
   document.querySelector("#save-booking-button").hidden = !editable;
   document.querySelector("#cancel-booking-button").hidden = !editable;
   document.querySelector("#booking-payment-status").textContent = booking.payment_status.replaceAll("_", " ");
   syncBookingEditPaymentEstimate();
-  document.querySelector("#payment-reference").value = booking.payment_reference || "";
+  const paymentReference = document.querySelector("#payment-reference");
+  paymentReference.value = booking.payment_reference || "";
+  paymentReference.disabled = !isOwner();
   const paymentAction = document.querySelector("#payment-action-button");
-  if (booking.payment_status === "pending" && ["payment_pending", "confirmed"].includes(booking.status)) {
+  if (isOwner() && booking.payment_status === "pending" && ["payment_pending", "confirmed"].includes(booking.status)) {
     paymentAction.hidden = false;
     paymentAction.dataset.status = "paid";
     paymentAction.textContent = "Mark paid";
-  } else if (booking.payment_status === "refund_due") {
+  } else if (isOwner() && booking.payment_status === "refund_due") {
     paymentAction.hidden = false;
     paymentAction.dataset.status = "refunded";
     paymentAction.textContent = "Mark refunded";
@@ -958,7 +1012,7 @@ loginForm.addEventListener("submit", async (event) => {
       body: JSON.stringify({ username: data.get("username"), password: data.get("password") }),
     });
     loginForm.reset();
-    await showDashboard(session.username);
+    await showDashboard(session);
   } catch (error) {
     showLogin(error.message);
   } finally {
@@ -983,7 +1037,7 @@ setupForm.addEventListener("submit", async (event) => {
       body: JSON.stringify({ username: data.get("username"), password: data.get("password") }),
     });
     setupForm.reset();
-    await showDashboard(session.username);
+    await showDashboard(session);
   } catch (error) {
     showSetup(error.message);
   } finally {
@@ -1329,6 +1383,62 @@ bookingFilters.elements.status.addEventListener("change", loadBookings);
 bookingFilters.querySelectorAll('input[type="date"]').forEach((input) => {
   input.addEventListener("change", loadBookings);
 });
+staffUserForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const data = new FormData(staffUserForm);
+  const button = document.querySelector("#add-staff-user-button");
+  button.disabled = true;
+  try {
+    const user = await api("/api/admin/staff-users", {
+      method: "POST",
+      body: JSON.stringify({ username: data.get("username"), password: data.get("password") }),
+    });
+    staffUserForm.reset();
+    showDashboardMessage("#staff-users-message", `${user.username} can now sign in with staff access.`);
+    await loadStaffUsers();
+  } catch (error) {
+    showDashboardMessage("#staff-users-message", error.message, { autoHide: false, kind: "error" });
+    button.disabled = false;
+  }
+});
+staffUsersList.addEventListener("click", async (event) => {
+  const card = event.target.closest("[data-staff-user-id]");
+  if (!card) return;
+  const userId = card.dataset.staffUserId;
+  const username = card.querySelector("h3").textContent;
+  const resetButton = event.target.closest("[data-reset-staff-password]");
+  const deleteButton = event.target.closest("[data-delete-staff-user]");
+  if (resetButton) {
+    const password = card.querySelector("[data-staff-password]").value;
+    if (password.length < 10) {
+      showDashboardMessage("#staff-users-message", "The new password must be at least 10 characters.", { autoHide: false, kind: "error" });
+      return;
+    }
+    resetButton.disabled = true;
+    try {
+      await api(`/api/admin/staff-users/${userId}/reset-password`, {
+        method: "POST",
+        body: JSON.stringify({ password }),
+      });
+      showDashboardMessage("#staff-users-message", `${username}'s password was reset. Existing sessions were signed out.`);
+      await loadStaffUsers();
+    } catch (error) {
+      showDashboardMessage("#staff-users-message", error.message, { autoHide: false, kind: "error" });
+      resetButton.disabled = false;
+    }
+    return;
+  }
+  if (!deleteButton || !window.confirm(`Remove staff access for ${username}?`)) return;
+  deleteButton.disabled = true;
+  try {
+    await api(`/api/admin/staff-users/${userId}`, { method: "DELETE" });
+    showDashboardMessage("#staff-users-message", `${username}'s staff access was removed.`);
+    await loadStaffUsers();
+  } catch (error) {
+    showDashboardMessage("#staff-users-message", error.message, { autoHide: false, kind: "error" });
+    deleteButton.disabled = false;
+  }
+});
 document.querySelector("#studio-settings-list").addEventListener("submit", async (event) => {
   const form = event.target.closest(".studio-settings-form");
   if (!form) return;
@@ -1446,5 +1556,5 @@ document.addEventListener("visibilitychange", () => {
 });
 
 api("/api/admin/session")
-  .then((session) => session.authenticated ? showDashboard(session.username) : session.setup_required ? showSetup() : showLogin())
+  .then((session) => session.authenticated ? showDashboard(session) : session.setup_required ? showSetup() : showLogin())
   .catch(() => showLogin("Unable to check the dashboard session."));
