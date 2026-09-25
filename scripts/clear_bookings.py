@@ -11,7 +11,7 @@ from app.core.config import settings
 from app.core.database import SessionLocal
 from app.models.booking import Booking
 from app.models.notification import AdminNotification
-from app.models.payment import PaymentRecord
+from app.models.payment import PaymentRecord, PaymentTransaction
 from app.services.calendar_service import GoogleCalendarService
 
 
@@ -33,6 +33,7 @@ def clear_bookings(*, apply: bool) -> None:
         print(f"Database: {_database_label()}")
         print(f"Bookings: {len(bookings)}")
         print(f"Payment records: {_count(db, PaymentRecord)}")
+        print(f"Payment transactions: {_count(db, PaymentTransaction)}")
         print(f"Admin notifications: {_count(db, AdminNotification)}")
         print(f"Linked calendar events: {len(calendar_bookings)}")
 
@@ -61,6 +62,7 @@ def clear_bookings(*, apply: bool) -> None:
 
         try:
             db.execute(delete(AdminNotification))
+            db.execute(delete(PaymentTransaction))
             db.execute(delete(PaymentRecord))
             db.execute(delete(Booking))
             db.commit()
@@ -71,7 +73,10 @@ def clear_bookings(*, apply: bool) -> None:
         print(f"Calendar events deleted: {deleted_events}")
         if missing_events:
             print(f"Calendar events already absent: {missing_events}")
-        print("Booking records, payment records, and booking notifications deleted successfully.")
+        print(
+            "Booking records, payment records, payment transactions, and booking "
+            "notifications deleted successfully."
+        )
 
 
 def main() -> None:

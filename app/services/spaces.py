@@ -3,7 +3,7 @@ from dataclasses import dataclass
 from threading import Lock
 from time import monotonic
 
-from sqlalchemy import delete, select
+from sqlalchemy import delete, select, text
 from sqlalchemy.orm import Session
 
 from app.core.booking_rules import MINIMUM_BOOKING_DURATION_HOURS
@@ -17,7 +17,7 @@ DEFAULT_BOOKING_PURPOSES = (
     "Maternity Shoot",
     "Editorial",
     "E-commerce",
-    "Fine Art",
+    "Fine Arts",
     "Workshop",
 )
 
@@ -99,6 +99,7 @@ SPACES = {
             "Lifestyle Shoot",
             "Reels & Content Creation",
             "Creative / Conceptual Shoot",
+            "Fine Arts",
             "Couple / Pre-wedding Shoot",
         ),
     ),
@@ -167,6 +168,7 @@ SPACES = {
             "Reels & Content Creation",
             "Music / Video Production",
             "Creative / Conceptual Shoot",
+            "Fine Arts",
             "Couple / Pre-wedding Shoot",
             "Larger Productions",
         ),
@@ -209,6 +211,42 @@ def _replace_json_item(value: str, old: str, new: str) -> str:
     if old not in items:
         return value
     return json.dumps([new if item == old else item for item in items])
+
+
+def _position_purpose_after(
+    purposes: list[StudioPurposeOption],
+    target: StudioPurposeOption,
+    preceding_label: str,
+) -> None:
+    reordered = [purpose for purpose in purposes if purpose is not target]
+    preceding_index = next(
+        (
+            index
+            for index, purpose in enumerate(reordered)
+            if purpose.label.casefold() == preceding_label.casefold()
+        ),
+        len(reordered) - 1,
+    )
+    reordered.insert(preceding_index + 1, target)
+    for purpose_order, purpose in enumerate(reordered, start=1):
+        purpose.sort_order = purpose_order
+
+
+def _claim_compatibility_migration(db: Session, migration_key: str) -> bool:
+    db.execute(
+        text(
+            "CREATE TABLE IF NOT EXISTS app_migrations ("
+            "migration_key VARCHAR(120) PRIMARY KEY, applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)"
+        )
+    )
+    claimed = db.execute(
+        text(
+            "INSERT INTO app_migrations (migration_key) VALUES (:migration_key) "
+            "ON CONFLICT (migration_key) DO NOTHING"
+        ),
+        {"migration_key": migration_key},
+    )
+    return bool(claimed.rowcount)
 
 
 def seed_studio_settings(db: Session, commit: bool = True) -> None:
@@ -283,53 +321,92 @@ def seed_studio_settings(db: Session, commit: bool = True) -> None:
 
     # Migrate the previously added Arena family label and position without
     # replacing any unrelated owner-managed purpose options.
-    arena_purposes = list(
-        db.scalars(
-            select(StudioPurposeOption)
-            .where(StudioPurposeOption.space_id == "premium_large")
-            .order_by(StudioPurposeOption.sort_order, StudioPurposeOption.id)
+    if _claim_compatibility_migration(db, "rename_and_position_arena_family_portraits"):
+        arena_purposes = list(
+            db.scalars(
+                select(StudioPurposeOption)
+                .where(StudioPurposeOption.space_id == "premium_large")
+                .order_by(StudioPurposeOption.sort_order, StudioPurposeOption.id)
+            )
         )
-    )
-    old_family_purpose = next(
-        (purpose for purpose in arena_purposes if purpose.label.casefold() == "family shoots"),
-        None,
-    )
-    family_purpose = next(
-        (purpose for purpose in arena_purposes if purpose.label.casefold() == "family portraits"),
-        None,
-    )
-    should_position_family_purpose = False
-    if old_family_purpose is not None:
-        if family_purpose is None:
-            old_family_purpose.label = "Family Portraits"
-            family_purpose = old_family_purpose
-        else:
-            db.delete(old_family_purpose)
-            arena_purposes.remove(old_family_purpose)
-        should_position_family_purpose = True
-    elif family_purpose is None and arena_purposes:
-        family_purpose = StudioPurposeOption(
-            space_id="premium_large",
-            label="Family Portraits",
-            sort_order=max(purpose.sort_order for purpose in arena_purposes) + 1,
+        old_family_purpose = next(
+            (purpose for purpose in arena_purposes if purpose.label.casefold() == "family shoots"),
+            None,
         )
-        db.add(family_purpose)
-        arena_purposes.append(family_purpose)
-        should_position_family_purpose = True
-
-    if should_position_family_purpose and family_purpose is not None:
-        reordered_purposes = [purpose for purpose in arena_purposes if purpose is not family_purpose]
-        fashion_index = next(
+        family_purpose = next(
             (
-                index
-                for index, purpose in enumerate(reordered_purposes)
-                if purpose.label.casefold() == "fashion shoot"
+                purpose
+                for purpose in arena_purposes
+                if purpose.label.casefold() == "family portraits"
             ),
-            len(reordered_purposes) - 1,
+            None,
         )
-        reordered_purposes.insert(fashion_index + 1, family_purpose)
-        for purpose_order, purpose in enumerate(reordered_purposes, start=1):
-            purpose.sort_order = purpose_order
+        should_position_family_purpose = False
+        if old_family_purpose is not None:
+            if family_purpose is None:
+                old_family_purpose.label = "Family Portraits"
+                family_purpose = old_family_purpose
+            else:
+                db.delete(old_family_purpose)
+                arena_purposes.remove(old_family_purpose)
+            should_position_family_purpose = True
+        elif family_purpose is None and arena_purposes:
+            family_purpose = StudioPurposeOption(
+                space_id="premium_large",
+                label="Family Portraits",
+                sort_order=max(purpose.sort_order for purpose in arena_purposes) + 1,
+            )
+            db.add(family_purpose)
+            arena_purposes.append(family_purpose)
+            should_position_family_purpose = True
+
+        if should_position_family_purpose and family_purpose is not None:
+            _position_purpose_after(arena_purposes, family_purpose, "Fashion Shoot")
+
+    # Add Fine Arts to both existing studio purpose lists. If the singular
+    # fallback label was previously saved, normalize it instead of duplicating it.
+    if _claim_compatibility_migration(db, "add_and_position_fine_arts_purposes"):
+        for space_id in ("standard_small", "premium_large"):
+            studio_purposes = list(
+                db.scalars(
+                    select(StudioPurposeOption)
+                    .where(StudioPurposeOption.space_id == space_id)
+                    .order_by(StudioPurposeOption.sort_order, StudioPurposeOption.id)
+                )
+            )
+            legacy_fine_arts = next(
+                (purpose for purpose in studio_purposes if purpose.label.casefold() == "fine art"),
+                None,
+            )
+            fine_arts = next(
+                (purpose for purpose in studio_purposes if purpose.label.casefold() == "fine arts"),
+                None,
+            )
+            should_position_fine_arts = False
+            if legacy_fine_arts is not None:
+                if fine_arts is None:
+                    legacy_fine_arts.label = "Fine Arts"
+                    fine_arts = legacy_fine_arts
+                else:
+                    db.delete(legacy_fine_arts)
+                    studio_purposes.remove(legacy_fine_arts)
+                should_position_fine_arts = True
+            elif fine_arts is None and studio_purposes:
+                fine_arts = StudioPurposeOption(
+                    space_id=space_id,
+                    label="Fine Arts",
+                    sort_order=max(purpose.sort_order for purpose in studio_purposes) + 1,
+                )
+                db.add(fine_arts)
+                studio_purposes.append(fine_arts)
+                should_position_fine_arts = True
+
+            if should_position_fine_arts and fine_arts is not None:
+                _position_purpose_after(
+                    studio_purposes,
+                    fine_arts,
+                    "Creative / Conceptual Shoot",
+                )
 
     for space in SPACES.values():
         if space.id not in purpose_space_ids:

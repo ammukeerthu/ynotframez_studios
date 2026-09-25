@@ -19,7 +19,13 @@ class AdminAvailabilityViewTest(unittest.TestCase):
 
     def test_admin_block_reason_is_a_fixed_dropdown(self) -> None:
         self.assertIn('<select name="reason" required>', self.html)
-        for reason in ("Maintenance", "Power Shutdown", "Technical Issue", "Mandatory Holiday"):
+        for reason in (
+            "Maintenance",
+            "Power Shutdown",
+            "Technical Issue",
+            "Mandatory Holiday",
+            "Collaboration",
+        ):
             self.assertIn(f'<option value="{reason}">{reason}</option>', self.html)
         self.assertNotIn('<input name="reason"', self.html)
 

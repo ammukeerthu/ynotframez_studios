@@ -13,6 +13,7 @@ class StudioSpaceTest(unittest.TestCase):
         self.assertGreaterEqual(len(space.equipment) + len(space.amenities), 4)
         self.assertIn("Portrait Shoot", space.booking_purposes)
         self.assertTrue(space.cover_image.startswith("/static/studio/"))
+        self.assertIn("Fine Arts", space.booking_purposes)
         self.assertTrue(space.hero_image.startswith("/static/studio/"))
 
     def test_unknown_slug_returns_none(self) -> None:
@@ -27,6 +28,7 @@ class StudioSpaceTest(unittest.TestCase):
             ("Fashion Shoot", "Family Portraits", "Editorial Shoot"),
         )
         self.assertNotIn("Family Shoots", arena.booking_purposes)
+        self.assertIn("Fine Arts", arena.booking_purposes)
 
     def test_old_public_slug_remains_compatible(self) -> None:
         space = get_space_by_slug("standard-small-space")

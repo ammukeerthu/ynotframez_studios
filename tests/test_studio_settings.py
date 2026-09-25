@@ -2,7 +2,7 @@ import json
 import unittest
 from datetime import date, time, timedelta
 
-from sqlalchemy import create_engine, delete, event, select
+from sqlalchemy import create_engine, delete, event, select, text
 from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
 
@@ -181,6 +181,12 @@ class StudioSettingsTest(unittest.TestCase):
         self.assertEqual(preserved.amenities, ("Custom production amenity",))
 
     def test_seed_renames_and_repositions_the_previous_arena_family_purpose_once(self) -> None:
+        self.db.execute(
+            text(
+                "DELETE FROM app_migrations "
+                "WHERE migration_key = 'rename_and_position_arena_family_portraits'"
+            )
+        )
         family_purpose = self.db.scalar(
             select(StudioPurposeOption).where(
                 StudioPurposeOption.space_id == "premium_large",
@@ -207,6 +213,46 @@ class StudioSettingsTest(unittest.TestCase):
         self.assertNotIn("Family Shoots", arena.booking_purposes)
         self.assertEqual(arena.booking_purposes[0:2], ("Fashion Shoot", "Family Portraits"))
         self.assertEqual(arena.booking_purposes[-1], "Custom Arena Purpose")
+
+    def test_seed_adds_fine_arts_to_both_studios_without_replacing_custom_purposes(self) -> None:
+        self.db.execute(
+            text(
+                "DELETE FROM app_migrations "
+                "WHERE migration_key = 'add_and_position_fine_arts_purposes'"
+            )
+        )
+        self.db.execute(
+            delete(StudioPurposeOption).where(StudioPurposeOption.label == "Fine Arts")
+        )
+        self.db.add(
+            StudioPurposeOption(
+                space_id="standard_small",
+                label="Custom Cube Purpose",
+                sort_order=98,
+            )
+        )
+        self.db.add(
+            StudioPurposeOption(
+                space_id="premium_large",
+                label="Custom Arena Purpose",
+                sort_order=98,
+            )
+        )
+        self.db.commit()
+
+        seed_studio_settings(self.db)
+        seed_studio_settings(self.db)
+        cube = get_space_by_id("standard_small", self.db, include_inactive=True)
+        arena = get_space_by_id("premium_large", self.db, include_inactive=True)
+
+        for studio, custom_purpose in (
+            (cube, "Custom Cube Purpose"),
+            (arena, "Custom Arena Purpose"),
+        ):
+            self.assertEqual(studio.booking_purposes.count("Fine Arts"), 1)
+            self.assertIn(custom_purpose, studio.booking_purposes)
+            creative_index = studio.booking_purposes.index("Creative / Conceptual Shoot")
+            self.assertEqual(studio.booking_purposes[creative_index + 1], "Fine Arts")
 
     def test_seed_migrates_previous_public_studio_names_and_slugs(self) -> None:
         standard = self.db.get(StudioSetting, "standard_small")
@@ -235,8 +281,10 @@ class StudioSettingsTest(unittest.TestCase):
         premium = get_space_by_id("premium_large", self.db)
         self.assertEqual((standard.name, standard.hourly_rate, standard.capacity), ("Cube", 1000, 5))
         self.assertEqual(standard.booking_purposes[0], "Portrait Shoot")
+        self.assertIn("Fine Arts", standard.booking_purposes)
         self.assertEqual((premium.name, premium.hourly_rate, premium.capacity), ("Arena", 1500, 8))
         self.assertEqual(premium.booking_purposes[0:2], ("Fashion Shoot", "Family Portraits"))
+        self.assertIn("Fine Arts", premium.booking_purposes)
         self.assertEqual(premium.booking_purposes[-1], "Larger Productions")
 
     def test_inactive_studio_is_hidden_from_public_catalogue(self) -> None:
