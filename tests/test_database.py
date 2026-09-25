@@ -143,7 +143,9 @@ class DatabaseConfigurationTests(unittest.TestCase):
                         "INSERT INTO bookings (id, state, terms_accepted, payment_mode) VALUES "
                         "(1, 'CONFIRMED', NULL, NULL), "
                         "(2, 'PAYMENT_PENDING', 'v1', NULL), "
-                        "(3, 'CONFIRMED', 'v1', 'PAY_NOW')"
+                        "(3, 'CONFIRMED', 'v1', 'PAY_NOW'), "
+                        "(4, 'CANCELLED', NULL, 'PAY_AT_STUDIO'), "
+                        "(5, 'PAYMENT_PENDING', NULL, 'PAY_AT_STUDIO')"
                     )
                 )
                 connection.execute(
@@ -167,11 +169,33 @@ class DatabaseConfigurationTests(unittest.TestCase):
                         text("SELECT booking_id, mode FROM payment_records ORDER BY booking_id")
                     ).tuples().all()
                 )
+                accepted_terms = dict(
+                    connection.execute(
+                        text("SELECT id, terms_accepted FROM bookings ORDER BY id")
+                    ).tuples().all()
+                )
+                terms_migration_count = connection.scalar(
+                    text(
+                        "SELECT COUNT(*) FROM app_migrations "
+                        "WHERE migration_key = 'accept_terms_for_existing_offline_bookings'"
+                    )
+                )
             self.assertEqual(
                 booking_modes,
-                {1: "PAY_AT_STUDIO", 2: "PAY_NOW", 3: "PAY_NOW"},
+                {
+                    1: "PAY_AT_STUDIO",
+                    2: "PAY_NOW",
+                    3: "PAY_NOW",
+                    4: "PAY_AT_STUDIO",
+                    5: "PAY_AT_STUDIO",
+                },
             )
             self.assertEqual(payment_modes, {1: "PAY_AT_STUDIO", 2: "PAY_NOW"})
+            self.assertEqual(
+                accepted_terms,
+                {1: "v2", 2: "v1", 3: "v1", 4: "v2", 5: None},
+            )
+            self.assertEqual(terms_migration_count, 1)
         finally:
             engine.dispose()
 

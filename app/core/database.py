@@ -4,6 +4,7 @@ from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 
+from app.core.booking_rules import CURRENT_TERMS_VERSION
 from app.core.config import settings
 
 
@@ -109,6 +110,23 @@ def apply_schema_compatibility_updates(target_engine: Engine | None = None) -> N
                         "WHERE payment_mode IS NULL AND terms_accepted IS NULL "
                         "AND state IN ('CONFIRMED', 'CANCELLED')"
                     )
+                )
+            migration_key = "accept_terms_for_existing_offline_bookings"
+            claimed = connection.execute(
+                text(
+                    "INSERT INTO app_migrations (migration_key) VALUES (:migration_key) "
+                    "ON CONFLICT (migration_key) DO NOTHING"
+                ),
+                {"migration_key": migration_key},
+            )
+            if claimed.rowcount:
+                connection.execute(
+                    text(
+                        "UPDATE bookings SET terms_accepted = :terms_version "
+                        "WHERE terms_accepted IS NULL AND payment_mode = 'PAY_AT_STUDIO' "
+                        "AND state IN ('CONFIRMED', 'CANCELLED')"
+                    ),
+                    {"terms_version": CURRENT_TERMS_VERSION},
                 )
     if "payment_records" not in table_names:
         return
