@@ -128,7 +128,7 @@ class DatabaseConfigurationTests(unittest.TestCase):
                     text(
                         "CREATE TABLE bookings ("
                         "id INTEGER PRIMARY KEY, state VARCHAR(40), terms_accepted VARCHAR(8), "
-                        "payment_mode VARCHAR(40))"
+                        "payment_mode VARCHAR(40), space_id VARCHAR(64), purpose VARCHAR(1000))"
                     )
                 )
                 connection.execute(
@@ -140,12 +140,15 @@ class DatabaseConfigurationTests(unittest.TestCase):
                 )
                 connection.execute(
                     text(
-                        "INSERT INTO bookings (id, state, terms_accepted, payment_mode) VALUES "
-                        "(1, 'CONFIRMED', NULL, NULL), "
-                        "(2, 'PAYMENT_PENDING', 'v1', NULL), "
-                        "(3, 'CONFIRMED', 'v1', 'PAY_NOW'), "
-                        "(4, 'CANCELLED', NULL, 'PAY_AT_STUDIO'), "
-                        "(5, 'PAYMENT_PENDING', NULL, 'PAY_AT_STUDIO')"
+                        "INSERT INTO bookings ("
+                        "id, state, terms_accepted, payment_mode, space_id, purpose) VALUES "
+                        "(1, 'CONFIRMED', NULL, NULL, 'premium_large', 'Family Shoots'), "
+                        "(2, 'PAYMENT_PENDING', 'v1', NULL, 'standard_small', 'Family Shoots'), "
+                        "(3, 'CONFIRMED', 'v1', 'PAY_NOW', 'premium_large', 'Fashion Shoot'), "
+                        "(4, 'CANCELLED', NULL, 'PAY_AT_STUDIO', "
+                        "'premium_large', 'Family Shoots'), "
+                        "(5, 'PAYMENT_PENDING', NULL, 'PAY_AT_STUDIO', "
+                        "'premium_large', 'Family Shoots')"
                     )
                 )
                 connection.execute(
@@ -180,6 +183,17 @@ class DatabaseConfigurationTests(unittest.TestCase):
                         "WHERE migration_key = 'accept_terms_for_existing_offline_bookings'"
                     )
                 )
+                booking_purposes = dict(
+                    connection.execute(
+                        text("SELECT id, purpose FROM bookings ORDER BY id")
+                    ).tuples().all()
+                )
+                purpose_migration_count = connection.scalar(
+                    text(
+                        "SELECT COUNT(*) FROM app_migrations "
+                        "WHERE migration_key = 'rename_arena_family_shoots_booking_purpose'"
+                    )
+                )
             self.assertEqual(
                 booking_modes,
                 {
@@ -196,6 +210,17 @@ class DatabaseConfigurationTests(unittest.TestCase):
                 {1: "v2", 2: "v1", 3: "v1", 4: "v2", 5: None},
             )
             self.assertEqual(terms_migration_count, 1)
+            self.assertEqual(
+                booking_purposes,
+                {
+                    1: "Family Portraits",
+                    2: "Family Shoots",
+                    3: "Fashion Shoot",
+                    4: "Family Portraits",
+                    5: "Family Portraits",
+                },
+            )
+            self.assertEqual(purpose_migration_count, 1)
         finally:
             engine.dispose()
 

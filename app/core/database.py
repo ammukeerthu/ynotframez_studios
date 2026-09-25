@@ -81,6 +81,7 @@ def apply_schema_compatibility_updates(target_engine: Engine | None = None) -> N
                     )
                 )
     if "bookings" in table_names:
+        booking_columns = {column["name"] for column in inspector.get_columns("bookings")}
         with migration_engine.begin() as connection:
             connection.execute(
                 text(
@@ -128,6 +129,22 @@ def apply_schema_compatibility_updates(target_engine: Engine | None = None) -> N
                     ),
                     {"terms_version": CURRENT_TERMS_VERSION},
                 )
+            if {"space_id", "purpose"} <= booking_columns:
+                migration_key = "rename_arena_family_shoots_booking_purpose"
+                claimed = connection.execute(
+                    text(
+                        "INSERT INTO app_migrations (migration_key) VALUES (:migration_key) "
+                        "ON CONFLICT (migration_key) DO NOTHING"
+                    ),
+                    {"migration_key": migration_key},
+                )
+                if claimed.rowcount:
+                    connection.execute(
+                        text(
+                            "UPDATE bookings SET purpose = 'Family Portraits' "
+                            "WHERE space_id = 'premium_large' AND purpose = 'Family Shoots'"
+                        )
+                    )
     if "payment_records" not in table_names:
         return
     columns = {column["name"] for column in inspector.get_columns("payment_records")}

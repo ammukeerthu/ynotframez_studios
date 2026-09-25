@@ -2,7 +2,7 @@ import json
 import unittest
 from datetime import date, time, timedelta
 
-from sqlalchemy import create_engine, delete, event
+from sqlalchemy import create_engine, delete, event, select
 from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
 
@@ -180,13 +180,15 @@ class StudioSettingsTest(unittest.TestCase):
         self.assertEqual(preserved.equipment, ("Custom cyc wall description",))
         self.assertEqual(preserved.amenities, ("Custom production amenity",))
 
-    def test_seed_adds_family_shoots_to_existing_arena_purposes_once(self) -> None:
-        self.db.execute(
-            delete(StudioPurposeOption).where(
+    def test_seed_renames_and_repositions_the_previous_arena_family_purpose_once(self) -> None:
+        family_purpose = self.db.scalar(
+            select(StudioPurposeOption).where(
                 StudioPurposeOption.space_id == "premium_large",
-                StudioPurposeOption.label == "Family Shoots",
+                StudioPurposeOption.label == "Family Portraits",
             )
         )
+        family_purpose.label = "Family Shoots"
+        family_purpose.sort_order = 98
         self.db.add(
             StudioPurposeOption(
                 space_id="premium_large",
@@ -201,7 +203,10 @@ class StudioSettingsTest(unittest.TestCase):
         arena = get_space_by_id("premium_large", self.db, include_inactive=True)
 
         self.assertIn("Custom Arena Purpose", arena.booking_purposes)
-        self.assertEqual(arena.booking_purposes.count("Family Shoots"), 1)
+        self.assertEqual(arena.booking_purposes.count("Family Portraits"), 1)
+        self.assertNotIn("Family Shoots", arena.booking_purposes)
+        self.assertEqual(arena.booking_purposes[0:2], ("Fashion Shoot", "Family Portraits"))
+        self.assertEqual(arena.booking_purposes[-1], "Custom Arena Purpose")
 
     def test_seed_migrates_previous_public_studio_names_and_slugs(self) -> None:
         standard = self.db.get(StudioSetting, "standard_small")
@@ -231,7 +236,7 @@ class StudioSettingsTest(unittest.TestCase):
         self.assertEqual((standard.name, standard.hourly_rate, standard.capacity), ("Cube", 1000, 5))
         self.assertEqual(standard.booking_purposes[0], "Portrait Shoot")
         self.assertEqual((premium.name, premium.hourly_rate, premium.capacity), ("Arena", 1500, 8))
-        self.assertIn("Family Shoots", premium.booking_purposes)
+        self.assertEqual(premium.booking_purposes[0:2], ("Fashion Shoot", "Family Portraits"))
         self.assertEqual(premium.booking_purposes[-1], "Larger Productions")
 
     def test_inactive_studio_is_hidden_from_public_catalogue(self) -> None:

@@ -157,13 +157,13 @@ SPACES = {
         max_duration_hours=10.0,
         booking_purposes=(
             "Fashion Shoot",
+            "Family Portraits",
             "Editorial Shoot",
             "Campaign Shoot",
             "Beauty Shoot",
             "Product Shoot",
             "Lifestyle Shoot",
             "Baby Shoot",
-            "Family Shoots",
             "Reels & Content Creation",
             "Music / Video Production",
             "Creative / Conceptual Shoot",
@@ -281,8 +281,8 @@ def seed_studio_settings(db: Session, commit: bool = True) -> None:
     # PostgreSQL enforces the foreign key while SQLite commonly does not.
     db.flush()
 
-    # Add this requested Arena option to existing databases without replacing
-    # any owner-managed purpose labels or changing their current order.
+    # Migrate the previously added Arena family label and position without
+    # replacing any unrelated owner-managed purpose options.
     arena_purposes = list(
         db.scalars(
             select(StudioPurposeOption)
@@ -290,17 +290,46 @@ def seed_studio_settings(db: Session, commit: bool = True) -> None:
             .order_by(StudioPurposeOption.sort_order, StudioPurposeOption.id)
         )
     )
-    arena_family_purpose = "Family Shoots"
-    if arena_purposes and arena_family_purpose.casefold() not in {
-        purpose.label.casefold() for purpose in arena_purposes
-    }:
-        db.add(
-            StudioPurposeOption(
-                space_id="premium_large",
-                label=arena_family_purpose,
-                sort_order=max(purpose.sort_order for purpose in arena_purposes) + 1,
-            )
+    old_family_purpose = next(
+        (purpose for purpose in arena_purposes if purpose.label.casefold() == "family shoots"),
+        None,
+    )
+    family_purpose = next(
+        (purpose for purpose in arena_purposes if purpose.label.casefold() == "family portraits"),
+        None,
+    )
+    should_position_family_purpose = False
+    if old_family_purpose is not None:
+        if family_purpose is None:
+            old_family_purpose.label = "Family Portraits"
+            family_purpose = old_family_purpose
+        else:
+            db.delete(old_family_purpose)
+            arena_purposes.remove(old_family_purpose)
+        should_position_family_purpose = True
+    elif family_purpose is None and arena_purposes:
+        family_purpose = StudioPurposeOption(
+            space_id="premium_large",
+            label="Family Portraits",
+            sort_order=max(purpose.sort_order for purpose in arena_purposes) + 1,
         )
+        db.add(family_purpose)
+        arena_purposes.append(family_purpose)
+        should_position_family_purpose = True
+
+    if should_position_family_purpose and family_purpose is not None:
+        reordered_purposes = [purpose for purpose in arena_purposes if purpose is not family_purpose]
+        fashion_index = next(
+            (
+                index
+                for index, purpose in enumerate(reordered_purposes)
+                if purpose.label.casefold() == "fashion shoot"
+            ),
+            len(reordered_purposes) - 1,
+        )
+        reordered_purposes.insert(fashion_index + 1, family_purpose)
+        for purpose_order, purpose in enumerate(reordered_purposes, start=1):
+            purpose.sort_order = purpose_order
 
     for space in SPACES.values():
         if space.id not in purpose_space_ids:
