@@ -18,6 +18,7 @@ from app.api.routes.admin import (
     _session_user,
     router,
     admin_availability,
+    admin_bookings,
     admin_cancel_booking,
     admin_change_password,
     admin_create_availability_block,
@@ -890,6 +891,77 @@ class AdminAuthenticationTest(unittest.TestCase):
                     db,
                 )
             self.assertEqual(conflict.exception.status_code, 409)
+
+    def test_booking_directory_sorts_by_scheduled_date_and_time_descending(self) -> None:
+        engine = create_engine(
+            "sqlite://",
+            connect_args={"check_same_thread": False},
+            poolclass=StaticPool,
+        )
+        self.addCleanup(engine.dispose)
+        Base.metadata.create_all(engine)
+
+        with Session(engine) as db:
+            bookings = [
+                Booking(
+                    phone_number="+919999999901",
+                    state=BookingState.CONFIRMED,
+                    space_id="standard_small",
+                    booking_date="2026-09-24",
+                    start_time="18:00",
+                    duration_hours=1,
+                    customer_name="Older session",
+                    created_at=datetime(2026, 9, 26, 12),
+                ),
+                Booking(
+                    phone_number="+919999999902",
+                    state=BookingState.CONFIRMED,
+                    space_id="standard_small",
+                    booking_date="2026-09-26",
+                    start_time="09:00",
+                    duration_hours=1,
+                    customer_name="Latest day morning",
+                    created_at=datetime(2026, 9, 24, 12),
+                ),
+                Booking(
+                    phone_number="+919999999903",
+                    state=BookingState.CONFIRMED,
+                    space_id="standard_small",
+                    booking_date="2026-09-26",
+                    start_time="17:00",
+                    duration_hours=1,
+                    customer_name="Latest day evening",
+                    created_at=datetime(2026, 9, 23, 12),
+                ),
+                Booking(
+                    phone_number="+919999999904",
+                    state=BookingState.SELECT_SPACE,
+                    customer_name="Unscheduled",
+                    created_at=datetime(2026, 9, 27, 12),
+                ),
+            ]
+            db.add_all(bookings)
+            db.commit()
+
+            rows = admin_bookings(
+                space_id=None,
+                q=None,
+                booking_status=None,
+                date_from=None,
+                date_to=None,
+                limit=200,
+                db=db,
+            )
+
+            self.assertEqual(
+                [row.customer_name for row in rows],
+                [
+                    "Latest day evening",
+                    "Latest day morning",
+                    "Older session",
+                    "Unscheduled",
+                ],
+            )
 
     def test_csv_export_uses_studio_and_date_filters_and_sanitizes_spreadsheet_formulas(self) -> None:
         engine = create_engine(

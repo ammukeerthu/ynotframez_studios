@@ -104,8 +104,8 @@
           <label><span>STUDIO SPACE</span><select name="space_id"><option value="standard_small">Cube</option><option value="premium_large">Arena</option></select></label>
           <label><span>SEARCH</span><input name="q" placeholder="Name, email, or phone"></label>
           <label><span>STATUS</span><select name="status"><option value="">All statuses</option><option value="confirmed">Confirmed</option><option value="payment_pending">Payment pending</option><option value="expired">Expired</option><option value="cancelled">Cancelled</option></select></label>
-          <label><span>FROM DATE</span><input name="date_from" type="date"></label>
-          <label><span>TO DATE</span><input name="date_to" type="date"></label>
+          <label><span>FROM</span><input name="date_from" type="date"></label>
+          <label><span>TO</span><input name="date_to" type="date"></label>
           <div class="filter-actions">
             <button type="submit">Apply</button>
             <a id="booking-export" href="/api/admin/bookings/export.csv">Export CSV</a>
@@ -113,22 +113,21 @@
               <button id="booking-columns-button" type="button" aria-expanded="false" aria-controls="booking-columns-panel">Columns</button>
               <div id="booking-columns-panel" class="booking-columns-panel" hidden>
                 <p>VISIBLE COLUMNS</p>
-                <label class="column-option locked"><input type="checkbox" value="reference" data-booking-column-toggle checked disabled><span>Reference</span></label>
-                <label class="column-option"><input type="checkbox" value="customer" data-booking-column-toggle checked><span>Customer</span></label>
-                <label class="column-option"><input type="checkbox" value="studio" data-booking-column-toggle checked><span>Studio</span></label>
                 <label class="column-option"><input type="checkbox" value="schedule" data-booking-column-toggle checked><span>Date &amp; time</span></label>
+                <label class="column-option"><input type="checkbox" value="customer" data-booking-column-toggle checked><span>Customer</span></label>
                 <label class="column-option"><input type="checkbox" value="purpose" data-booking-column-toggle checked><span>Purpose</span></label>
-                <label class="column-option"><input type="checkbox" value="terms" data-booking-column-toggle checked><span>Terms accepted</span></label>
-                <label class="column-option"><input type="checkbox" value="value" data-booking-column-toggle checked><span>Value</span></label>
                 <label class="column-option"><input type="checkbox" value="payment" data-booking-column-toggle checked><span>Payment</span></label>
                 <label class="column-option"><input type="checkbox" value="status" data-booking-column-toggle checked><span>Status</span></label>
+                <label class="column-option"><input type="checkbox" value="reference" data-booking-column-toggle><span>Reference</span></label>
+                <label class="column-option"><input type="checkbox" value="terms" data-booking-column-toggle><span>Terms accepted</span></label>
+                <label class="column-option"><input type="checkbox" value="value" data-booking-column-toggle><span>Amount</span></label>
                 <label class="column-option locked"><input type="checkbox" value="actions" data-booking-column-toggle checked disabled><span>Actions</span></label>
               </div>
             </div>
           </div>
         </form>
         <div class="table-wrap">
-          <table id="bookings-table"><thead><tr><th data-table-column="reference">Reference</th><th data-table-column="customer">Customer</th><th data-table-column="studio">Studio</th><th data-table-column="schedule">Date &amp; time</th><th data-table-column="purpose">Purpose</th><th data-table-column="terms">Terms accepted</th><th data-table-column="value">Value</th><th data-table-column="payment">Payment</th><th data-table-column="status">Status</th><th data-table-column="actions">Actions</th></tr></thead><tbody id="bookings-body"><tr><td colspan="10" class="empty">Loading bookings…</td></tr></tbody></table>
+          <table id="bookings-table"><thead><tr><th data-table-column="schedule">Date &amp; time</th><th data-table-column="customer">Customer</th><th data-table-column="purpose">Purpose</th><th data-table-column="payment">Payment</th><th data-table-column="status">Status</th><th data-table-column="reference" hidden>Reference</th><th data-table-column="terms" hidden>Terms accepted</th><th data-table-column="value" hidden>Amount</th><th data-table-column="actions">Actions</th></tr></thead><tbody id="bookings-body"><tr><td colspan="6" class="empty">Loading bookings…</td></tr></tbody></table>
         </div>
         <p id="booking-count" class="booking-count"></p>
       </section>

@@ -574,7 +574,11 @@ def admin_bookings(
     if service.expire_stale_payment_holds():
         db.commit()
     statement = _filtered_booking_statement(space_id, q, booking_status, date_from, date_to)
-    statement = statement.order_by(Booking.created_at.desc()).limit(limit)
+    statement = statement.order_by(
+        Booking.booking_date.desc().nulls_last(),
+        Booking.start_time.desc().nulls_last(),
+        Booking.id.desc(),
+    ).limit(limit)
     return [_serialize_booking(booking, db) for booking in db.scalars(statement)]
 
 

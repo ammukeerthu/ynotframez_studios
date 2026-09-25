@@ -30,19 +30,52 @@ class AdminAvailabilityViewTest(unittest.TestCase):
         self.assertNotIn('<input name="reason"', self.html)
 
     def test_dashboard_date_views_open_on_today(self) -> None:
+        self.assertIn('<span>FROM</span><input name="date_from" type="date">', self.html)
+        self.assertIn('<span>TO</span><input name="date_to" type="date">', self.html)
+        self.assertNotIn("<span>FROM DATE</span>", self.html)
+        self.assertNotIn("<span>TO DATE</span>", self.html)
         self.assertIn("availabilityFilters.elements.booking_date.value = localDate();", self.script)
-        self.assertIn("bookingFilters.elements.date_from.value = localDate();", self.script)
-        self.assertIn("bookingFilters.elements.date_to.value = localDate();", self.script)
+        self.assertIn("function currentWeekRange()", self.script)
+        self.assertIn("const dayOfWeek = new Date().getDay() || 7;", self.script)
+        self.assertIn("from: localDate(mondayOffset)", self.script)
+        self.assertIn("to: localDate(mondayOffset + 6)", self.script)
+        self.assertIn("bookingFilters.elements.date_from.value = bookingWeek.from;", self.script)
+        self.assertIn("bookingFilters.elements.date_to.value = bookingWeek.to;", self.script)
         self.assertNotIn("availabilityFilters.elements.booking_date.value = localDate(1);", self.script)
 
     def test_booking_table_has_purpose_terms_and_persisted_column_controls(self) -> None:
         self.assertIn('data-table-column="purpose">Purpose', self.html)
-        self.assertIn('data-table-column="terms">Terms accepted', self.html)
-        self.assertIn('value="reference" data-booking-column-toggle checked disabled', self.html)
+        self.assertIn('data-table-column="terms" hidden>Terms accepted', self.html)
+        self.assertIn('value="reference" data-booking-column-toggle><span>Reference', self.html)
+        self.assertIn('value="value" data-booking-column-toggle><span>Amount', self.html)
+        self.assertIn('data-table-column="value" hidden>Amount', self.html)
+        self.assertNotIn('data-table-column="value" hidden>Value', self.html)
+        self.assertNotIn('value="studio" data-booking-column-toggle', self.html)
+        self.assertNotIn('data-table-column="studio"', self.html)
+        self.assertNotIn('data-table-column="studio"', self.script)
         self.assertIn('value="actions" data-booking-column-toggle checked disabled', self.html)
         self.assertIn('BOOKING_COLUMN_STORAGE_KEY = "ynf_admin_booking_columns"', self.script)
+        self.assertIn(
+            'DEFAULT_BOOKING_COLUMNS = ["schedule", "customer", "purpose", "payment", "status", "actions"]',
+            self.script,
+        )
+        header = self.html.split('<table id="bookings-table">', 1)[1].split("</thead>", 1)[0]
+        expected_order = (
+            'data-table-column="schedule"',
+            'data-table-column="customer"',
+            'data-table-column="purpose"',
+            'data-table-column="payment"',
+            'data-table-column="status"',
+            'data-table-column="reference"',
+            'data-table-column="terms"',
+            'data-table-column="value"',
+            'data-table-column="actions"',
+        )
+        positions = [header.index(column) for column in expected_order]
+        self.assertEqual(positions, sorted(positions))
+        self.assertIn('const columnOrder = [...visibleOrder, ...hiddenOrder, "actions"]', self.script)
         self.assertIn('data-table-column="purpose" class="booking-purpose-cell"', self.script)
-        self.assertIn('data-table-column="terms">${terms}', self.script)
+        self.assertIn('data-table-column="terms" hidden>${terms}', self.script)
         self.assertIn('localStorage.setItem(BOOKING_COLUMN_STORAGE_KEY', self.script)
 
     def test_booking_directory_uses_responsive_contained_layout(self) -> None:
