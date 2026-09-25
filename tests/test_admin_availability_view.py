@@ -78,14 +78,37 @@ class AdminAvailabilityViewTest(unittest.TestCase):
         self.assertIn('id="offline-booking-modal"', self.html)
         self.assertIn('id="offline-booking-form"', self.html)
         self.assertIn('name="total_amount" type="number"', self.html)
+        self.assertIn('name="payment_method"', self.html)
+        self.assertIn('<input value="Pay at studio" readonly>', self.html)
+        self.assertNotIn('name="payment_mode"', self.html)
+        self.assertIn('name="terms_accepted" type="checkbox" required', self.html)
         self.assertIn('api("/api/admin/bookings/offline"', self.script)
+        self.assertIn('payment_method: data.get("payment_method") || null', self.script)
+        self.assertNotIn('payment_mode: data.get("payment_mode")', self.script)
+        self.assertIn('terms_accepted: data.has("terms_accepted")', self.script)
         self.assertIn("setupOfflineBookingOptions", self.script)
         self.assertNotIn('offlineBookingForm.elements.booking_date.min', self.script)
+
+    def test_studio_duration_settings_include_one_hour(self) -> None:
+        self.assertIn("function durationOptions(selected = 1)", self.script)
+        self.assertIn("const value = 1 + (index / 2);", self.script)
 
     def test_manage_booking_has_no_razorpay_payment_qr_controls(self) -> None:
         self.assertNotIn('id="show-payment-qr-button"', self.html)
         self.assertNotIn('id="payment-qr-modal"', self.html)
         self.assertNotIn("/payment-qr", self.script)
+
+    def test_manage_booking_records_payment_method_before_marking_paid(self) -> None:
+        self.assertIn('id="payment-flow"', self.html)
+        self.assertIn('id="payment-method"', self.html)
+        self.assertIn('id="payment-amount"', self.html)
+        self.assertIn('id="payment-history-list"', self.html)
+        self.assertIn('booking.payment_method || ""', self.script)
+        self.assertIn("PAYMENT_METHODS_BY_FLOW", self.script)
+        self.assertIn('["pending", "partially_paid"].includes(booking.payment_status)', self.script)
+        self.assertIn("renderPaymentHistory(booking)", self.script)
+        self.assertIn('paymentFlow.value = paymentFlowLabel(booking.payment_mode)', self.script)
+        self.assertIn("Choose the payment method before marking this booking as paid.", self.script)
 
     def test_staff_access_hides_owner_controls_and_keeps_exports_and_blocks(self) -> None:
         self.assertIn('id="staff-user-form"', self.html)

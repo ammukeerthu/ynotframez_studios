@@ -129,15 +129,26 @@ class BookingApplicationServiceTest(unittest.TestCase):
         self.assertEqual(len(day.slots), 24)
         self.assertLessEqual(len(statements), 6)
 
-    def test_booking_requires_a_minimum_of_two_hours(self) -> None:
+    def test_booking_requires_a_minimum_of_one_hour(self) -> None:
+        one_hour_available, _ = self.service.check_availability(
+            self.availability(start_time=time(10, 0), duration_hours=1)
+        )
         available, message = self.service.check_availability(
-            self.availability(start_time=time(11, 30), duration_hours=1.5)
+            self.availability(start_time=time(11, 30), duration_hours=0.5)
         )
 
+        self.assertTrue(one_hour_available)
         self.assertFalse(available)
-        self.assertIn("between 2", message)
+        self.assertIn("between 1", message)
         with self.assertRaises(ValueError):
-            self.booking(start_time=time(11, 30), duration_hours=1.5)
+            self.booking(start_time=time(11, 30), duration_hours=0.5)
+
+    def test_one_hour_booking_uses_one_hour_of_studio_pricing(self) -> None:
+        result = self.service.create_booking(self.booking(duration_hours=1))
+
+        self.assertEqual(result.duration_hours, 1)
+        self.assertEqual(result.total_amount, 1000)
+        self.assertEqual(PaymentService(self.db).get(result.id).amount, 1000)
 
     def test_schedule_rejects_non_half_hour_increments(self) -> None:
         with self.assertRaises(ValueError):
@@ -172,7 +183,7 @@ class BookingApplicationServiceTest(unittest.TestCase):
         self.assertEqual(payment.amount, 2000)
         self.assertEqual(payment.razorpay_order_id, "order_stub_1")
         stored_booking = self.db.get(Booking, result.id)
-        self.assertEqual(stored_booking.terms_accepted, "v1")
+        self.assertEqual(stored_booking.terms_accepted, "v2")
         self.assertTrue((stored_booking.calendar_event_id or "").startswith("gcal_stub_"))
         self.service.email.send_payment_hold.assert_called_once_with(
             stored_booking
@@ -228,6 +239,39 @@ class BookingApplicationServiceTest(unittest.TestCase):
         self.assertTrue((booking.calendar_event_id or "").startswith("gcal_stub_"))
         self.assertEqual(booking.calendar_event_id, hold_event_id)
         self.assertEqual(PaymentService(self.db).get(result.id).status.value, "paid")
+        self.assertIsNotNone(self.db.query(AdminNotification).filter_by(booking_id=result.id).one_or_none())
+
+    def test_partial_initial_payment_does_not_confirm_until_the_balance_is_paid(self) -> None:
+        result = self.service.create_booking(self.booking())
+        booking = self.db.get(Booking, result.id)
+        payments = PaymentService(self.db)
+
+        self.service.confirm_paid_booking(
+            booking,
+            "UPI-PARTIAL-001",
+            payment_method="upi",
+            amount=500,
+        )
+        self.db.commit()
+
+        self.assertEqual(booking.state, BookingState.PAYMENT_PENDING)
+        self.assertEqual(payments.get(result.id).status.value, "partially_paid")
+        self.assertIsNone(self.db.query(AdminNotification).filter_by(booking_id=result.id).one_or_none())
+
+        self.service.confirm_paid_booking(
+            booking,
+            "UPI-BALANCE-001",
+            payment_method="upi",
+            amount=1500,
+        )
+        self.db.commit()
+
+        self.assertEqual(booking.state, BookingState.CONFIRMED)
+        self.assertEqual(payments.get(result.id).status.value, "paid")
+        self.assertEqual(
+            [(entry.amount, entry.provider_reference) for entry in payments.transactions(result.id)],
+            [(500, "UPI-PARTIAL-001"), (1500, "UPI-BALANCE-001")],
+        )
         self.assertIsNotNone(self.db.query(AdminNotification).filter_by(booking_id=result.id).one_or_none())
 
     def test_same_space_cannot_be_double_booked(self) -> None:

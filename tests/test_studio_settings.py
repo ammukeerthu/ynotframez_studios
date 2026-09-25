@@ -119,14 +119,14 @@ class StudioSettingsTest(unittest.TestCase):
         self.assertIsNotNone(booking.checkout)
         self.assertEqual(booking.checkout.amount, 320000)
 
-    def test_seed_migrates_legacy_minimum_duration_to_two_hours(self) -> None:
+    def test_seed_enforces_the_one_hour_global_floor(self) -> None:
         studio = self.db.get(StudioSetting, "standard_small")
         studio.min_duration_hours = 0.5
         self.db.commit()
 
         seed_studio_settings(self.db)
 
-        self.assertEqual(studio.min_duration_hours, 2.0)
+        self.assertEqual(studio.min_duration_hours, 1.0)
 
     def test_seed_migrates_the_previous_default_closing_time(self) -> None:
         studio = self.db.get(StudioSetting, "standard_small")

@@ -9,15 +9,22 @@ from fastapi import APIRouter, Cookie, Depends, HTTPException, Query, Response, 
 from sqlalchemy import delete, func, or_, select
 from sqlalchemy.orm import Session
 
+from app.core.booking_rules import CURRENT_TERMS_VERSION
 from app.core.config import settings
 from app.core.database import get_db
 from app.models.availability import AvailabilityBlock
 from app.models.admin import AdminUser
 from app.models.booking import Booking, BookingState, PaymentMode
 from app.models.notification import AdminNotification
-from app.models.payment import PaymentRecord, PaymentStatus
+from app.models.payment import (
+    PaymentRecord,
+    PaymentStatus,
+    PaymentTransaction,
+    PaymentTransactionType,
+)
 from app.models.studio import StudioPurposeOption, StudioSetting
 from app.schemas.admin import (
+    ADMIN_PAYMENT_METHODS_BY_MODE,
     AdminBookingResponse,
     AdminOfflineBookingCreate,
     AdminBookingUpdate,
@@ -331,18 +338,36 @@ def admin_overview(db: Session = Depends(get_db)) -> AdminOverviewResponse:
         record.booking_id: record
         for record in db.scalars(select(PaymentRecord))
     }
+    transaction_totals: dict[int, int] = {}
+    refund_totals: dict[int, int] = {}
+    for transaction in db.scalars(select(PaymentTransaction)):
+        target = (
+            transaction_totals
+            if transaction.transaction_type == PaymentTransactionType.PAYMENT
+            else refund_totals
+        )
+        target[transaction.booking_id] = target.get(transaction.booking_id, 0) + transaction.amount
     collected_value = 0
     outstanding_value = 0
     for booking in confirmed:
         record = payment_records.get(booking.id)
         amount = record.amount if record else _booking_amount(booking, db)
         payment_status = record.status if record else PaymentStatus.PENDING
-        if payment_status in {PaymentStatus.PAID, PaymentStatus.REFUND_DUE}:
-            collected_value += amount
-        elif payment_status == PaymentStatus.PENDING:
-            outstanding_value += amount
+        received = max(
+            0,
+            transaction_totals.get(booking.id, 0) - refund_totals.get(booking.id, 0),
+        )
+        collected_value += received
+        if payment_status in {PaymentStatus.PENDING, PaymentStatus.PARTIALLY_PAID}:
+            outstanding_value += max(0, amount - transaction_totals.get(booking.id, 0))
     refund_due_value = sum(
-        record.amount for record in payment_records.values() if record.status == PaymentStatus.REFUND_DUE
+        max(
+            0,
+            transaction_totals.get(record.booking_id, 0)
+            - refund_totals.get(record.booking_id, 0),
+        )
+        for record in payment_records.values()
+        if record.status == PaymentStatus.REFUND_DUE
     )
     return AdminOverviewResponse(
         bookings_today=sum(booking.booking_date == today for booking in confirmed),
@@ -641,7 +666,7 @@ def admin_create_offline_booking(
                 customer_name=payload.customer_name.strip(),
                 customer_email=str(payload.customer_email),
                 purpose=selected_purpose,
-                terms_accepted=None,
+                terms_accepted=CURRENT_TERMS_VERSION,
                 payment_mode=PaymentMode.PAY_AT_STUDIO,
             )
             if requested_start > studio_now and not service.calendar.is_available(booking, space=space):
@@ -658,6 +683,7 @@ def admin_create_offline_booking(
                     mode=PaymentMode.PAY_AT_STUDIO,
                     amount=payload.total_amount,
                     status=PaymentStatus.PENDING,
+                    payment_method=payload.payment_method,
                 )
             )
             calendar_event_id = service.calendar.create_event(booking)
@@ -717,9 +743,13 @@ def admin_export_bookings(
             "Email",
             "Phone",
             "Purpose",
-            "Payment mode",
+            "Payment flow",
+            "Payment method",
             "Amount INR",
+            "Amount paid INR",
+            "Balance due INR",
             "Payment reference",
+            "Payment history",
             "Created at UTC",
         ]
     )
@@ -740,8 +770,17 @@ def admin_export_bookings(
                 _csv_safe(row.phone_number),
                 _csv_safe(row.purpose),
                 row.payment_mode or "",
+                row.payment_method or "",
                 row.total_amount,
+                row.amount_paid,
+                row.balance_due,
                 _csv_safe(row.payment_reference),
+                _csv_safe(
+                    " | ".join(
+                        f"{transaction.provider_reference or 'No reference'} (INR {transaction.amount})"
+                        for transaction in row.payment_transactions
+                    )
+                ),
                 row.created_at,
             ]
         )
@@ -853,19 +892,6 @@ def admin_update_booking(
         if not available:
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=message)
 
-    existing_payment = service.payments.get(booking.id)
-    target_amount = int(round(target_space.hourly_rate * payload.duration_hours))
-    if (
-        studio_changed
-        and existing_payment is not None
-        and existing_payment.amount != target_amount
-        and existing_payment.status != PaymentStatus.PENDING
-    ):
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="The studio cannot be changed after payment because the new studio has a different price.",
-        )
-
     try:
         booking.space_id = payload.space_id
         booking.booking_date = new_date
@@ -873,7 +899,7 @@ def admin_update_booking(
         booking.customer_email = str(payload.customer_email)
         payment_record = (
             service.payments.sync_pending_amount(booking)
-            if studio_changed or booking.payment_mode != PaymentMode.PAY_AT_STUDIO
+            if studio_changed
             else service.payments.ensure(booking)
         )
         if booking.payment_mode == PaymentMode.PAY_NOW and payment_record.status == PaymentStatus.PENDING:
@@ -940,10 +966,25 @@ def admin_update_payment(
     payments = service.payments
     try:
         if payload.status == PaymentStatus.PAID:
+            payment_mode = booking.payment_mode or PaymentMode.PAY_AT_STUDIO
+            if payload.payment_method not in ADMIN_PAYMENT_METHODS_BY_MODE[payment_mode.value]:
+                raise PaymentLifecycleError(
+                    "Choose a payment method available for this booking's payment flow."
+                )
             if booking.state == BookingState.PAYMENT_PENDING:
-                service.confirm_paid_booking(booking, payload.provider_reference)
+                service.confirm_paid_booking(
+                    booking,
+                    payload.provider_reference,
+                    payment_method=payload.payment_method,
+                    amount=payload.amount,
+                )
             elif booking.state == BookingState.CONFIRMED:
-                payments.mark_paid(booking, payload.provider_reference)
+                payments.mark_paid(
+                    booking,
+                    payload.provider_reference,
+                    payment_method=payload.payment_method,
+                    amount=payload.amount,
+                )
             else:
                 raise PaymentLifecycleError("Only a pending or confirmed booking can be marked as paid.")
         else:
@@ -1185,11 +1226,21 @@ def _serialize_booking(booking: Booking, db: Session) -> AdminBookingResponse:
         start = datetime.strptime(f"{booking.booking_date} {booking.start_time}", "%Y-%m-%d %H:%M")
         end_time = (start + timedelta(hours=booking.duration_hours)).strftime("%H:%M")
     space = get_space_by_id(booking.space_id, db, include_inactive=True)
-    payment = PaymentService(db).get(booking.id)
+    payment_service = PaymentService(db)
+    payment = payment_service.get(booking.id)
+    transactions = payment_service.transactions(booking.id)
     inferred_payment_status = (
         PaymentStatus.VOID
         if booking.state in {BookingState.CANCELLED, BookingState.EXPIRED}
         else PaymentStatus.PENDING
+    )
+    total_amount = payment.amount if payment else _booking_amount(booking, db)
+    amount_paid = payment_service.net_received(booking.id) if payment else 0
+    balance_due = (
+        max(0, total_amount - payment_service.payment_total(booking.id))
+        if booking.state == BookingState.CONFIRMED
+        and (payment is None or payment.status not in {PaymentStatus.REFUND_DUE, PaymentStatus.REFUNDED, PaymentStatus.VOID})
+        else 0
     )
     return AdminBookingResponse(
         id=booking.id,
@@ -1207,9 +1258,24 @@ def _serialize_booking(booking: Booking, db: Session) -> AdminBookingResponse:
         purpose=booking.purpose,
         terms_accepted=booking.terms_accepted,
         payment_mode=booking.payment_mode.value if booking.payment_mode else None,
+        payment_method=payment.payment_method if payment else None,
         payment_status=(payment.status if payment else inferred_payment_status).value,
         payment_reference=payment.provider_reference if payment else None,
-        total_amount=payment.amount if payment else _booking_amount(booking, db),
+        total_amount=total_amount,
+        amount_paid=amount_paid,
+        balance_due=balance_due,
+        payment_transactions=[
+            {
+                "id": transaction.id,
+                "transaction_type": transaction.transaction_type.value,
+                "amount": transaction.amount,
+                "payment_mode": transaction.mode.value,
+                "payment_method": transaction.payment_method,
+                "provider_reference": transaction.provider_reference,
+                "occurred_at": transaction.occurred_at.isoformat(),
+            }
+            for transaction in transactions
+        ],
         created_at=booking.created_at.isoformat(),
     )
 

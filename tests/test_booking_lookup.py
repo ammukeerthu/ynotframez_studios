@@ -66,6 +66,8 @@ class CustomerBookingLookupTest(unittest.TestCase):
         self.assertEqual(result.start_time, "14:30")
         self.assertEqual(result.end_time, "16:30")
         self.assertEqual(result.total_amount, 2000)
+        self.assertEqual(result.amount_paid, 0)
+        self.assertEqual(result.balance_due, 2000)
         self.assertEqual(result.payment_method, "pending")
         self.assertIsNone(result.payment_link)
         self.assertIsNotNone(result.checkout)
@@ -92,13 +94,17 @@ class CustomerBookingLookupTest(unittest.TestCase):
     def test_paid_and_cancelled_states_hide_payment_link(self) -> None:
         paid = admin_update_payment(
             self.created.id,
-            AdminPaymentUpdate(status="paid", provider_reference="LOOKUP-UPI-001"),
+            AdminPaymentUpdate(
+                status="paid",
+                provider_reference="LOOKUP-UPI-001",
+                payment_method="upi",
+            ),
             self.db,
         )
         paid_result = self.lookup()
         self.assertEqual(paid.payment_status, "paid")
         self.assertEqual(paid_result.payment_status, "paid")
-        self.assertEqual(paid_result.payment_method, "recorded_by_studio")
+        self.assertEqual(paid_result.payment_method, "upi")
         self.assertIsNone(paid_result.payment_link)
         self.assertIsNone(paid_result.checkout)
 
@@ -106,20 +112,25 @@ class CustomerBookingLookupTest(unittest.TestCase):
         cancelled_result = self.lookup()
         self.assertEqual(cancelled_result.booking_status, "cancelled")
         self.assertEqual(cancelled_result.payment_status, "refund_due")
-        self.assertEqual(cancelled_result.payment_method, "recorded_by_studio")
+        self.assertEqual(cancelled_result.payment_method, "upi")
         self.assertIsNone(cancelled_result.payment_link)
         self.assertIsNone(cancelled_result.checkout)
 
     def test_existing_razorpay_payment_method_is_backfilled(self) -> None:
         admin_update_payment(
             self.created.id,
-            AdminPaymentUpdate(status="paid", provider_reference="pay_existing"),
+            AdminPaymentUpdate(
+                status="paid",
+                provider_reference="pay_existing",
+                payment_method="other",
+            ),
             self.db,
         )
         payment = PaymentService(self.db).get(self.created.id)
         payment.razorpay_order_id = "order_existing"
         payment.razorpay_payment_id = "pay_existing"
         payment.razorpay_method = None
+        payment.payment_method = None
         self.db.commit()
         provider_payment = {
             "id": "pay_existing",

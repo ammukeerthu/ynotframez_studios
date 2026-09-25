@@ -9,9 +9,9 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800&amp;display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/admin.css?v=20260924-1">
+  <link rel="stylesheet" href="/static/admin.css?v=20260925-1">
   <script src="/static/studio_cache.js?v=20260908-1" defer></script>
-  <script src="/static/admin.js?v=20260924-1" defer></script>
+  <script src="/static/admin.js?v=20260925-1" defer></script>
 </head>
 <body>
   <section id="login-view" class="login-view" hidden>
@@ -192,8 +192,12 @@
       </div>
       <div class="payment-control">
         <div><p>PAYMENT</p><strong id="booking-payment-status">Pending</strong><small id="booking-payment-summary"></small></div>
+        <label><span>PAYMENT FLOW</span><input id="payment-flow" value="Pay at studio" readonly></label>
+        <label><span>PAYMENT METHOD</span><select id="payment-method"></select></label>
+        <label><span>PAYMENT AMOUNT (₹)</span><input id="payment-amount" type="number" min="1" max="10000000" step="1"></label>
         <label><span>PAYMENT / REFUND REFERENCE</span><input id="payment-reference" maxlength="180" placeholder="Cash, UPI reference, Razorpay ID…"></label>
-        <button id="payment-action-button" type="button" hidden>Mark paid</button>
+        <button id="payment-action-button" type="button" hidden>Record payment</button>
+        <div class="payment-history"><p>PAYMENT HISTORY</p><div id="payment-history-list"></div></div>
       </div>
       <div id="booking-edit-message" class="form-message" role="alert" hidden></div>
       <div class="booking-modal-actions"><button id="cancel-booking-button" class="cancel-booking" type="button">Cancel booking</button><button id="save-booking-button" class="save-password" type="submit">Save changes <span>→</span></button></div>
@@ -214,7 +218,10 @@
         <label><span>EMAIL</span><input name="customer_email" type="email" maxlength="255" required></label>
         <label><span>PHONE</span><input name="phone_number" minlength="7" maxlength="32" required></label>
         <label><span>PURPOSE</span><select name="purpose" required></select></label>
+        <label><span>PAYMENT FLOW</span><input value="Pay at studio" readonly></label>
+        <label><span>PAYMENT METHOD</span><select name="payment_method"></select></label>
         <label class="full"><span>AMOUNT CHARGED (₹)</span><input name="total_amount" type="number" min="0" max="10000000" step="1" required></label>
+        <label class="full offline-terms-confirmation"><input name="terms_accepted" type="checkbox" required><span>I confirm the current booking terms were shared offline and accepted by the customer.</span></label>
       </div>
       <div id="offline-booking-message" class="form-message" role="alert" hidden></div>
       <div class="booking-modal-actions offline-booking-actions"><button id="create-offline-booking-button" class="save-password" type="submit">Create booking <span>→</span></button></div>

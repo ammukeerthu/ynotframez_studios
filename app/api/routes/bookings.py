@@ -85,6 +85,8 @@ def _razorpay_method(payment: dict) -> str | None:
 
 
 def _customer_payment_method(booking: Booking, record: PaymentRecord | None) -> str:
+    if record and record.payment_method:
+        return record.payment_method
     if record and record.razorpay_method:
         return record.razorpay_method
     if booking.payment_mode == PaymentMode.PAY_AT_STUDIO:
@@ -121,6 +123,7 @@ def _backfill_razorpay_method(service: BookingApplicationService, record: Paymen
     if not method:
         return False
     record.razorpay_method = method
+    record.payment_method = method
     return True
 
 
@@ -247,6 +250,7 @@ def verify_razorpay_payment(
     if payment.get("status") != "captured":
         record.razorpay_payment_id = payload.razorpay_payment_id
         record.razorpay_method = method
+        record.payment_method = method
         db.commit()
         return service.booking_response(booking)
     if booking.state not in {BookingState.PAYMENT_PENDING, BookingState.CONFIRMED}:
@@ -415,6 +419,12 @@ def lookup_booking(
         end_time=(start + timedelta(hours=booking.duration_hours)).strftime("%H:%M"),
         duration_hours=booking.duration_hours,
         total_amount=payment.amount if payment else payments.amount_for(booking),
+        amount_paid=payments.net_received(booking.id) if payment else 0,
+        balance_due=(
+            payments.balance_due(booking.id)
+            if payment_status in {PaymentStatus.PENDING, PaymentStatus.PARTIALLY_PAID}
+            else 0
+        ),
         customer_name=booking.customer_name or "Customer",
         customer_email=booking.customer_email,
         payment_mode=booking.payment_mode.value if booking.payment_mode else PaymentMode.PAY_AT_STUDIO.value,

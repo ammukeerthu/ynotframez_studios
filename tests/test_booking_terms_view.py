@@ -35,6 +35,14 @@ class BookingTermsViewTests(unittest.TestCase):
         self.assertTrue(self.pdf_path.is_file())
         self.assertTrue(self.pdf_path.read_bytes().startswith(b"%PDF"))
 
+    def test_terms_state_the_one_hour_minimum(self) -> None:
+        self.assertIn("The minimum studio booking duration is 1 hour.", self.booking_html)
+        self.assertNotIn("The minimum studio booking duration is 2 hours.", self.booking_html)
+        self.assertEqual(self.booking_html.count("ynotframez-studio-booking-terms.pdf?v=2"), 2)
+        pdf_bytes = self.pdf_path.read_bytes()
+        self.assertIn(b"The minimum studio booking duration is 1 hour.", pdf_bytes)
+        self.assertNotIn(b"The minimum studio booking duration is 2 hours.", pdf_bytes)
+
     def test_make_another_booking_restores_the_studio_selection(self) -> None:
         self.assertIn("function startNewBooking()", self.booking_script)
         self.assertIn('document.querySelector("#confirmation").hidden = true;', self.booking_script)

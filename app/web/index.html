@@ -10,7 +10,7 @@
   <script src="https://checkout.razorpay.com/v1/checkout.js" defer></script>
   <script src="/static/razorpay_checkout.js" defer></script>
   <script src="/static/studio_cache.js?v=20260908-1" defer></script>
-  <script src="/static/app.js?v=20260914-1" defer></script>
+  <script src="/static/app.js?v=20260924-1" defer></script>
 </head>
 <body>
   <header class="site-header">
@@ -71,7 +71,7 @@
           <input id="start-time" name="start_time" type="hidden">
           <input id="duration" name="duration_hours" type="hidden">
           <div class="slot-heading"><span>AVAILABLE TIMES</span><small id="operating-hours">Choose a date to load studio times</small></div>
-          <div id="slot-grid" class="slot-grid"><p>Choose your date, then select a start time for the minimum 2-hour booking.</p></div>
+          <div id="slot-grid" class="slot-grid"><p>Choose your date, then select a start time for the minimum 1-hour booking.</p></div>
           <div class="slot-legend"><span><i class="available"></i>Available</span><span><i class="selected"></i>Selected</span><span><i class="unavailable"></i>Booked / unavailable</span></div>
           <div class="price-strip"><div><small>ESTIMATED TOTAL</small><strong id="estimated-total">₹0</strong></div><p id="slot-note">Select a date and time to check availability.</p></div>
           <div class="form-actions"><button class="button secondary" type="button" data-back>← Back</button><button class="button primary" type="button" data-next>Check availability <span>→</span></button></div>
@@ -90,7 +90,7 @@
           </div>
           <div class="terms">
             <input id="terms-accepted" name="terms_accepted" type="checkbox" required>
-            <label for="terms-accepted">I’ve read and accept the selected studio’s rules and the <a id="terms-open" href="/static/legal/ynotframez-studio-booking-terms.pdf">Terms and Conditions</a>.</label>
+            <label for="terms-accepted">I’ve read and accept the selected studio’s rules and the <a id="terms-open" href="/static/legal/ynotframez-studio-booking-terms.pdf?v=2">Terms and Conditions</a>.</label>
           </div>
           <div class="form-actions"><button class="button secondary" type="button" data-back>← Back</button><button class="button primary" type="button" data-next>Review booking <span>→</span></button></div>
         </section>
@@ -191,7 +191,7 @@
         <section>
           <h3>2. Studio Rental Duration</h3>
           <ol>
-            <li>The minimum studio booking duration is 2 hours.</li>
+            <li>The minimum studio booking duration is 1 hour.</li>
             <li>Studio rental is charged based on the reserved time slot. The booking commences at the scheduled start time and concludes at the scheduled end time, irrespective of the client’s actual arrival time. Late arrival by the client does not extend the booking duration.</li>
             <li>The booking end time refers to the time by which all shooting activities, equipment packing, cleanup, and exit procedures must be completed.</li>
             <li>Setup time, equipment arrangement, makeup preparation, costume changes, and pack-up time are included within the booked duration and will not be provided as additional complimentary time.</li>
@@ -259,7 +259,7 @@
 
       </div>
       <div class="terms-dialog-actions">
-        <a href="/static/legal/ynotframez-studio-booking-terms.pdf" target="_blank" rel="noopener">Open original PDF</a>
+        <a href="/static/legal/ynotframez-studio-booking-terms.pdf?v=2" target="_blank" rel="noopener">Open original PDF</a>
         <span>Closing this window does not accept the terms.</span>
         <button class="button primary" type="button" data-close-terms>OK</button>
       </div>

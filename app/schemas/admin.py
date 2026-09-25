@@ -4,6 +4,20 @@ from pydantic import BaseModel, EmailStr, Field, field_validator, model_validato
 
 from app.core.booking_rules import BOOKING_DURATION_INCREMENT_HOURS, MINIMUM_BOOKING_DURATION_HOURS
 
+ADMIN_PAYMENT_METHODS_BY_MODE = {
+    "pay_at_studio": {"cash", "upi", "card", "bank_transfer", "cheque", "other"},
+    "pay_now": {"upi", "card", "netbanking", "wallet", "bank_transfer", "other"},
+}
+
+
+def _normalized_admin_payment_method(value: str | None) -> str | None:
+    if value is None or not value.strip():
+        return None
+    normalized = value.strip().lower()
+    if normalized not in set().union(*ADMIN_PAYMENT_METHODS_BY_MODE.values()):
+        raise ValueError("Please choose a valid payment method.")
+    return normalized
+
 
 class AdminLoginRequest(BaseModel):
     username: str = Field(min_length=1, max_length=120)
@@ -159,6 +173,16 @@ class AdminStudioUpdate(BaseModel):
         return self
 
 
+class AdminPaymentTransactionResponse(BaseModel):
+    id: int
+    transaction_type: str
+    amount: int
+    payment_mode: str
+    payment_method: str | None
+    provider_reference: str | None
+    occurred_at: str
+
+
 class AdminBookingResponse(BaseModel):
     id: int
     reference: str
@@ -175,9 +199,13 @@ class AdminBookingResponse(BaseModel):
     purpose: str | None
     terms_accepted: str | None
     payment_mode: str | None
+    payment_method: str | None
     payment_status: str
     payment_reference: str | None
     total_amount: int
+    amount_paid: int
+    balance_due: int
+    payment_transactions: list[AdminPaymentTransactionResponse]
     created_at: str
 
 
@@ -191,6 +219,20 @@ class AdminOfflineBookingCreate(BaseModel):
     phone_number: str = Field(min_length=7, max_length=32)
     purpose: str = Field(min_length=3, max_length=1000)
     total_amount: int = Field(ge=0, le=10_000_000)
+    payment_method: str | None = Field(default=None, max_length=40)
+    terms_accepted: bool
+
+    @field_validator("payment_method")
+    @classmethod
+    def validate_payment_method(cls, value: str | None) -> str | None:
+        return _normalized_admin_payment_method(value)
+
+    @field_validator("terms_accepted")
+    @classmethod
+    def require_offline_terms_acceptance(cls, value: bool) -> bool:
+        if not value:
+            raise ValueError("Confirm that the booking terms were shared and accepted offline.")
+        return value
 
     @field_validator("start_time")
     @classmethod
@@ -221,6 +263,8 @@ class AdminBookingUpdate(BaseModel):
 class AdminPaymentUpdate(BaseModel):
     status: str
     provider_reference: str | None = Field(default=None, max_length=180)
+    payment_method: str | None = Field(default=None, max_length=40)
+    amount: int | None = Field(default=None, ge=1, le=10_000_000)
 
     @field_validator("status")
     @classmethod
@@ -229,6 +273,17 @@ class AdminPaymentUpdate(BaseModel):
         if normalized not in {"paid", "refunded"}:
             raise ValueError("Payment status must be paid or refunded.")
         return normalized
+
+    @field_validator("payment_method")
+    @classmethod
+    def validate_payment_method(cls, value: str | None) -> str | None:
+        return _normalized_admin_payment_method(value)
+
+    @model_validator(mode="after")
+    def require_paid_method(self) -> "AdminPaymentUpdate":
+        if self.status == "paid" and self.payment_method is None:
+            raise ValueError("Choose the payment method before marking this booking as paid.")
+        return self
 
 
 class AdminAvailabilityBlockCreate(BaseModel):

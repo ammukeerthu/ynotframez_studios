@@ -159,6 +159,8 @@ class CustomerBookingStatusResponse(BaseModel):
     end_time: str
     duration_hours: float
     total_amount: int
+    amount_paid: int
+    balance_due: int
     customer_name: str
     customer_email: EmailStr
     payment_mode: str

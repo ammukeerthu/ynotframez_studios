@@ -46,7 +46,12 @@ from app.models.admin import AdminUser
 from app.models.availability import AvailabilityBlock
 from app.models.booking import Booking, BookingState
 from app.models.notification import AdminNotification
-from app.models.payment import PaymentRecord, PaymentStatus
+from app.models.payment import (
+    PaymentRecord,
+    PaymentStatus,
+    PaymentTransaction,
+    PaymentTransactionType,
+)
 from app.schemas.admin import (
     AdminChangePasswordRequest,
     AdminAvailabilityBlockCreate,
@@ -548,14 +553,18 @@ class AdminAuthenticationTest(unittest.TestCase):
             self.assertEqual(updated.end_time, "15:00")
             self.assertEqual(updated.customer_name, "Original Customer")
             self.assertEqual(updated.purpose, "Fashion Shoot")
-            self.assertEqual(updated.terms_accepted, "v1")
+            self.assertEqual(updated.terms_accepted, "v2")
             self.assertEqual(updated.total_amount, 2000)
             self.assertEqual(updated.payment_status, "pending")
             self.assertTrue(old_slot)
 
             paid = admin_update_payment(
                 original.id,
-                AdminPaymentUpdate(status="paid", provider_reference="UPI-TEST-001"),
+                AdminPaymentUpdate(
+                    status="paid",
+                    provider_reference="UPI-TEST-001",
+                    payment_method="upi",
+                ),
                 db,
             )
             overview = admin_overview(db)
@@ -564,13 +573,37 @@ class AdminAuthenticationTest(unittest.TestCase):
             self.assertEqual(overview.collected_value, 2000)
             self.assertEqual(overview.outstanding_value, 2000)
 
-            with self.assertRaises(HTTPException) as paid_price_change:
+            upgraded = admin_update_booking(
+                original.id,
+                AdminBookingUpdate(
+                    space_id="premium_large",
+                    booking_date=booking_date,
+                    start_time=time(12, 30),
+                    duration_hours=2,
+                    customer_name="Original Customer",
+                    customer_email="updated@example.com",
+                    phone_number="+919999999999",
+                    purpose="Fashion Shoot",
+                ),
+                db,
+            )
+            self.assertEqual(upgraded.space_id, "premium_large")
+            self.assertEqual(upgraded.total_amount, 3000)
+            self.assertEqual(upgraded.amount_paid, 2000)
+            self.assertEqual(upgraded.balance_due, 1000)
+            self.assertEqual(upgraded.payment_status, "partially_paid")
+            self.assertEqual(
+                [(entry.amount, entry.provider_reference) for entry in upgraded.payment_transactions],
+                [(2000, "UPI-TEST-001")],
+            )
+
+            with self.assertRaises(HTTPException) as downgrade:
                 admin_update_booking(
                     original.id,
                     AdminBookingUpdate(
-                        space_id="premium_large",
+                        space_id="standard_small",
                         booking_date=booking_date,
-                        start_time=time(12, 30),
+                        start_time=time(13),
                         duration_hours=2,
                         customer_name="Original Customer",
                         customer_email="updated@example.com",
@@ -579,14 +612,46 @@ class AdminAuthenticationTest(unittest.TestCase):
                     ),
                     db,
                 )
-            self.assertEqual(paid_price_change.exception.status_code, 409)
+            self.assertEqual(downgrade.exception.status_code, 409)
+
+            upgrade_paid = admin_update_payment(
+                original.id,
+                AdminPaymentUpdate(
+                    status="paid",
+                    amount=1000,
+                    provider_reference="BANK-UPGRADE-001",
+                    payment_method="bank_transfer",
+                ),
+                db,
+            )
+            self.assertEqual(upgrade_paid.payment_status, "paid")
+            self.assertEqual(upgrade_paid.amount_paid, 3000)
+            self.assertEqual(upgrade_paid.balance_due, 0)
+            self.assertEqual(
+                [entry.provider_reference for entry in upgrade_paid.payment_transactions],
+                ["UPI-TEST-001", "BANK-UPGRADE-001"],
+            )
+            transactions = list(
+                db.scalars(
+                    select(PaymentTransaction)
+                    .where(PaymentTransaction.booking_id == original.id)
+                    .order_by(PaymentTransaction.id)
+                )
+            )
+            self.assertEqual(
+                [(entry.transaction_type, entry.amount) for entry in transactions],
+                [
+                    (PaymentTransactionType.PAYMENT, 2000),
+                    (PaymentTransactionType.PAYMENT, 1000),
+                ],
+            )
 
             cancelled = admin_cancel_booking(original.id, db)
             reopened, _ = service.check_availability(
                 AvailabilityRequest(
-                    space_id="standard_small",
+                    space_id="premium_large",
                     booking_date=booking_date,
-                    start_time=time(13),
+                    start_time=time(12, 30),
                     duration_hours=2,
                 )
             )
@@ -601,6 +666,11 @@ class AdminAuthenticationTest(unittest.TestCase):
             )
             self.assertEqual(refunded.payment_status, "refunded")
             self.assertEqual(refunded.payment_reference, "REFUND-TEST-001")
+            self.assertEqual(refunded.amount_paid, 0)
+            self.assertEqual(
+                [entry.transaction_type for entry in refunded.payment_transactions],
+                ["payment", "payment", "refund"],
+            )
 
             with self.assertRaises(HTTPException) as duplicate_cancel:
                 admin_cancel_booking(original.id, db)
@@ -638,6 +708,8 @@ class AdminAuthenticationTest(unittest.TestCase):
                             phone_number="+919999999999",
                             purpose="Fashion Shoot",
                             total_amount=amount,
+                            payment_method="upi" if email == "past@example.com" else None,
+                            terms_accepted=True,
                         ),
                         db,
                     )
@@ -647,13 +719,19 @@ class AdminAuthenticationTest(unittest.TestCase):
             self.assertEqual([item.payment_status for item in created], ["pending"] * 3)
             self.assertEqual([item.total_amount for item in created], [1750, 2000, 2250])
             self.assertEqual([item.payment_mode for item in created], ["pay_at_studio"] * 3)
+            self.assertEqual([item.terms_accepted for item in created], ["v2"] * 3)
+            self.assertEqual([item.payment_method for item in created], ["upi", None, None])
             self.assertTrue(db.get(Booking, created[0].id).calendar_event_id.startswith("gcal_stub_"))
             self.assertTrue(db.get(Booking, created[1].id).calendar_event_id.startswith("gcal_stub_"))
             self.assertTrue(db.get(Booking, created[2].id).calendar_event_id.startswith("gcal_stub_"))
 
             manually_paid = admin_update_payment(
                 created[1].id,
-                AdminPaymentUpdate(status="paid", provider_reference="CASH-OFFLINE-001"),
+                AdminPaymentUpdate(
+                    status="paid",
+                    provider_reference="CASH-OFFLINE-001",
+                    payment_method="cash",
+                ),
                 db,
             )
             self.assertEqual(manually_paid.payment_status, "paid")
@@ -734,6 +812,7 @@ class AdminAuthenticationTest(unittest.TestCase):
                     phone_number="+917777777777",
                     purpose="Fashion Shoot",
                     total_amount=3000,
+                    terms_accepted=True,
                 ),
                 db,
             )
@@ -782,11 +861,16 @@ class AdminAuthenticationTest(unittest.TestCase):
 
             paid = admin_update_payment(
                 created[0].id,
-                AdminPaymentUpdate(status="paid", provider_reference="UPI-OFFLINE-001"),
+                AdminPaymentUpdate(
+                    status="paid",
+                    provider_reference="UPI-OFFLINE-001",
+                    payment_method="upi",
+                ),
                 db,
             )
             self.assertEqual(paid.payment_status, "paid")
             self.assertEqual(paid.payment_reference, "UPI-OFFLINE-001")
+            self.assertEqual(paid.payment_method, "upi")
             self.assertEqual(paid.total_amount, 3000)
 
             with self.assertRaises(HTTPException) as conflict:
@@ -801,6 +885,7 @@ class AdminAuthenticationTest(unittest.TestCase):
                         phone_number="+918888888888",
                         purpose="Fashion Shoot",
                         total_amount=2000,
+                        terms_accepted=True,
                     ),
                     db,
                 )
@@ -866,7 +951,9 @@ class AdminAuthenticationTest(unittest.TestCase):
             self.assertEqual(len(rows), 2)
             self.assertEqual(rows[0][0], "Booking reference")
             self.assertEqual(rows[1][8], "'=Formula Customer")
-            self.assertEqual(rows[1][13], "2000")
+            self.assertEqual(rows[0][12], "Payment flow")
+            self.assertEqual(rows[0][13], "Payment method")
+            self.assertEqual(rows[1][14], "2000")
             self.assertIn("attachment", response.headers["content-disposition"])
 
 

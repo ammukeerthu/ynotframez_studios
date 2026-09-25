@@ -68,13 +68,16 @@ function showBooking(booking) {
   document.querySelector("#result-date").textContent = formatDate(booking.booking_date);
   document.querySelector("#result-time").textContent = `${displayTime(booking.start_time)} to ${displayTime(booking.end_time)}`;
   document.querySelector("#result-duration").textContent = `${booking.duration_hours} hour${booking.duration_hours === 1 ? "" : "s"}`;
-  document.querySelector("#result-total").textContent = currency.format(booking.total_amount);
+  document.querySelector("#result-total").textContent = booking.balance_due
+    ? `${currency.format(booking.total_amount)} · ${currency.format(booking.balance_due)} due`
+    : currency.format(booking.total_amount);
   document.querySelector("#result-payment-mode").textContent = paymentMethodLabel(booking.payment_method);
 
   const note = document.querySelector("#result-note");
   if (booking.booking_status === "cancelled") note.textContent = "This booking has been cancelled. Contact the studio if you need help with a refund or a new session.";
   else if (booking.booking_status === "expired" && booking.payment_status === "refund_due") note.textContent = "Payment arrived after this hold expired and requires studio review. Do not pay again; contact the studio with your booking reference.";
   else if (booking.booking_status === "expired") note.textContent = "This unpaid booking hold has expired, and the studio time is available to others. Please create a new booking.";
+  else if (booking.payment_status === "partially_paid") note.textContent = `${currency.format(booking.amount_paid)} has been received. The remaining balance is ${currency.format(booking.balance_due)}.`;
   else if (booking.payment_status === "pending") note.textContent = "Your studio time is temporarily held while payment is pending.";
   else note.textContent = "Your booking is confirmed and the recorded payment is complete.";
 

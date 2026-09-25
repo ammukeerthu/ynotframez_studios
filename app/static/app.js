@@ -235,7 +235,7 @@ function validateStep(step) {
     return false;
   }
   if (step === 2 && state.selectedSlots.length === 0) {
-    showMessage("Select a start time with at least 2 consecutive hours available.");
+    showMessage("Select a start time with at least 1 consecutive hour available.");
     return false;
   }
   if (step === 2 && state.selectedSpace) {
@@ -329,7 +329,7 @@ function renderSlots() {
 
 function minimumSelectionFrom(startTime) {
   const startIndex = state.slots.findIndex((slot) => slot.start_time === startTime);
-  const minimumHours = state.selectedSpace?.min_duration_hours || 2;
+  const minimumHours = state.selectedSpace?.min_duration_hours || 1;
   const requiredSlots = Math.ceil(minimumHours / 0.5);
   const candidate = state.slots.slice(startIndex, startIndex + requiredSlots);
   const consecutive = candidate.every(
@@ -342,7 +342,7 @@ function minimumSelectionFrom(startTime) {
 function selectMinimumDuration(startTime) {
   const candidate = minimumSelectionFrom(startTime);
   if (!candidate) {
-    const minimumHours = state.selectedSpace?.min_duration_hours || 2;
+    const minimumHours = state.selectedSpace?.min_duration_hours || 1;
     showMessage(`Choose a start time with at least ${minimumHours} consecutive hours available.`);
     return false;
   }
@@ -354,7 +354,7 @@ function toggleSlot(startTime) {
   const slot = state.slots.find((item) => item.start_time === startTime);
   if (!slot || slot.status !== "available") return;
   showMessage();
-  const minimumSlots = Math.ceil((state.selectedSpace?.min_duration_hours || 2) / 0.5);
+  const minimumSlots = Math.ceil((state.selectedSpace?.min_duration_hours || 1) / 0.5);
   const existingIndex = state.selectedSlots.findIndex((item) => item.start_time === startTime);
   if (existingIndex >= 0) {
     if (existingIndex === 0 || existingIndex === state.selectedSlots.length - 1) {
@@ -389,8 +389,8 @@ function syncSelectedSlots() {
   const note = document.querySelector("#slot-note");
   note.className = "";
   note.textContent = state.selectedSlots.length
-    ? `${duration} hour${duration === 1 ? "" : "s"} selected. This studio allows ${state.selectedSpace?.min_duration_hours || 2} to ${state.selectedSpace?.max_duration_hours || 12} hours.`
-    : `Select a start time. The minimum ${state.selectedSpace?.min_duration_hours || 2}-hour window will be highlighted automatically.`;
+    ? `${duration} hour${duration === 1 ? "" : "s"} selected. This studio allows ${state.selectedSpace?.min_duration_hours || 1} to ${state.selectedSpace?.max_duration_hours || 12} hours.`
+    : `Select a start time. The minimum ${state.selectedSpace?.min_duration_hours || 1}-hour window will be highlighted automatically.`;
   updatePrice();
   updateLiveSummary();
 }

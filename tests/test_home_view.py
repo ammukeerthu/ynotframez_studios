@@ -33,6 +33,12 @@ class HomeViewTests(unittest.TestCase):
         self.assertIn("/static/home.js?v=20260914-1", self.home_html)
         self.assertIn("/static/marketing.css?v=20260914-1", self.home_html)
 
+    def test_public_booking_copy_uses_the_one_hour_minimum(self) -> None:
+        self.assertIn("Bookings from 1 hour", self.home_html)
+        self.assertIn("Every booking must be at least 1 hour.", self.home_html)
+        self.assertIn("minimum 1-hour booking", self.booking_html)
+        self.assertIn("/static/app.js?v=20260924-1", self.booking_html)
+
     def test_public_pages_reuse_and_refresh_cached_studio_data(self) -> None:
         cache_asset = "/static/studio_cache.js?v=20260908-1"
         self.assertIn(cache_asset, self.home_html)

@@ -117,6 +117,10 @@ class RazorpayCheckoutFlowTest(unittest.TestCase):
         self.assertEqual(self.record.razorpay_payment_id, self.payment_id)
         self.assertEqual(self.record.razorpay_method, "netbanking")
         self.assertTrue((self.booking.calendar_event_id or "").startswith("gcal_stub_"))
+        transactions = PaymentService(self.db).transactions(self.booking.id)
+        self.assertEqual(len(transactions), 1)
+        self.assertEqual(transactions[0].amount, self.record.amount)
+        self.assertEqual(transactions[0].razorpay_payment_id, self.payment_id)
 
     def test_invalid_signature_does_not_mark_payment_paid(self) -> None:
         with patch.object(settings, "razorpay_key_secret", "checkout-secret"):

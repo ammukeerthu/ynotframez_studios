@@ -90,7 +90,7 @@ class BookingStateMachineTest(unittest.TestCase):
 
         self.assertEqual(booking.state, BookingState.PAYMENT_PENDING)
         self.assertEqual(booking.payment_mode, PaymentMode.PAY_NOW)
-        self.assertEqual(booking.terms_accepted, "v1")
+        self.assertEqual(booking.terms_accepted, "v2")
         self.assertIsNotNone(booking.payment_link)
         self.assertTrue((booking.calendar_event_id or "").startswith("gcal_stub_"))
         self.assertIn("Payment link:", response)
@@ -116,7 +116,7 @@ class BookingStateMachineTest(unittest.TestCase):
         self.assertEqual(booking.duration_hours, 2.5)
         self.assertEqual(booking.state, BookingState.ASK_NAME)
 
-    def test_whatsapp_rejects_bookings_shorter_than_two_hours(self) -> None:
+    def test_whatsapp_rejects_bookings_shorter_than_one_hour(self) -> None:
         booking = Booking(
             phone_number="916666666666",
             state=BookingState.ASK_SCHEDULE,
@@ -127,10 +127,10 @@ class BookingStateMachineTest(unittest.TestCase):
 
         response = BookingStateMachine(self.db).handle_message(
             "916666666666",
-            f"{(date.today() + timedelta(days=30)).isoformat()} 14:30 1.5",
+            f"{(date.today() + timedelta(days=30)).isoformat()} 14:30 0.5",
         )
 
-        self.assertIn("minimum duration of 2 hours", response.lower())
+        self.assertIn("minimum duration of 1 hour", response.lower())
         self.assertEqual(booking.state, BookingState.ASK_SCHEDULE)
         self.assertIsNone(booking.duration_hours)
 

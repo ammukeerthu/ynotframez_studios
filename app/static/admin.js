@@ -41,6 +41,16 @@ const MAX_BLOCK_DURATION_HOURS = 12;
 const BOOKING_COLUMN_STORAGE_KEY = "ynf_admin_booking_columns";
 const BOOKING_COLUMNS = ["reference", "customer", "studio", "schedule", "purpose", "terms", "value", "payment", "status", "actions"];
 const LOCKED_BOOKING_COLUMNS = new Set(["reference", "actions"]);
+const PAYMENT_METHODS_BY_FLOW = {
+  pay_at_studio: [
+    ["cash", "Cash"], ["upi", "UPI"], ["card", "Card"],
+    ["bank_transfer", "Bank transfer"], ["cheque", "Cheque"], ["other", "Other"],
+  ],
+  pay_now: [
+    ["upi", "UPI"], ["card", "Card"], ["netbanking", "Net banking"],
+    ["wallet", "Wallet"], ["bank_transfer", "Bank transfer"], ["other", "Other"],
+  ],
+};
 let visibleBookingColumns = loadBookingColumnPreferences();
 const currency = new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 });
 const adminNavLinks = Array.from(document.querySelectorAll(".admin-shell aside nav a[href^='#']"));
@@ -56,6 +66,23 @@ function safe(value) {
 
 function safeAttr(value) {
   return safe(value).replaceAll('"', "&quot;").replaceAll("'", "&#39;");
+}
+
+function paymentFlowLabel(value) {
+  return value === "pay_now" ? "Online" : "Pay at studio";
+}
+
+function syncPaymentMethodSelect(paymentMode, methodSelect, selected = "") {
+  const methods = PAYMENT_METHODS_BY_FLOW[paymentMode] || [];
+  const selectedIsKnown = methods.some(([value]) => value === selected);
+  methodSelect.innerHTML = [
+    '<option value="">Not decided yet</option>',
+    ...methods.map(([value, label]) => `<option value="${safeAttr(value)}">${safe(label)}</option>`),
+    ...(selected && !selectedIsKnown
+      ? [`<option value="${safeAttr(selected)}">${safe(selected.replaceAll("_", " "))}</option>`]
+      : []),
+  ].join("");
+  methodSelect.value = selected;
 }
 
 async function api(url, options = {}) {
@@ -392,14 +419,17 @@ function bookingRow(booking) {
   const terms = booking.terms_accepted
     ? '<span class="status status-confirmed">Accepted</span>'
     : '<span class="status status-void">Not accepted</span>';
+  const paymentLabel = booking.payment_method
+    ? `${paymentFlowLabel(booking.payment_mode)} / ${booking.payment_method.replaceAll("_", " ")}`
+    : paymentFlowLabel(booking.payment_mode);
   return `<tr>
-    <td data-table-column="reference"><b>${safe(booking.reference)}</b><small>${safe(booking.payment_mode?.replaceAll("_", " ") || "No payment mode")}</small></td>
+    <td data-table-column="reference"><b>${safe(booking.reference)}</b><small>${safe(paymentLabel)}</small></td>
     <td data-table-column="customer"><b>${safe(booking.customer_name || "Incomplete booking")}</b><small>${safe(booking.customer_email || booking.phone_number)}</small></td>
     <td data-table-column="studio">${safe(booking.space_name)}</td>
     <td data-table-column="schedule">${safe(date)}<small>${safe(time)}</small></td>
     <td data-table-column="purpose" class="booking-purpose-cell" title="${safeAttr(purpose)}"><span>${safe(purpose)}</span></td>
     <td data-table-column="terms">${terms}</td>
-    <td data-table-column="value">${safe(currency.format(booking.total_amount))}</td>
+    <td data-table-column="value">${safe(currency.format(booking.total_amount))}<small>Paid ${safe(currency.format(booking.amount_paid || 0))} · Balance ${safe(currency.format(booking.balance_due || 0))}</small></td>
     <td data-table-column="payment"><span class="status status-${safe(booking.payment_status)}">${safe(booking.payment_status.replaceAll("_", " "))}</span></td>
     <td data-table-column="status"><span class="status status-${safe(booking.status)}">${safe(booking.status.replaceAll("_", " "))}</span></td>
     <td data-table-column="actions">${action}</td>
@@ -425,9 +455,9 @@ function halfHourOptions(selected = "", startIndex = 0, endIndex = 48) {
   }).join("");
 }
 
-function durationOptions(selected = 2) {
-  return Array.from({ length: 21 }, (_, index) => {
-    const value = 2 + (index / 2);
+function durationOptions(selected = 1) {
+  return Array.from({ length: 23 }, (_, index) => {
+    const value = 1 + (index / 2);
     return `<option value="${value}"${value === Number(selected) ? " selected" : ""}>${value} hour${value === 1 ? "" : "s"}</option>`;
   }).join("");
 }
@@ -476,6 +506,10 @@ function setupOfflineBookingOptions({ refreshAmount = true } = {}) {
 
 function openOfflineBookingModal() {
   offlineBookingForm.reset();
+  syncPaymentMethodSelect(
+    "pay_at_studio",
+    offlineBookingForm.elements.payment_method,
+  );
   offlineBookingForm.elements.booking_date.value = localDate();
   const filteredSpace = bookingFilters.elements.space_id.value;
   if (studioSettings.some((studio) => studio.id === filteredSpace && studio.is_active)) {
@@ -789,13 +823,39 @@ function syncBookingEditPaymentEstimate() {
   if (!booking) return;
   const selectedSpace = studioById(bookingEditForm.elements.space_id.value);
   const studioChanged = Boolean(selectedSpace && selectedSpace.id !== booking.space_id);
-  const recalculatesPendingAmount = studioChanged && booking.payment_status === "pending";
-  const amount = recalculatesPendingAmount
+  const amount = studioChanged
     ? Math.round(selectedSpace.hourly_rate * Number(bookingEditForm.elements.duration_hours.value || 0))
     : booking.total_amount;
-  const suffix = recalculatesPendingAmount ? " after studio change" : "";
+  const suffix = studioChanged ? " after studio change" : "";
+  const amountPaid = booking.amount_paid || 0;
+  const balanceDue = Math.max(0, amount - amountPaid);
+  const paymentDescription = booking.payment_method
+    ? `${paymentFlowLabel(booking.payment_mode)} · ${booking.payment_method.replaceAll("_", " ")}`
+    : paymentFlowLabel(booking.payment_mode);
   document.querySelector("#booking-payment-summary").textContent =
-    `${booking.payment_mode?.replaceAll("_", " ") || "No mode"} · ${currency.format(amount)}${suffix}`;
+    `${paymentDescription} · Total ${currency.format(amount)} · Paid ${currency.format(amountPaid)} · Balance ${currency.format(balanceDue)}${suffix}`;
+}
+
+function renderPaymentHistory(booking) {
+  const list = document.querySelector("#payment-history-list");
+  const transactions = booking.payment_transactions || [];
+  if (!transactions.length) {
+    list.innerHTML = '<div class="payment-history-list-empty">No payments recorded yet.</div>';
+    return;
+  }
+  list.innerHTML = transactions.map((transaction) => {
+    const method = transaction.payment_method?.replaceAll("_", " ") || "Method not recorded";
+    const reference = transaction.provider_reference || "No reference";
+    const timestamp = new Date(transaction.occurred_at).toLocaleString("en-IN", {
+      dateStyle: "medium",
+      timeStyle: "short",
+    });
+    return `<div class="payment-history-entry">
+      <b>${safe(transaction.transaction_type)} · ${safe(currency.format(transaction.amount))}</b>
+      <span>${safe(method)}</span>
+      <span>${safe(reference)} · ${safe(timestamp)}</span>
+    </div>`;
+  }).join("");
 }
 
 function configureBookingStudioOptions(booking) {
@@ -882,18 +942,34 @@ function openBookingModal(bookingId) {
   document.querySelector("#cancel-booking-button").hidden = !editable;
   document.querySelector("#booking-payment-status").textContent = booking.payment_status.replaceAll("_", " ");
   syncBookingEditPaymentEstimate();
+  renderPaymentHistory(booking);
   const paymentReference = document.querySelector("#payment-reference");
-  paymentReference.value = booking.payment_reference || "";
+  paymentReference.value = "";
   paymentReference.disabled = !isOwner();
+  const paymentFlow = document.querySelector("#payment-flow");
+  paymentFlow.value = paymentFlowLabel(booking.payment_mode);
+  const paymentMethod = document.querySelector("#payment-method");
+  syncPaymentMethodSelect(
+    booking.payment_mode || "pay_at_studio",
+    paymentMethod,
+    booking.payment_method || "",
+  );
+  const canReceivePayment = ["pending", "partially_paid"].includes(booking.payment_status);
+  paymentMethod.disabled = !isOwner() || !canReceivePayment;
+  const paymentAmount = document.querySelector("#payment-amount");
+  paymentAmount.value = canReceivePayment ? String(booking.balance_due || "") : "";
+  paymentAmount.max = String(booking.balance_due || booking.total_amount || 1);
+  paymentAmount.disabled = !isOwner() || !canReceivePayment;
   const paymentAction = document.querySelector("#payment-action-button");
-  if (isOwner() && booking.payment_status === "pending" && ["payment_pending", "confirmed"].includes(booking.status)) {
+  if (isOwner() && canReceivePayment && ["payment_pending", "confirmed"].includes(booking.status)) {
     paymentAction.hidden = false;
     paymentAction.dataset.status = "paid";
-    paymentAction.textContent = "Mark paid";
+    paymentAction.textContent = "Record payment";
   } else if (isOwner() && booking.payment_status === "refund_due") {
     paymentAction.hidden = false;
     paymentAction.dataset.status = "refunded";
     paymentAction.textContent = "Mark refunded";
+    paymentReference.disabled = false;
   } else {
     paymentAction.hidden = true;
     delete paymentAction.dataset.status;
@@ -1086,6 +1162,8 @@ offlineBookingForm.addEventListener("submit", async (event) => {
         phone_number: data.get("phone_number"),
         purpose: data.get("purpose"),
         total_amount: Number(data.get("total_amount")),
+        payment_method: data.get("payment_method") || null,
+        terms_accepted: data.has("terms_accepted"),
       }),
     });
     offlineBookingModal.hidden = true;
@@ -1266,11 +1344,30 @@ document.querySelector("#payment-action-button").addEventListener("click", async
   if (!status) return;
   const bookingId = bookingEditForm.elements.booking_id.value;
   const reference = document.querySelector("#payment-reference").value;
+  const paymentMethod = document.querySelector("#payment-method").value;
+  const paymentAmount = Number(document.querySelector("#payment-amount").value || 0);
+  if (status === "paid" && !paymentMethod) {
+    const message = document.querySelector("#booking-edit-message");
+    message.textContent = "Choose the payment method before marking this booking as paid.";
+    message.hidden = false;
+    return;
+  }
+  if (status === "paid" && paymentAmount <= 0) {
+    const message = document.querySelector("#booking-edit-message");
+    message.textContent = "Enter the payment amount received.";
+    message.hidden = false;
+    return;
+  }
   button.disabled = true;
   try {
     const booking = await api(`/api/admin/bookings/${bookingId}/payment`, {
       method: "POST",
-      body: JSON.stringify({ status, provider_reference: reference || null }),
+      body: JSON.stringify({
+        status,
+        provider_reference: reference || null,
+        payment_method: paymentMethod || null,
+        amount: status === "paid" ? paymentAmount : null,
+      }),
     });
     bookingModal.hidden = true;
     showDashboardMessage(

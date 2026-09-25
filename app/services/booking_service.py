@@ -12,6 +12,7 @@ from app.core.booking_rules import CURRENT_TERMS_VERSION, MINIMUM_BOOKING_DURATI
 from app.core.config import settings
 from app.models.availability import AvailabilityBlock
 from app.models.booking import Booking, BookingState, PaymentMode
+from app.models.payment import PaymentStatus
 from app.schemas.booking import (
     AvailabilityRequest,
     AvailabilitySlot,
@@ -134,6 +135,8 @@ class BookingApplicationService:
         razorpay_order_id: str | None = None,
         razorpay_payment_id: str | None = None,
         razorpay_method: str | None = None,
+        payment_method: str | None = None,
+        amount: int | None = None,
     ) -> None:
         if not booking.space_id or not booking.booking_date:
             raise ValueError("Booking must have a studio and date before confirmation.")
@@ -145,6 +148,8 @@ class BookingApplicationService:
                 razorpay_order_id=razorpay_order_id,
                 razorpay_payment_id=razorpay_payment_id,
                 razorpay_method=razorpay_method,
+                payment_method=payment_method,
+                amount=amount,
             )
 
     def _confirm_paid_booking_locked(
@@ -155,6 +160,8 @@ class BookingApplicationService:
         razorpay_order_id: str | None = None,
         razorpay_payment_id: str | None = None,
         razorpay_method: str | None = None,
+        payment_method: str | None = None,
+        amount: int | None = None,
     ) -> None:
         """Reserve the studio only after a verified or owner-recorded payment."""
         if booking.state == BookingState.CONFIRMED:
@@ -165,7 +172,11 @@ class BookingApplicationService:
                 if razorpay_payment_id:
                     payment.razorpay_payment_id = razorpay_payment_id
                 if razorpay_method:
-                    payment.razorpay_method = razorpay_method.strip().lower()
+                    normalized_razorpay_method = razorpay_method.strip().lower()
+                    payment.razorpay_method = normalized_razorpay_method
+                    payment.payment_method = normalized_razorpay_method
+                elif payment_method:
+                    payment.payment_method = payment_method.strip().lower()
             return
         if booking.state != BookingState.PAYMENT_PENDING:
             raise ValueError("Only a payment-pending booking can be confirmed.")
@@ -182,15 +193,22 @@ class BookingApplicationService:
         if not available:
             raise BookingUnavailableError(message)
         payment = self.payments.get(booking.id)
-        if payment is None or payment.status.value != "pending":
+        if payment is None or payment.status not in {
+            PaymentStatus.PENDING,
+            PaymentStatus.PARTIALLY_PAID,
+        }:
             raise ValueError("The booking does not have a pending payment.")
-        self.payments.mark_paid(
+        payment = self.payments.mark_paid(
             booking,
             provider_reference,
             razorpay_order_id=razorpay_order_id,
             razorpay_payment_id=razorpay_payment_id,
             razorpay_method=razorpay_method,
+            payment_method=payment_method,
+            amount=amount,
         )
+        if payment.status != PaymentStatus.PAID:
+            return
         booking.calendar_event_id = (
             self.calendar.update_event(booking)
             if booking.calendar_event_id

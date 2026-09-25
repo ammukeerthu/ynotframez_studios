@@ -93,8 +93,8 @@ class BookingStateMachine:
         booking.state = BookingState.ASK_SCHEDULE
         return (
             "Please send booking details as: YYYY-MM-DD HH:MM duration_hours\n"
-            "Bookings require at least 2 hours and can use 30-minute steps. "
-            "Example: 2026-06-15 14:30 2"
+            "Bookings require at least 1 hour and can use 30-minute steps. "
+            "Example: 2026-06-15 14:30 1"
         )
 
     def _handle_schedule(self, booking: Booking, text: str) -> str:
@@ -105,7 +105,7 @@ class BookingStateMachine:
         except ValueError:
             return (
                 "Please use this format: YYYY-MM-DD HH:MM duration_hours\n"
-                "Example: 2026-06-15 14:30 2"
+                "Example: 2026-06-15 14:30 1"
             )
 
         if (
@@ -113,7 +113,7 @@ class BookingStateMachine:
             or duration_hours < MINIMUM_BOOKING_DURATION_HOURS
             or not (duration_hours * 2).is_integer()
         ):
-            return "Start time and duration must use 30-minute steps, with a minimum duration of 2 hours."
+            return "Start time and duration must use 30-minute steps, with a minimum duration of 1 hour."
 
         booking.booking_date = booking_date
         booking.start_time = start_time

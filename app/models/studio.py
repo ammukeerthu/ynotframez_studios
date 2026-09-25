@@ -27,7 +27,7 @@ class StudioSetting(Base):
     cover_image: Mapped[str] = mapped_column(String(1000))
     opening_time: Mapped[str] = mapped_column(String(5), default="09:00")
     closing_time: Mapped[str] = mapped_column(String(5), default="21:00")
-    min_duration_hours: Mapped[float] = mapped_column(Float, default=2.0)
+    min_duration_hours: Mapped[float] = mapped_column(Float, default=1.0)
     max_duration_hours: Mapped[float] = mapped_column(Float, default=12.0)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
