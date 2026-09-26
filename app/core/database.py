@@ -145,6 +145,18 @@ def apply_schema_compatibility_updates(target_engine: Engine | None = None) -> N
                             "WHERE space_id = 'premium_large' AND purpose = 'Family Shoots'"
                         )
                     )
+    if "availability_blocks" in table_names:
+        block_columns = {
+            column["name"] for column in inspector.get_columns("availability_blocks")
+        }
+        if "calendar_event_id" not in block_columns:
+            with migration_engine.begin() as connection:
+                connection.execute(
+                    text(
+                        "ALTER TABLE availability_blocks "
+                        "ADD COLUMN calendar_event_id VARCHAR(120)"
+                    )
+                )
     if "payment_records" not in table_names:
         return
     columns = {column["name"] for column in inspector.get_columns("payment_records")}

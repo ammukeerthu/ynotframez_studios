@@ -1415,8 +1415,27 @@ def admin_create_availability_block(
             duration_hours=payload.duration_hours,
             reason=payload.reason.strip() or "Owner blocked",
         )
-        db.add(block)
-        db.commit()
+        created_event_id: str | None = None
+        try:
+            db.add(block)
+            db.flush()
+            created_event_id = service.calendar.create_availability_block_event(block)
+            block.calendar_event_id = created_event_id
+            db.commit()
+        except Exception as error:
+            db.rollback()
+            if created_event_id:
+                try:
+                    service.calendar.delete_event(created_event_id, payload.space_id)
+                except Exception as cleanup_error:
+                    print(
+                        "Availability block calendar cleanup failed:",
+                        {"event_id": created_event_id, "error": str(cleanup_error)},
+                    )
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail="The studio block could not be added to Google Calendar, so it was not saved.",
+            ) from error
         db.refresh(block)
     return _serialize_availability_block(block)
 
@@ -1463,25 +1482,82 @@ def admin_delete_availability_block_slot(
 
         left_hours = (slot_start - block_start).total_seconds() / 3600
         right_hours = (block_end - slot_end).total_seconds() / 3600
-        if left_hours == 0 and right_hours == 0:
-            db.delete(block)
-        elif left_hours == 0:
-            block.start_time = slot_end.strftime("%H:%M")
-            block.duration_hours = right_hours
-        elif right_hours == 0:
-            block.duration_hours = left_hours
-        else:
-            block.duration_hours = left_hours
-            db.add(
-                AvailabilityBlock(
+        created_event_ids: list[str] = []
+        deleted_event = False
+        original_event_id = block.calendar_event_id
+        try:
+            if left_hours == 0 and right_hours == 0:
+                service.calendar.delete_availability_block_event(block)
+                deleted_event = bool(block.calendar_event_id)
+                db.delete(block)
+            elif left_hours == 0:
+                block.start_time = slot_end.strftime("%H:%M")
+                block.duration_hours = right_hours
+                updated_event_id = service.calendar.update_availability_block_event(block)
+                if updated_event_id != original_event_id:
+                    created_event_ids.append(updated_event_id)
+                block.calendar_event_id = updated_event_id
+            elif right_hours == 0:
+                block.duration_hours = left_hours
+                updated_event_id = service.calendar.update_availability_block_event(block)
+                if updated_event_id != original_event_id:
+                    created_event_ids.append(updated_event_id)
+                block.calendar_event_id = updated_event_id
+            else:
+                block.duration_hours = left_hours
+                right_block = AvailabilityBlock(
                     space_id=block.space_id,
                     booking_date=block.booking_date,
                     start_time=slot_end.strftime("%H:%M"),
                     duration_hours=right_hours,
                     reason=block.reason,
                 )
-            )
-        db.commit()
+                db.add(right_block)
+                db.flush()
+                right_event_id = service.calendar.create_availability_block_event(right_block)
+                created_event_ids.append(right_event_id)
+                right_block.calendar_event_id = right_event_id
+                updated_event_id = service.calendar.update_availability_block_event(block)
+                if updated_event_id != original_event_id:
+                    created_event_ids.append(updated_event_id)
+                block.calendar_event_id = updated_event_id
+            db.commit()
+        except Exception as error:
+            db.rollback()
+            for event_id in created_event_ids:
+                try:
+                    service.calendar.delete_event(event_id, block.space_id)
+                except Exception as cleanup_error:
+                    print(
+                        "Availability block split cleanup failed:",
+                        {"event_id": event_id, "error": str(cleanup_error)},
+                    )
+            if deleted_event:
+                restored = db.get(AvailabilityBlock, block_id)
+                if restored is not None:
+                    try:
+                        restored.calendar_event_id = service.calendar.create_availability_block_event(restored)
+                        db.commit()
+                    except Exception as restore_error:
+                        db.rollback()
+                        print(
+                            "Availability block calendar restore failed:",
+                            {"block_id": block_id, "error": str(restore_error)},
+                        )
+            elif original_event_id and not original_event_id.startswith("gcal_stub_"):
+                restored = db.get(AvailabilityBlock, block_id)
+                if restored is not None:
+                    try:
+                        service.calendar.update_availability_block_event(restored)
+                    except Exception as restore_error:
+                        print(
+                            "Availability block calendar restore failed:",
+                            {"block_id": block_id, "error": str(restore_error)},
+                        )
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail="The studio block could not be updated in Google Calendar.",
+            ) from error
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
@@ -1497,8 +1573,30 @@ def admin_delete_availability_block(
     block = db.get(AvailabilityBlock, block_id)
     if block is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Availability block not found.")
-    db.delete(block)
-    db.commit()
+    service = BookingApplicationService(db)
+    deleted_event = bool(block.calendar_event_id)
+    try:
+        service.calendar.delete_availability_block_event(block)
+        db.delete(block)
+        db.commit()
+    except Exception as error:
+        db.rollback()
+        if deleted_event:
+            restored = db.get(AvailabilityBlock, block_id)
+            if restored is not None:
+                try:
+                    restored.calendar_event_id = service.calendar.create_availability_block_event(restored)
+                    db.commit()
+                except Exception as restore_error:
+                    db.rollback()
+                    print(
+                        "Availability block calendar restore failed:",
+                        {"block_id": block_id, "error": str(restore_error)},
+                    )
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="The studio block could not be removed from Google Calendar.",
+        ) from error
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 

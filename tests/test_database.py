@@ -116,6 +116,34 @@ class DatabaseConfigurationTests(unittest.TestCase):
         finally:
             engine.dispose()
 
+    def test_existing_availability_blocks_receive_calendar_event_column(self) -> None:
+        engine = create_engine(
+            "sqlite://",
+            connect_args={"check_same_thread": False},
+            poolclass=StaticPool,
+        )
+        try:
+            with engine.begin() as connection:
+                connection.execute(
+                    text(
+                        "CREATE TABLE availability_blocks ("
+                        "id INTEGER PRIMARY KEY, space_id VARCHAR(64), "
+                        "booking_date VARCHAR(16), start_time VARCHAR(8), "
+                        "duration_hours FLOAT, reason VARCHAR(240))"
+                    )
+                )
+
+            apply_schema_compatibility_updates(engine)
+            apply_schema_compatibility_updates(engine)
+
+            columns = {
+                column["name"]
+                for column in inspect(engine).get_columns("availability_blocks")
+            }
+            self.assertIn("calendar_event_id", columns)
+        finally:
+            engine.dispose()
+
     def test_existing_bookings_receive_derived_payment_flows(self) -> None:
         engine = create_engine(
             "sqlite://",

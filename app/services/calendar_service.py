@@ -8,10 +8,12 @@ from zoneinfo import ZoneInfo
 import httplib2
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
+from googleapiclient.errors import HttpError
 from google_auth_httplib2 import AuthorizedHttp
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
+from app.models.availability import AvailabilityBlock
 from app.models.booking import Booking
 from app.services.spaces import StudioSpace, get_space_by_id
 
@@ -228,6 +230,87 @@ class GoogleCalendarService:
         )
         return created["id"]
 
+    def create_availability_block_event(self, block: AvailabilityBlock) -> str:
+        """Create an opaque event for an owner/staff studio block."""
+        body = self._availability_block_event_body(block)
+        if self.mode == "stub":
+            event_id = f"gcal_stub_block_{uuid4().hex[:12]}"
+            print(
+                "Google Calendar stub block created:",
+                {
+                    "event_id": event_id,
+                    "block_id": block.id,
+                    "space_id": block.space_id,
+                    "date": block.booking_date,
+                },
+            )
+            return event_id
+
+        event = self._execute(
+            self.service.events().insert(
+                calendarId=self._calendar_id_for_space(block.space_id),
+                body=body,
+            )
+        )
+        return event["id"]
+
+    def update_availability_block_event(self, block: AvailabilityBlock) -> str:
+        """Update a linked block event, or create one for a legacy block."""
+        if (
+            not block.calendar_event_id
+            or block.calendar_event_id.startswith("gcal_stub_")
+        ):
+            return self.create_availability_block_event(block)
+        if self.mode == "stub":
+            print(
+                "Google Calendar stub block updated:",
+                {"event_id": block.calendar_event_id, "block_id": block.id},
+            )
+            return block.calendar_event_id
+
+        try:
+            event = self._execute(
+                self.service.events().update(
+                    calendarId=self._calendar_id_for_space(block.space_id),
+                    eventId=block.calendar_event_id,
+                    body=self._availability_block_event_body(block),
+                )
+            )
+        except HttpError as error:
+            if getattr(error.resp, "status", None) != 404:
+                raise
+            return self.create_availability_block_event(block)
+        return event["id"]
+
+    def delete_availability_block_event(self, block: AvailabilityBlock) -> None:
+        """Delete a block event; an already-removed event is considered synchronized."""
+        try:
+            self.delete_event(block.calendar_event_id, block.space_id)
+        except HttpError as error:
+            if getattr(error.resp, "status", None) != 404:
+                raise
+
+    def find_availability_block_event(self, block: AvailabilityBlock) -> str | None:
+        """Find an already-created block event so backfills remain idempotent."""
+        if self.mode == "stub":
+            return None
+        start, end = self._availability_block_datetimes(block)
+        response = self._execute(
+            self.service.events().list(
+                calendarId=self._calendar_id_for_space(block.space_id),
+                timeMin=(start - timedelta(days=1)).isoformat(),
+                timeMax=(end + timedelta(days=1)).isoformat(),
+                privateExtendedProperty=f"availability_block_id={block.id}",
+                singleEvents=True,
+            )
+        )
+        events = [
+            event
+            for event in response.get("items", [])
+            if event.get("status") != "cancelled"
+        ]
+        return events[0]["id"] if events else None
+
     def update_event(self, booking: Booking, previous_space_id: str | None = None) -> str:
         if not booking.booking_date or not booking.start_time or not booking.duration_hours:
             raise ValueError("Booking must have a complete schedule before updating its calendar event.")
@@ -365,6 +448,41 @@ class GoogleCalendarService:
                 }
             },
         }
+
+    def _availability_block_event_body(self, block: AvailabilityBlock) -> dict:
+        start, end = self._availability_block_datetimes(block)
+        space = get_space_by_id(block.space_id, self.db, include_inactive=True)
+        space_name = space.name if space else block.space_id
+        reason = (block.reason or "Owner blocked").strip()
+        return {
+            "summary": f"BLOCKED - {reason}",
+            "description": (
+                f"Studio: {space_name}\n"
+                f"Reason: {reason}\n"
+                "Source: Studio Dashboard"
+            ),
+            "start": {"dateTime": start.isoformat(), "timeZone": settings.studio_timezone},
+            "end": {"dateTime": end.isoformat(), "timeZone": settings.studio_timezone},
+            "transparency": "opaque",
+            "colorId": "8",
+            "extendedProperties": {
+                "private": {
+                    "availability_block_id": str(block.id),
+                    "space_id": block.space_id,
+                    "event_type": "availability_block",
+                }
+            },
+        }
+
+    def _availability_block_datetimes(
+        self,
+        block: AvailabilityBlock,
+    ) -> tuple[datetime, datetime]:
+        start = datetime.strptime(
+            f"{block.booking_date} {block.start_time}",
+            "%Y-%m-%d %H:%M",
+        ).replace(tzinfo=self.timezone)
+        return start, start + timedelta(hours=block.duration_hours)
 
     def _start_datetime(self, booking: Booking) -> datetime:
         naive_start = datetime.strptime(f"{booking.booking_date} {booking.start_time}", "%Y-%m-%d %H:%M")

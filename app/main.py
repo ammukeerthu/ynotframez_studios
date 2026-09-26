@@ -9,6 +9,7 @@ from app.api.routes.bookings import router as bookings_router
 from app.api.routes.whatsapp import router as whatsapp_router
 from app.core.config import settings
 from app.core.database import Base, SessionLocal, apply_schema_compatibility_updates, engine
+from app.services.availability_block_sync import sync_missing_availability_block_events
 from app.services.spaces import list_public_spaces_cached, seed_studio_settings
 
 Base.metadata.create_all(bind=engine)
@@ -16,6 +17,23 @@ apply_schema_compatibility_updates()
 with SessionLocal() as seed_session:
     seed_studio_settings(seed_session)
     list_public_spaces_cached(seed_session)
+    if settings.calendar_mode.strip().lower() == "google":
+        try:
+            block_sync = sync_missing_availability_block_events(seed_session)
+            if block_sync.created or block_sync.linked or block_sync.failed:
+                print(
+                    "Availability block calendar startup sync:",
+                    {
+                        "created": block_sync.created,
+                        "linked": block_sync.linked,
+                        "failed": block_sync.failed,
+                    },
+                )
+        except Exception as error:
+            print(
+                "Availability block calendar startup sync could not run:",
+                {"error": f"{type(error).__name__}: {error}"},
+            )
 
 app = FastAPI(
     title=settings.app_name,

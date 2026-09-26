@@ -18,4 +18,5 @@ class AvailabilityBlock(Base):
     start_time: Mapped[str] = mapped_column(String(8))
     duration_hours: Mapped[float] = mapped_column(Float)
     reason: Mapped[str] = mapped_column(String(240), default="Owner blocked")
+    calendar_event_id: Mapped[str | None] = mapped_column(String(120), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)

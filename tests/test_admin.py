@@ -553,6 +553,9 @@ class AdminAuthenticationTest(unittest.TestCase):
 
             self.assertEqual(created.start_time, "14:30")
             self.assertEqual(created.end_time, "16:30")
+            self.assertTrue(
+                db.get(AvailabilityBlock, created.id).calendar_event_id.startswith("gcal_stub_block_")
+            )
             self.assertEqual(statuses["14:00"].status, "available")
             self.assertEqual(statuses["14:30"].status, "blocked")
             self.assertEqual(statuses["15:00"].block_id, created.id)
@@ -590,6 +593,8 @@ class AdminAuthenticationTest(unittest.TestCase):
             self.assertEqual(split_statuses["15:30"].status, "blocked")
             self.assertEqual(split_statuses["16:00"].status, "blocked")
             self.assertEqual(len(remaining_blocks), 2)
+            self.assertTrue(all(block.calendar_event_id for block in remaining_blocks))
+            self.assertEqual(len({block.calendar_event_id for block in remaining_blocks}), 2)
             self.assertEqual(
                 {(block.start_time, block.duration_hours) for block in remaining_blocks},
                 {("14:30", 0.5), ("15:30", 1.0)},

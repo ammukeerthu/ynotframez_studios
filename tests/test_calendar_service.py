@@ -2,7 +2,10 @@ import unittest
 from datetime import datetime
 from unittest.mock import MagicMock, patch
 
+from googleapiclient.errors import HttpError
+
 from app.models.booking import Booking
+from app.models.availability import AvailabilityBlock
 from app.core.config import settings
 from app.services.calendar_service import (
     GoogleCalendarService,
@@ -138,6 +141,87 @@ class GoogleCalendarServiceTest(unittest.TestCase):
         self.assertEqual(body["transparency"], "opaque")
         self.assertEqual(body["extendedProperties"]["private"]["booking_status"], "payment_pending")
         self.assertIn("Hold expires:", body["description"])
+
+    def test_availability_block_creates_an_opaque_reasoned_event(self) -> None:
+        service = self.service()
+        service.mode = "google"
+        service.service = MagicMock()
+        events = service.service.events.return_value
+        events.insert.return_value.execute.return_value = {"id": "block-event"}
+        block = AvailabilityBlock(
+            id=12,
+            space_id="standard_small",
+            booking_date="2026-09-20",
+            start_time="14:30",
+            duration_hours=1.5,
+            reason="Collaboration",
+        )
+
+        event_id = service.create_availability_block_event(block)
+
+        body = events.insert.call_args.kwargs["body"]
+        self.assertEqual(event_id, "block-event")
+        self.assertEqual(events.insert.call_args.kwargs["calendarId"], "standard-calendar")
+        self.assertEqual(body["summary"], "BLOCKED - Collaboration")
+        self.assertEqual(body["transparency"], "opaque")
+        self.assertEqual(body["colorId"], "8")
+        self.assertEqual(
+            body["extendedProperties"]["private"]["availability_block_id"],
+            "12",
+        )
+        self.assertEqual(body["extendedProperties"]["private"]["space_id"], "standard_small")
+        self.assertIn("Studio: Cube", body["description"])
+        self.assertIn("Reason: Collaboration", body["description"])
+
+    def test_availability_block_update_reuses_its_linked_event(self) -> None:
+        service = self.service()
+        service.mode = "google"
+        service.service = MagicMock()
+        events = service.service.events.return_value
+        events.update.return_value.execute.return_value = {"id": "block-event"}
+        block = AvailabilityBlock(
+            id=12,
+            space_id="premium_large",
+            booking_date="2026-09-20",
+            start_time="15:00",
+            duration_hours=1,
+            reason="Maintenance",
+            calendar_event_id="block-event",
+        )
+
+        event_id = service.update_availability_block_event(block)
+
+        self.assertEqual(event_id, "block-event")
+        events.update.assert_called_once()
+        self.assertEqual(events.update.call_args.kwargs["calendarId"], "premium-calendar")
+        self.assertEqual(events.update.call_args.kwargs["eventId"], "block-event")
+        self.assertEqual(events.update.call_args.kwargs["body"]["summary"], "BLOCKED - Maintenance")
+
+    def test_missing_availability_block_event_is_recreated_or_treated_as_deleted(self) -> None:
+        service = self.service()
+        service.mode = "google"
+        service.service = MagicMock()
+        events = service.service.events.return_value
+        missing = HttpError(MagicMock(status=404, reason="Not found"), b"{}")
+        events.update.return_value.execute.side_effect = missing
+        events.insert.return_value.execute.return_value = {"id": "replacement-block-event"}
+        block = AvailabilityBlock(
+            id=12,
+            space_id="standard_small",
+            booking_date="2026-09-20",
+            start_time="15:00",
+            duration_hours=1,
+            reason="Maintenance",
+            calendar_event_id="missing-block-event",
+        )
+
+        event_id = service.update_availability_block_event(block)
+
+        self.assertEqual(event_id, "replacement-block-event")
+        events.insert.assert_called_once()
+
+        events.delete.return_value.execute.side_effect = missing
+        service.delete_availability_block_event(block)
 
     def test_moving_a_booking_moves_its_google_event_between_calendars(self) -> None:
         service = self.service()
