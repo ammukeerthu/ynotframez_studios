@@ -715,17 +715,18 @@ function setupHalfHourBlockOptions() {
     const minutes = (openingIndex + offset) * 30;
     return `${String(Math.floor(minutes / 60)).padStart(2, "0")}:${String(minutes % 60).padStart(2, "0")}`;
   });
-  const firstAvailable = values.find((value) => slotsByStart.get(value)?.status === "available") || "";
+  const blockableStatuses = new Set(["available", "past"]);
+  const firstAvailable = values.find((value) => blockableStatuses.has(slotsByStart.get(value)?.status)) || "";
   startSelect.innerHTML = values.map((value) => {
     const slot = slotsByStart.get(value);
-    const available = slot?.status === "available";
+    const available = blockableStatuses.has(slot?.status);
     const endValue = slot?.end_time || minutesToTime(timeToMinutes(value) + 30);
     const suffix = dayIsLoaded && !available
       ? ` (${String(slot?.status || "unavailable").replaceAll("_", " ")})`
       : "";
     return `<option value="${value}"${available ? "" : " disabled"}>${displayTime(value)} - ${displayTime(endValue)}${safe(suffix)}</option>`;
   }).join("");
-  startSelect.value = slotsByStart.get(previous)?.status === "available" ? previous : firstAvailable;
+  startSelect.value = blockableStatuses.has(slotsByStart.get(previous)?.status) ? previous : firstAvailable;
   syncBlockDurationOptions();
 }
 
@@ -746,7 +747,7 @@ function syncBlockDurationOptions() {
   let contiguousHalfHours = 0;
   if (startIndex >= 0) {
     for (const slot of currentAvailabilityDay.slots.slice(startIndex)) {
-      if (slot.status !== "available" || contiguousHalfHours >= MAX_BLOCK_DURATION_HOURS * 2) break;
+      if (!["available", "past"].includes(slot.status) || contiguousHalfHours >= MAX_BLOCK_DURATION_HOURS * 2) break;
       contiguousHalfHours += 1;
     }
   }
@@ -1061,12 +1062,13 @@ function availabilitySlot(slot) {
     action = "";
     disabled = "disabled";
   }
-  if (slot.status === "past" || slot.status === "unavailable") {
-    detail = slot.status === "past" ? "Past time" : "Calendar unavailable";
+  if (slot.status === "past") detail = "Past time available for historical blocking";
+  if (slot.status === "unavailable") {
+    detail = "Calendar unavailable";
     action = "";
     disabled = "disabled";
   }
-  const actionLabel = slot.status === "available"
+  const actionLabel = ["available", "past"].includes(slot.status)
     ? "Click to block"
     : slot.status === "blocked" ? "Right-click or tap to unblock" : detail;
   const slotLabel = `${displayTime(slot.start_time)} - ${displayTime(slot.end_time)}`;
@@ -1460,7 +1462,7 @@ document.querySelector("#availability-slots").addEventListener("click", (event) 
   if (blockButton) {
     availabilityBlockForm.elements.start_time.value = blockButton.dataset.blockStart;
     syncBlockDurationOptions();
-    availabilityBlockForm.querySelector('input[name="reason"]').focus();
+    availabilityBlockForm.elements.reason.focus();
     return;
   }
   const unblockButton = event.target.closest("[data-unblock]");
@@ -1667,7 +1669,6 @@ function updateCurrentDateTime() {
 
 updateCurrentDateTime();
 window.setInterval(updateCurrentDateTime, 1000);
-availabilityFilters.elements.booking_date.min = localDate();
 availabilityFilters.elements.booking_date.value = localDate();
 const bookingWeek = currentWeekRange();
 bookingFilters.elements.date_from.value = bookingWeek.from;

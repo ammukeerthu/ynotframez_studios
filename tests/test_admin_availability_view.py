@@ -12,7 +12,12 @@ class AdminAvailabilityViewTest(unittest.TestCase):
 
     def test_admin_block_controls_use_half_hour_intervals(self) -> None:
         self.assertIn("Minimum block: 30 minutes.", self.html)
+        self.assertIn("past, current, or future dates", self.html)
         self.assertNotIn("Minimum block: 2 hours.", self.html)
+        self.assertNotIn("availabilityFilters.elements.booking_date.min", self.script)
+        self.assertIn('new Set(["available", "past"])', self.script)
+        self.assertIn('["available", "past"].includes(slot.status)', self.script)
+        self.assertIn('availabilityBlockForm.elements.reason.focus()', self.script)
         self.assertIn("const duration = 0.5 + (index / 2);", self.script)
         self.assertIn("30 minutes", self.script)
         self.assertIn(" disabled", self.script)
@@ -54,7 +59,8 @@ class AdminAvailabilityViewTest(unittest.TestCase):
         self.assertNotIn('data-table-column="studio"', self.html)
         self.assertNotIn('data-table-column="studio"', self.script)
         self.assertIn('value="actions" data-booking-column-toggle checked disabled', self.html)
-        self.assertIn('/static/admin.js?v=20260926-1', self.html)
+        self.assertIn('/static/admin.css?v=20260926-1', self.html)
+        self.assertIn('/static/admin.js?v=20260926-2', self.html)
         self.assertIn('BOOKING_COLUMN_STORAGE_KEY = "ynf_admin_booking_columns_v2"', self.script)
         self.assertIn(
             'DEFAULT_BOOKING_COLUMNS = ["schedule", "customer", "purpose", "payment", "status", "actions"]',

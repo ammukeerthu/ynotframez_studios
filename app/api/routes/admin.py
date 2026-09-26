@@ -1100,9 +1100,6 @@ def admin_create_availability_block(
     )
     business_start = datetime.combine(payload.booking_date, time.fromisoformat(space.opening_time))
     business_end = datetime.combine(payload.booking_date, time.fromisoformat(space.closing_time))
-    studio_now = datetime.now(ZoneInfo(settings.studio_timezone)).replace(tzinfo=None)
-    if requested_start <= studio_now:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Only future studio time can be blocked.")
     if requested_start < business_start or requested_end > business_end:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,

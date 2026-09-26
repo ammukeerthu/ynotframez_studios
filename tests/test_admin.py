@@ -391,6 +391,36 @@ class AdminAuthenticationTest(unittest.TestCase):
             self.assertEqual(half_hour_response.status_code, 204)
             self.assertEqual(half_hour_statuses["17:00"], "available")
 
+    def test_admin_can_create_a_historical_studio_block(self) -> None:
+        engine = create_engine(
+            "sqlite://",
+            connect_args={"check_same_thread": False},
+            poolclass=StaticPool,
+        )
+        self.addCleanup(engine.dispose)
+        Base.metadata.create_all(engine)
+        booking_date = date.today() - timedelta(days=30)
+
+        with Session(engine) as db:
+            created = admin_create_availability_block(
+                AdminAvailabilityBlockCreate(
+                    space_id="standard_small",
+                    booking_date=booking_date,
+                    start_time=time(14, 30),
+                    duration_hours=1,
+                    reason="Collaboration",
+                ),
+                db,
+            )
+            day = admin_availability("standard_small", booking_date, db)
+            statuses = {slot.start_time: slot for slot in day.slots}
+
+            self.assertEqual(created.reason, "Collaboration")
+            self.assertEqual(statuses["14:00"].status, "past")
+            self.assertEqual(statuses["14:30"].status, "blocked")
+            self.assertEqual(statuses["15:00"].status, "blocked")
+            self.assertEqual(statuses["15:00"].block_id, created.id)
+
     def test_alerts_include_new_booking_start_and_end_handover_reminders(self) -> None:
         engine = create_engine(
             "sqlite://",

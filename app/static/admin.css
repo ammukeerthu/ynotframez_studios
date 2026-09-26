@@ -182,7 +182,10 @@ button,input,select,textarea { font:inherit; }
 .admin-slot-button.blocked small { color:var(--orange); }
 .admin-slot-button.blocked em { color:#bbb6ad; }
 .admin-slot-button.blocked:hover { transform:translateY(-2px); background:#373630; }
-.admin-slot-button.past,.admin-slot-button.unavailable { background:#efede7; color:#aaa69e; cursor:not-allowed; opacity:.68; }
+.admin-slot-button.past,.admin-slot-button.unavailable { background:#efede7; color:#aaa69e; opacity:.68; }
+.admin-slot-button.past { cursor:pointer; }
+.admin-slot-button.past:hover { transform:translateY(-2px); border-color:var(--ink); color:var(--ink); opacity:.9; }
+.admin-slot-button.unavailable { cursor:not-allowed; }
 .admin-slot-button.past small,.admin-slot-button.unavailable small { color:#aaa69e; }
 .admin-slot-button.booked span,.admin-slot-button.blocked span,.admin-slot-button.past span,.admin-slot-button.unavailable span { text-decoration:line-through; text-decoration-thickness:1px; }
 .admin-slot-button:disabled { pointer-events:none; }

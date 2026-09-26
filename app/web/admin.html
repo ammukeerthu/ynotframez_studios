@@ -9,9 +9,9 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800&amp;display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/admin.css?v=20260925-1">
+  <link rel="stylesheet" href="/static/admin.css?v=20260926-1">
   <script src="/static/studio_cache.js?v=20260908-1" defer></script>
-  <script src="/static/admin.js?v=20260926-1" defer></script>
+  <script src="/static/admin.js?v=20260926-2" defer></script>
 </head>
 <body>
   <section id="login-view" class="login-view" hidden>
@@ -147,7 +147,7 @@
             <div id="availability-slots" class="availability-slots"><p class="availability-empty">Loading schedule…</p></div>
           </div>
           <form id="availability-block-form" class="block-card">
-            <p class="eyebrow">CLOSE A TIME WINDOW</p><h3>Block studio time</h3><p>Customers will immediately see this period as unavailable. Minimum block: 30 minutes.</p>
+            <p class="eyebrow">CLOSE A TIME WINDOW</p><h3>Block studio time</h3><p>Record unavailable studio time for past, current, or future dates. Current and future blocks immediately prevent customer bookings. Minimum block: 30 minutes.</p>
             <label><span>START TIME</span><select name="start_time" required></select></label>
             <label><span>DURATION</span><select name="duration_hours" required></select></label>
             <label><span>REASON</span><select name="reason" required><option value="Maintenance">Maintenance</option><option value="Power Shutdown">Power Shutdown</option><option value="Technical Issue">Technical Issue</option><option value="Mandatory Holiday">Mandatory Holiday</option><option value="Collaboration">Collaboration</option></select></label>
