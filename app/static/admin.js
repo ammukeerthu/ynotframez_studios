@@ -336,8 +336,12 @@ async function loadFundsOverview() {
   document.querySelector("#funds-outstanding").textContent = "…";
   document.querySelector("#funds-month-title").textContent = "Selected month";
   document.querySelector("#funds-year-title").textContent = "Selected year";
+  document.querySelector("#funds-cashflow-title").textContent = "Selected year";
   document.querySelector("#funds-month-chart").innerHTML = '<p class="analytics-empty">Loading collections…</p>';
   document.querySelector("#funds-year-chart").innerHTML = '<p class="analytics-empty">Loading collections…</p>';
+  document.querySelector("#funds-cashflow-chart").innerHTML = '<p class="analytics-empty">Loading cashflow...</p>';
+  document.querySelector("#funds-outstanding-body").innerHTML = '<tr><td colspan="7" class="empty">Loading outstanding bookings...</td></tr>';
+  document.querySelector("#funds-outstanding-count").textContent = "Loading bookings...";
   const query = new URLSearchParams({
     month: fundsOverviewFilters.elements.month.value,
     year: fundsOverviewFilters.elements.year.value,
@@ -353,13 +357,19 @@ async function loadFundsOverview() {
     document.querySelector("#funds-outstanding").textContent = currency.format(overview.summary_pending_amount);
     document.querySelector("#funds-month-title").textContent = monthLabel(overview.month);
     document.querySelector("#funds-year-title").textContent = String(overview.year);
+    document.querySelector("#funds-cashflow-title").textContent = String(overview.year);
     renderFundsMonthChart(overview);
     renderFundsYearChart(overview.yearly_collections);
+    renderFundsCashflowChart(overview.yearly_cashflow);
+    renderOutstandingBookings(overview.outstanding_bookings);
   } catch (error) {
     if (error.name === "AbortError") return;
     showOverviewError("#funds-overview-message", error);
     document.querySelector("#funds-month-chart").innerHTML = '<p class="analytics-empty">Collections could not be loaded.</p>';
     document.querySelector("#funds-year-chart").innerHTML = '<p class="analytics-empty">Collections could not be loaded.</p>';
+    document.querySelector("#funds-cashflow-chart").innerHTML = '<p class="analytics-empty">Cashflow could not be loaded.</p>';
+    document.querySelector("#funds-outstanding-body").innerHTML = '<tr><td colspan="7" class="empty">Outstanding bookings could not be loaded.</td></tr>';
+    document.querySelector("#funds-outstanding-count").textContent = "Unavailable";
   } finally {
     if (requestToken === fundsRequestToken) fundsOverviewFilters.setAttribute("aria-busy", "false");
   }
@@ -423,6 +433,55 @@ function renderFundsYearChart(items) {
     <span><i class="collected"></i>Collected</span>
     <span><i class="pending"></i>Pending</span>
   </div>`;
+}
+
+function renderFundsCashflowChart(items) {
+  const chart = document.querySelector("#funds-cashflow-chart");
+  const maximum = Math.max(
+    ...items.map((item) => Math.max(Number(item.received_amount || 0), Number(item.refunded_amount || 0))),
+    0,
+  );
+  if (!maximum) {
+    chart.innerHTML = '<p class="analytics-empty">No payment or refund transactions for this year.</p>';
+    return;
+  }
+  const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  chart.innerHTML = `<div class="cashflow-scroll"><div class="cashflow-bars">${items.map((item) => {
+    const received = Number(item.received_amount || 0);
+    const refunded = Number(item.refunded_amount || 0);
+    const receivedHeight = received / maximum * 100;
+    const refundedHeight = refunded / maximum * 100;
+    const details = `${monthNames[item.month - 1]}: Received ${currency.format(received)}; Refunded ${currency.format(refunded)}; Net ${currency.format(item.net_amount)}`;
+    return `<article class="cashflow-column" role="img" aria-label="${safeAttr(details)}" title="${safeAttr(details)}">
+      <small>${safe(currency.format(item.net_amount))}</small>
+      <div class="cashflow-track"><i class="received" style="height:${receivedHeight}%"></i><i class="refunded" style="height:${refundedHeight}%"></i></div>
+      <b>${monthNames[item.month - 1]}</b>
+    </article>`;
+  }).join("")}</div></div><div class="cashflow-key" aria-label="Cashflow chart legend">
+    <span><i class="received"></i>Payments received</span><span><i class="refunded"></i>Refunds</span>
+  </div>`;
+}
+
+function renderOutstandingBookings(items) {
+  const body = document.querySelector("#funds-outstanding-body");
+  document.querySelector("#funds-outstanding-count").textContent =
+    `${items.length} booking${items.length === 1 ? "" : "s"} with balance due`;
+  body.innerHTML = items.length
+    ? items.map((item) => {
+      const schedule = item.booking_date
+        ? `${formatDate(item.booking_date)} · ${displayTime(item.start_time)} to ${displayTime(item.end_time)}`
+        : "Schedule unavailable";
+      return `<tr>
+      <td><b>${safe(item.reference)}</b><small>${safe(schedule)}</small></td>
+      <td><b>${safe(item.customer_name)}</b><small>${safe(item.phone_number)}</small></td>
+      <td>${safe(item.space_name)}</td>
+      <td>${safe(currency.format(item.total_amount))}</td>
+      <td>${safe(currency.format(item.amount_paid))}</td>
+      <td><b>${safe(currency.format(item.balance_due))}</b></td>
+      <td><span class="status status-${safeAttr(item.payment_status)}">${safe(readableLabel(item.payment_status))}</span></td>
+    </tr>`;
+    }).join("")
+    : '<tr><td colspan="7" class="empty">No confirmed bookings have an outstanding balance.</td></tr>';
 }
 
 function overviewBookingRow(booking) {
@@ -522,6 +581,43 @@ function renderUnavailabilityChart(chartSelector, items, emptyMessage) {
   </div>`;
 }
 
+function renderUnavailabilityTrend(items) {
+  const chart = document.querySelector("#unavailability-trend-chart");
+  const maximum = Math.max(...items.map((item) => Number(item.blocked_hours || 0)), 0);
+  if (!maximum) {
+    chart.innerHTML = '<p class="analytics-empty">No blocked studio time for this year.</p>';
+    return;
+  }
+  const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  chart.innerHTML = `<div class="blocked-trend-scroll"><div class="blocked-trend-bars">${items.map((item) => {
+    const blockedHours = Number(item.blocked_hours || 0);
+    const height = blockedHours / maximum * 100;
+    const details = `${monthNames[item.month - 1]}: ${hoursLabel(blockedHours)} blocked`;
+    return `<article class="blocked-trend-column" role="img" aria-label="${safeAttr(details)}" title="${safeAttr(details)}">
+      <small>${safe(hoursLabel(blockedHours))}</small>
+      <div class="blocked-trend-track"><i style="height:${height}%"></i></div>
+      <b>${monthNames[item.month - 1]}</b>
+    </article>`;
+  }).join("")}</div></div>`;
+}
+
+function renderUnavailabilityStudioComparison(items) {
+  const chart = document.querySelector("#unavailability-studio-chart");
+  const maximum = Math.max(...items.map((item) => Number(item.blocked_hours || 0)), 0);
+  if (!maximum) {
+    chart.innerHTML = '<p class="analytics-empty">No blocked studio time for this month.</p>';
+    return;
+  }
+  chart.innerHTML = items.map((item) => {
+    const blockedHours = Number(item.blocked_hours || 0);
+    const width = blockedHours / maximum * 100;
+    return `<article class="analytics-bar unavailability-studio-bar">
+      <div><b>${safe(item.space_name)}</b><span>${safe(hoursLabel(blockedHours))}</span></div>
+      <div class="analytics-bar-track" role="img" aria-label="${safeAttr(`${item.space_name}: ${hoursLabel(blockedHours)} blocked`)}"><i style="width:${width}%"></i></div>
+    </article>`;
+  }).join("");
+}
+
 function renderUpcomingBlocks(items) {
   const body = document.querySelector("#upcoming-blocks-body");
   body.innerHTML = items.length
@@ -544,9 +640,13 @@ async function loadUnavailabilityOverview() {
   document.querySelector("#unavailability-total").textContent = "â€¦";
   document.querySelector("#unavailability-month-title").textContent = "Selected month";
   document.querySelector("#unavailability-year-title").textContent = "Selected year";
+  document.querySelector("#unavailability-trend-title").textContent = "Selected year";
+  document.querySelector("#unavailability-studio-title").textContent = "Selected month";
   document.querySelector("#upcoming-blocks-body").innerHTML = '<tr><td colspan="4" class="empty">Loading blocked slotsâ€¦</td></tr>';
   document.querySelector("#unavailability-month-chart").innerHTML = '<p class="analytics-empty">Loading blocked timeâ€¦</p>';
   document.querySelector("#unavailability-year-chart").innerHTML = '<p class="analytics-empty">Loading blocked timeâ€¦</p>';
+  document.querySelector("#unavailability-trend-chart").innerHTML = '<p class="analytics-empty">Loading blocked-hours trend...</p>';
+  document.querySelector("#unavailability-studio-chart").innerHTML = '<p class="analytics-empty">Loading studio comparison...</p>';
   const query = new URLSearchParams({
     month: unavailabilityOverviewFilters.elements.month.value,
     year: unavailabilityOverviewFilters.elements.year.value,
@@ -563,6 +663,8 @@ async function loadUnavailabilityOverview() {
     document.querySelector("#unavailability-total").textContent = hoursLabel(overview.summary_total_blocked_hours);
     document.querySelector("#unavailability-month-title").textContent = selectedMonth;
     document.querySelector("#unavailability-year-title").textContent = String(overview.year);
+    document.querySelector("#unavailability-trend-title").textContent = String(overview.year);
+    document.querySelector("#unavailability-studio-title").textContent = selectedMonth;
     renderUpcomingBlocks(overview.upcoming_blocks);
     renderUnavailabilityChart(
       "#unavailability-month-chart",
@@ -574,12 +676,16 @@ async function loadUnavailabilityOverview() {
       overview.year_reasons,
       "No blocked studio time for this year.",
     );
+    renderUnavailabilityTrend(overview.yearly_blocked_hours);
+    renderUnavailabilityStudioComparison(overview.month_studio_hours);
   } catch (error) {
     if (error.name === "AbortError") return;
     showOverviewError("#unavailability-overview-message", error);
     document.querySelector("#upcoming-blocks-body").innerHTML = '<tr><td colspan="4" class="empty">Blocked slots could not be loaded.</td></tr>';
     document.querySelector("#unavailability-month-chart").innerHTML = '<p class="analytics-empty">Blocked time could not be loaded.</p>';
     document.querySelector("#unavailability-year-chart").innerHTML = '<p class="analytics-empty">Blocked time could not be loaded.</p>';
+    document.querySelector("#unavailability-trend-chart").innerHTML = '<p class="analytics-empty">Blocked-hours trend could not be loaded.</p>';
+    document.querySelector("#unavailability-studio-chart").innerHTML = '<p class="analytics-empty">Studio comparison could not be loaded.</p>';
   } finally {
     if (requestToken === unavailabilityRequestToken) unavailabilityOverviewFilters.setAttribute("aria-busy", "false");
   }

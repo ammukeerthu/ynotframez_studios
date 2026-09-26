@@ -184,10 +184,34 @@ button,input,select,textarea { font:inherit; }
 .funds-year-key i { width:10px; height:10px; }
 .funds-year-key i.collected { background:var(--green); }
 .funds-year-key i.pending { background:#d8a034; }
+.funds-activity-panel,.outstanding-bookings-panel { margin-top:18px; }
+.funds-cashflow-chart,.unavailability-trend-chart { position:relative; min-height:310px; margin-top:22px; }
+.funds-cashflow-chart > .analytics-empty,.unavailability-trend-chart > .analytics-empty { position:absolute; top:50%; right:0; left:0; transform:translateY(-50%); }
+.cashflow-scroll,.blocked-trend-scroll { overflow-x:auto; padding:4px 2px 12px; }
+.cashflow-bars,.blocked-trend-bars { display:grid; grid-template-columns:repeat(12,minmax(54px,1fr)); gap:9px; min-width:720px; height:255px; }
+.cashflow-column,.blocked-trend-column { display:grid; grid-template-rows:28px 1fr 22px; min-width:0; text-align:center; }
+.cashflow-column > small,.blocked-trend-column > small { overflow:hidden; color:var(--muted); font-size:7px; line-height:18px; text-overflow:ellipsis; white-space:nowrap; }
+.cashflow-column > b,.blocked-trend-column > b { align-self:end; font-size:8px; letter-spacing:.04em; }
+.cashflow-track { display:flex; align-items:flex-end; justify-content:center; gap:3px; overflow:hidden; border-bottom:1px solid var(--line); background:linear-gradient(to top,transparent 49%,#eeeae2 50%,transparent 51%); }
+.cashflow-track i { display:block; width:12px; transition:height .2s ease; }
+.cashflow-track i.received { background:var(--green); }
+.cashflow-track i.refunded { background:#b8513e; }
+.cashflow-key { display:flex; align-items:center; justify-content:flex-end; gap:18px; margin-top:10px; color:var(--muted); font-size:var(--admin-caption); }
+.cashflow-key span { display:flex; align-items:center; gap:7px; }
+.cashflow-key i { width:10px; height:10px; }
+.cashflow-key i.received { background:var(--green); }
+.cashflow-key i.refunded { background:#b8513e; }
+.outstanding-bookings-table-wrap table { min-width:1050px; }
+.outstanding-bookings-table-wrap td:nth-child(n+4):nth-child(-n+6) { white-space:nowrap; }
+.blocked-trend-track { position:relative; overflow:hidden; border-bottom:1px solid var(--line); background:linear-gradient(to top,transparent 49%,#eeeae2 50%,transparent 51%); }
+.blocked-trend-track i { position:absolute; right:12px; bottom:0; left:12px; display:block; background:var(--orange); transition:height .2s ease; }
+.unavailability-insight-grid { margin-top:0; }
+.unavailability-studio-chart { min-height:310px; align-content:center; }
+.unavailability-studio-bar .analytics-bar-track i { background:var(--ink); }
 @media(max-width:800px){.analytics-filters{grid-template-columns:1fr 1fr}.analytics-filters button{grid-column:1/-1}.analytics-stats{grid-template-columns:1fr}.booking-count-stat{grid-template-columns:1fr}.analytics-panel{padding:18px}.analytics-panel-head{align-items:flex-start;flex-direction:column}.analytics-panel-head small{text-align:left}}
 @media(max-width:520px){.analytics-filters{grid-template-columns:1fr}.analytics-filters button{grid-column:auto}.analytics-bar>div:first-child{align-items:flex-start;flex-direction:column;gap:4px}}
 @media(max-width:1100px){.funds-chart-grid{grid-template-columns:1fr}}
-@media(max-width:800px){.funds-global-filter{justify-content:stretch}.funds-global-filter label{width:100%}.funds-panel-head label{width:100%}.upcoming-blocks-date-filters{width:100%}.funds-month-chart,.funds-year-chart,.unavailability-reason-chart{min-height:280px}.unavailability-reason-chart>.analytics-empty{min-height:280px}}
+@media(max-width:800px){.funds-global-filter{justify-content:stretch}.funds-global-filter label{width:100%}.funds-panel-head label{width:100%}.upcoming-blocks-date-filters{width:100%}.funds-month-chart,.funds-year-chart,.funds-cashflow-chart,.unavailability-reason-chart,.unavailability-trend-chart,.unavailability-studio-chart{min-height:280px}.unavailability-reason-chart>.analytics-empty{min-height:280px}}
 @media(max-width:520px){.upcoming-blocks-date-filters{grid-template-columns:1fr;display:grid}}
 @media(max-width:520px){.funds-donut-layout,.unavailability-pie-layout{flex-direction:column;gap:24px}.funds-donut,.unavailability-pie{flex-basis:170px;width:170px;height:170px}.funds-donut::after{width:114px;height:114px}.funds-chart-legend{grid-template-columns:1fr 1fr;width:100%}.unavailability-pie-legend{grid-template-columns:1fr;width:100%;max-width:none}.funds-year-key{justify-content:flex-start}}
 .alert-center { position:absolute; z-index:40; top:58px; right:0; width:min(540px,calc(100vw - 40px)); max-height:min(720px,75vh); overflow:auto; padding:21px; border:1px solid var(--line); background:var(--white); box-shadow:0 22px 60px rgba(25,23,18,.2); }

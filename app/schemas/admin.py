@@ -74,6 +74,28 @@ class AdminFundsMonthlyCollection(BaseModel):
     pending_amount: int
 
 
+class AdminFundsCashflowMonth(BaseModel):
+    month: int
+    received_amount: int
+    refunded_amount: int
+    net_amount: int
+
+
+class AdminOutstandingBookingItem(BaseModel):
+    id: int
+    reference: str
+    customer_name: str
+    phone_number: str
+    space_name: str
+    booking_date: str
+    start_time: str
+    end_time: str
+    total_amount: int
+    amount_paid: int
+    balance_due: int
+    payment_status: str
+
+
 class AdminFundsOverviewResponse(BaseModel):
     month: str | None
     year: int
@@ -88,6 +110,8 @@ class AdminFundsOverviewResponse(BaseModel):
     month_collected_amount: int
     month_pending_amount: int
     yearly_collections: list[AdminFundsMonthlyCollection]
+    yearly_cashflow: list[AdminFundsCashflowMonth]
+    outstanding_bookings: list[AdminOutstandingBookingItem]
 
 
 class AdminOverviewBookingItem(BaseModel):
@@ -122,6 +146,17 @@ class AdminUnavailabilityReasonItem(BaseModel):
     blocked_hours: float
 
 
+class AdminUnavailabilityMonthItem(BaseModel):
+    month: int
+    blocked_hours: float
+
+
+class AdminUnavailabilityStudioItem(BaseModel):
+    space_id: str
+    space_name: str
+    blocked_hours: float
+
+
 class AdminUpcomingBlockItem(BaseModel):
     id: int
     space_id: str
@@ -147,6 +182,8 @@ class AdminUnavailabilityOverviewResponse(BaseModel):
     year_total_blocked_hours: float
     month_reasons: list[AdminUnavailabilityReasonItem]
     year_reasons: list[AdminUnavailabilityReasonItem]
+    yearly_blocked_hours: list[AdminUnavailabilityMonthItem]
+    month_studio_hours: list[AdminUnavailabilityStudioItem]
 
 
 class AdminAlertItem(BaseModel):

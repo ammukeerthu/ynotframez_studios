@@ -505,6 +505,81 @@ def admin_funds_overview(
             }
         )
 
+    cashflow_bookings_statement = select(Booking)
+    if space_id:
+        cashflow_bookings_statement = cashflow_bookings_statement.where(Booking.space_id == space_id)
+    cashflow_booking_ids = {booking.id for booking in db.scalars(cashflow_bookings_statement)}
+    cashflow_by_month = {
+        month_number: {"received": 0, "refunded": 0}
+        for month_number in range(1, 13)
+    }
+    if cashflow_booking_ids:
+        transactions = db.scalars(
+            select(PaymentTransaction).where(PaymentTransaction.booking_id.in_(cashflow_booking_ids))
+        )
+        for transaction in transactions:
+            occurred_at = transaction.occurred_at
+            if occurred_at.tzinfo is None:
+                occurred_at = occurred_at.replace(tzinfo=UTC)
+            local_occurred_at = occurred_at.astimezone(ZoneInfo(settings.studio_timezone))
+            if local_occurred_at.year != selected_year:
+                continue
+            bucket = cashflow_by_month[local_occurred_at.month]
+            if transaction.transaction_type == PaymentTransactionType.PAYMENT:
+                bucket["received"] += transaction.amount
+            else:
+                bucket["refunded"] += transaction.amount
+    yearly_cashflow = [
+        {
+            "month": month_number,
+            "received_amount": cashflow_by_month[month_number]["received"],
+            "refunded_amount": cashflow_by_month[month_number]["refunded"],
+            "net_amount": (
+                cashflow_by_month[month_number]["received"]
+                - cashflow_by_month[month_number]["refunded"]
+            ),
+        }
+        for month_number in range(1, 13)
+    ]
+
+    outstanding_bookings = []
+    for booking in bookings:
+        record = payment_records.get(booking.id)
+        if record and record.status not in {PaymentStatus.PENDING, PaymentStatus.PARTIALLY_PAID}:
+            continue
+        total_amount = record.amount if record else _booking_amount(booking, db)
+        amount_paid = max(
+            0,
+            payment_totals.get(booking.id, 0) - refund_totals.get(booking.id, 0),
+        )
+        balance_due = max(0, total_amount - amount_paid)
+        if not balance_due:
+            continue
+        booking_date = booking.booking_date or ""
+        start_time = booking.start_time or "00:00"
+        start_at = datetime.combine(
+            date.fromisoformat(booking_date) if booking_date else date.min,
+            time.fromisoformat(start_time),
+        )
+        space = get_space_by_id(booking.space_id, db, include_inactive=True)
+        outstanding_bookings.append(
+            {
+                "id": booking.id,
+                "reference": f"YNF-{booking.id:06d}",
+                "customer_name": booking.customer_name or "Customer",
+                "phone_number": booking.phone_number,
+                "space_name": space.name if space else booking.space_id or "Studio",
+                "booking_date": booking_date,
+                "start_time": start_time,
+                "end_time": (start_at + timedelta(hours=booking.duration_hours or 0)).strftime("%H:%M"),
+                "total_amount": total_amount,
+                "amount_paid": amount_paid,
+                "balance_due": balance_due,
+                "payment_status": (record.status if record else PaymentStatus.PENDING).value,
+            }
+        )
+    outstanding_bookings.sort(key=lambda item: (item["booking_date"], item["start_time"], item["id"]))
+
     return AdminFundsOverviewResponse(
         month=chart_month if month else None,
         year=selected_year,
@@ -519,6 +594,8 @@ def admin_funds_overview(
         month_collected_amount=month_amounts[1],
         month_pending_amount=month_amounts[2],
         yearly_collections=yearly_collections,
+        yearly_cashflow=yearly_cashflow,
+        outstanding_bookings=outstanding_bookings,
     )
 
 
@@ -688,6 +765,36 @@ def admin_unavailability_overview(
     summary_reasons = reason_breakdown(blocks)
     month_reasons = reason_breakdown(month_blocks)
     year_reasons = reason_breakdown(year_blocks)
+    yearly_blocked_hours = []
+    for month_number in range(1, 13):
+        month_prefix = f"{selected_year:04d}-{month_number:02d}-"
+        yearly_blocked_hours.append(
+            {
+                "month": month_number,
+                "blocked_hours": round(
+                    sum(
+                        block.duration_hours
+                        for block in year_blocks
+                        if block.booking_date.startswith(month_prefix)
+                    ),
+                    1,
+                ),
+            }
+        )
+    month_hours_by_space: dict[str, float] = {}
+    for block in month_blocks:
+        month_hours_by_space[block.space_id] = (
+            month_hours_by_space.get(block.space_id, 0) + block.duration_hours
+        )
+    month_studio_hours = [
+        {
+            "space_id": space.id,
+            "space_name": space.name,
+            "blocked_hours": round(month_hours_by_space.get(space.id, 0), 1),
+        }
+        for space in list_spaces(db, include_inactive=True)
+        if not space_id or space.id == space_id
+    ]
     summary_total = round(sum(item["blocked_hours"] for item in summary_reasons), 1)
     month_total = round(sum(item["blocked_hours"] for item in month_reasons), 1)
     year_total = round(sum(item["blocked_hours"] for item in year_reasons), 1)
@@ -705,6 +812,8 @@ def admin_unavailability_overview(
         year_total_blocked_hours=year_total,
         month_reasons=month_reasons,
         year_reasons=year_reasons,
+        yearly_blocked_hours=yearly_blocked_hours,
+        month_studio_hours=month_studio_hours,
     )
 
 

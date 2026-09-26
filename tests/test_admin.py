@@ -411,6 +411,13 @@ class AdminAuthenticationTest(unittest.TestCase):
                         mode=PaymentMode.PAY_AT_STUDIO,
                         payment_method="upi",
                     ),
+                    PaymentTransaction(
+                        booking_id=cancelled.id,
+                        transaction_type=PaymentTransactionType.REFUND,
+                        amount=500,
+                        mode=PaymentMode.PAY_AT_STUDIO,
+                        payment_method="upi",
+                    ),
                     AvailabilityBlock(
                         space_id="standard_small",
                         booking_date=studio_today.isoformat(),
@@ -481,6 +488,22 @@ class AdminAuthenticationTest(unittest.TestCase):
             self.assertEqual(cube_funds.summary_collected_amount, 500)
             self.assertEqual(cube_funds.month_pending_amount, 1500)
             self.assertEqual(len(cube_funds.yearly_collections), 12)
+            current_month_cashflow = monthly_funds.yearly_cashflow[studio_today.month - 1]
+            self.assertEqual(current_month_cashflow.received_amount, 4000)
+            self.assertEqual(current_month_cashflow.refunded_amount, 500)
+            self.assertEqual(current_month_cashflow.net_amount, 3500)
+            self.assertEqual(
+                [item.customer_name for item in monthly_funds.outstanding_bookings],
+                ["Cube Customer", "Future Customer"],
+            )
+            self.assertEqual(
+                [item.balance_due for item in monthly_funds.outstanding_bookings],
+                [1500, 1000],
+            )
+            self.assertEqual(
+                cube_funds.yearly_cashflow[studio_today.month - 1].received_amount,
+                2500,
+            )
             self.assertEqual(bookings.selected_date, studio_today.isoformat())
             self.assertEqual(bookings.total_bookings, 2)
             self.assertEqual([item.space_name for item in bookings.bookings], ["Cube", "Arena"])
@@ -503,6 +526,22 @@ class AdminAuthenticationTest(unittest.TestCase):
             self.assertEqual(cube_unavailability.summary_total_blocked_hours, 6)
             self.assertEqual(cube_unavailability.month_total_blocked_hours, 2)
             self.assertEqual(cube_unavailability.year_total_blocked_hours, 6)
+            self.assertEqual(
+                unavailability.yearly_blocked_hours[studio_today.month - 1].blocked_hours,
+                3,
+            )
+            self.assertEqual(
+                unavailability.yearly_blocked_hours[other_month_number - 1].blocked_hours,
+                4,
+            )
+            self.assertEqual(
+                [(item.space_name, item.blocked_hours) for item in unavailability.month_studio_hours],
+                [("Cube", 2), ("Arena", 1)],
+            )
+            self.assertEqual(
+                [(item.space_name, item.blocked_hours) for item in cube_unavailability.month_studio_hours],
+                [("Cube", 2)],
+            )
 
             with self.assertRaises(HTTPException) as invalid_month:
                 admin_funds_overview("2026-13", db)

@@ -9,9 +9,9 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800&amp;display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/admin.css?v=20260926-14">
+  <link rel="stylesheet" href="/static/admin.css?v=20260926-15">
   <script src="/static/studio_cache.js?v=20260908-1" defer></script>
-  <script src="/static/admin.js?v=20260926-19" defer></script>
+  <script src="/static/admin.js?v=20260926-20" defer></script>
 </head>
 <body>
   <section id="login-view" class="login-view" hidden>
@@ -138,6 +138,25 @@
               <div id="funds-year-chart" class="funds-year-chart"><p class="analytics-empty">Loading collections&hellip;</p></div>
             </article>
           </div>
+          <article class="analytics-panel funds-activity-panel">
+            <div class="analytics-panel-head">
+              <div><p>ACTUAL CASHFLOW</p><h3 id="funds-cashflow-title">Selected year</h3></div>
+              <small>Payments and refunds grouped by their transaction date</small>
+            </div>
+            <div id="funds-cashflow-chart" class="funds-cashflow-chart"><p class="analytics-empty">Loading cashflow&hellip;</p></div>
+          </article>
+          <article class="analytics-panel outstanding-bookings-panel">
+            <div class="analytics-panel-head">
+              <div><p>OUTSTANDING BOOKINGS</p><h3>Confirmed balances due</h3></div>
+              <small id="funds-outstanding-count">Loading bookings&hellip;</small>
+            </div>
+            <div class="table-wrap analytics-table-wrap outstanding-bookings-table-wrap">
+              <table id="funds-outstanding-table">
+                <thead><tr><th>Booking</th><th>Customer</th><th>Studio</th><th>Total</th><th>Paid</th><th>Balance</th><th>Payment status</th></tr></thead>
+                <tbody id="funds-outstanding-body"><tr><td colspan="7" class="empty">Loading outstanding bookings&hellip;</td></tr></tbody>
+              </table>
+            </div>
+          </article>
         </form>
       </section>
 
@@ -203,6 +222,22 @@
                 <label><span>YEAR</span><input name="year" type="number" min="2000" max="2100" step="1" inputmode="numeric" required></label>
               </div>
               <div id="unavailability-year-chart" class="unavailability-reason-chart"><p class="analytics-empty">Loading blocked time&hellip;</p></div>
+            </article>
+          </div>
+          <div class="funds-chart-grid unavailability-insight-grid">
+            <article class="analytics-panel funds-chart-panel">
+              <div class="analytics-panel-head">
+                <div><p>12-MONTH BLOCKED-HOURS TREND</p><h3 id="unavailability-trend-title">Selected year</h3></div>
+                <small>Blocked hours by calendar month</small>
+              </div>
+              <div id="unavailability-trend-chart" class="unavailability-trend-chart"><p class="analytics-empty">Loading blocked-hours trend&hellip;</p></div>
+            </article>
+            <article class="analytics-panel funds-chart-panel">
+              <div class="analytics-panel-head">
+                <div><p>STUDIO COMPARISON</p><h3 id="unavailability-studio-title">Selected month</h3></div>
+                <small>Blocked hours by studio</small>
+              </div>
+              <div id="unavailability-studio-chart" class="analytics-bars unavailability-studio-chart"><p class="analytics-empty">Loading studio comparison&hellip;</p></div>
             </article>
           </div>
         </form>
