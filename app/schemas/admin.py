@@ -122,10 +122,31 @@ class AdminUnavailabilityReasonItem(BaseModel):
     blocked_hours: float
 
 
+class AdminUpcomingBlockItem(BaseModel):
+    id: int
+    space_id: str
+    space_name: str
+    booking_date: str
+    start_time: str
+    end_time: str
+    duration_hours: float
+    reason: str
+
+
 class AdminUnavailabilityOverviewResponse(BaseModel):
     month: str
+    year: int
+    space_id: str | None
+    blocked_date_from: str
+    blocked_date_to: str
+    upcoming_blocks: list[AdminUpcomingBlockItem]
     total_blocked_hours: float
     reasons: list[AdminUnavailabilityReasonItem]
+    summary_total_blocked_hours: float
+    month_total_blocked_hours: float
+    year_total_blocked_hours: float
+    month_reasons: list[AdminUnavailabilityReasonItem]
+    year_reasons: list[AdminUnavailabilityReasonItem]
 
 
 class AdminAlertItem(BaseModel):

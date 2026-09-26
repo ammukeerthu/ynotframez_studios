@@ -9,9 +9,9 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800&amp;display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/admin.css?v=20260926-11">
+  <link rel="stylesheet" href="/static/admin.css?v=20260926-12">
   <script src="/static/studio_cache.js?v=20260908-1" defer></script>
-  <script src="/static/admin.js?v=20260926-13" defer></script>
+  <script src="/static/admin.js?v=20260926-14" defer></script>
 </head>
 <body>
   <section id="login-view" class="login-view" hidden>
@@ -158,19 +158,47 @@
       </section>
 
       <section id="unavailability" class="overview-section analytics-section" aria-label="Unavailability overview">
-        <div class="section-heading"><div><p class="eyebrow">UNAVAILABILITY</p></div><p>Blocked studio time grouped by reason.</p></div>
-        <form id="unavailability-overview-filters" class="analytics-filters">
-          <label><span>MONTH</span><input name="month" type="month" required></label>
-          <button type="submit">Apply</button>
-        </form>
         <div id="unavailability-overview-message" class="dashboard-message" hidden></div>
-        <div class="stats analytics-stats booking-count-stat">
-          <article><p>TOTAL BLOCKED HOURS</p><strong id="unavailability-total">&hellip;</strong><small id="unavailability-month">Selected month</small></article>
-        </div>
-        <div class="analytics-panel">
-          <div class="analytics-panel-head"><div><p>BLOCKED TIME BY REASON</p><h3 id="unavailability-chart-title">Selected month</h3></div></div>
-          <div id="unavailability-chart" class="analytics-bars"><p class="analytics-empty">Loading blocked time&hellip;</p></div>
-        </div>
+        <form id="unavailability-overview-filters" class="funds-dashboard">
+          <div class="funds-global-filter">
+            <label><span>STUDIO SPACE</span><select name="space_id"><option value="">All Spaces</option></select></label>
+          </div>
+          <p class="funds-summary-label">OVERALL SUMMARY</p>
+          <div class="stats analytics-stats funds-summary-stats unavailability-summary-stats">
+            <article class="dark"><p>TOTAL BLOCKED HOURS</p><strong id="unavailability-total">&hellip;</strong><small>All recorded blocked studio time</small></article>
+          </div>
+          <article class="analytics-panel upcoming-blocks-panel">
+            <div class="analytics-panel-head funds-panel-head">
+              <div><p>UPCOMING BLOCKED SLOTS</p><h3 id="upcoming-blocks-table-title">Current week</h3></div>
+              <div class="upcoming-blocks-date-filters">
+                <label><span>FROM</span><input name="date_from" type="date" required></label>
+                <label><span>TO</span><input name="date_to" type="date" required></label>
+              </div>
+            </div>
+            <div class="table-wrap analytics-table-wrap upcoming-blocks-table-wrap">
+              <table id="upcoming-blocks-table">
+                <thead><tr><th>Date &amp; Time</th><th>Studio</th><th>Reason</th><th>Duration</th></tr></thead>
+                <tbody id="upcoming-blocks-body"><tr><td colspan="4" class="empty">Loading blocked slots&hellip;</td></tr></tbody>
+              </table>
+            </div>
+          </article>
+          <div class="funds-chart-grid">
+            <article class="analytics-panel funds-chart-panel">
+              <div class="analytics-panel-head funds-panel-head">
+                <div><p>MONTH-WISE BLOCKED HOURS</p><h3 id="unavailability-month-title">Selected month</h3></div>
+                <label><span>MONTH &amp; YEAR</span><input name="month" type="month" required></label>
+              </div>
+              <div id="unavailability-month-chart" class="analytics-bars unavailability-reason-chart"><p class="analytics-empty">Loading blocked time&hellip;</p></div>
+            </article>
+            <article class="analytics-panel funds-chart-panel">
+              <div class="analytics-panel-head funds-panel-head">
+                <div><p>YEAR-WISE BLOCKED HOURS</p><h3 id="unavailability-year-title">Selected year</h3></div>
+                <label><span>YEAR</span><input name="year" type="number" min="2000" max="2100" step="1" inputmode="numeric" required></label>
+              </div>
+              <div id="unavailability-year-chart" class="analytics-bars unavailability-reason-chart"><p class="analytics-empty">Loading blocked time&hellip;</p></div>
+            </article>
+          </div>
+        </form>
       </section>
 
       <section id="bookings" class="bookings-section">

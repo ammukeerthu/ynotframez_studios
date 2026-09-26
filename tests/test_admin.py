@@ -320,6 +320,9 @@ class AdminAuthenticationTest(unittest.TestCase):
         studio_today = datetime.now(ZoneInfo(settings.studio_timezone)).date()
         selected_month = studio_today.strftime("%Y-%m")
         next_month = (studio_today.replace(day=28) + timedelta(days=4)).replace(day=1)
+        other_month_number = 1 if studio_today.month != 1 else 2
+        same_year_other_month = date(studio_today.year, other_month_number, 15)
+        previous_year = date(studio_today.year - 1, 6, 15)
 
         with Session(engine) as db:
             cube = Booking(
@@ -422,6 +425,20 @@ class AdminAuthenticationTest(unittest.TestCase):
                         duration_hours=1,
                         reason="Maintenance",
                     ),
+                    AvailabilityBlock(
+                        space_id="standard_small",
+                        booking_date=same_year_other_month.isoformat(),
+                        start_time="12:00",
+                        duration_hours=4,
+                        reason="Maintenance",
+                    ),
+                    AvailabilityBlock(
+                        space_id="premium_large",
+                        booking_date=previous_year.isoformat(),
+                        start_time="12:00",
+                        duration_hours=5,
+                        reason="Technical Issue",
+                    ),
                 ]
             )
             db.commit()
@@ -435,7 +452,17 @@ class AdminAuthenticationTest(unittest.TestCase):
                 space_id="standard_small",
             )
             bookings = admin_bookings_overview(0, selected_month, db)
-            unavailability = admin_unavailability_overview(selected_month, db)
+            unavailability = admin_unavailability_overview(
+                selected_month,
+                db,
+                year=studio_today.year,
+            )
+            cube_unavailability = admin_unavailability_overview(
+                selected_month,
+                db,
+                year=studio_today.year,
+                space_id="standard_small",
+            )
 
             self.assertEqual(monthly_funds.estimated_amount, 3500)
             self.assertEqual(monthly_funds.collected_amount, 2000)
@@ -466,10 +493,100 @@ class AdminAuthenticationTest(unittest.TestCase):
                 [(item.reason, item.blocked_hours) for item in unavailability.reasons],
                 [("Collaboration", 2), ("Maintenance", 1)],
             )
+            self.assertEqual(unavailability.summary_total_blocked_hours, 12)
+            self.assertEqual(unavailability.month_total_blocked_hours, 3)
+            self.assertEqual(unavailability.year_total_blocked_hours, 7)
+            self.assertEqual(
+                [(item.reason, item.blocked_hours) for item in unavailability.year_reasons],
+                [("Maintenance", 5), ("Collaboration", 2)],
+            )
+            self.assertEqual(cube_unavailability.summary_total_blocked_hours, 6)
+            self.assertEqual(cube_unavailability.month_total_blocked_hours, 2)
+            self.assertEqual(cube_unavailability.year_total_blocked_hours, 6)
 
             with self.assertRaises(HTTPException) as invalid_month:
                 admin_funds_overview("2026-13", db)
             self.assertEqual(invalid_month.exception.status_code, 400)
+
+    def test_unavailability_lists_only_upcoming_blocks_in_selected_range(self) -> None:
+        engine = create_engine(
+            "sqlite://",
+            connect_args={"check_same_thread": False},
+            poolclass=StaticPool,
+        )
+        self.addCleanup(engine.dispose)
+        Base.metadata.create_all(engine)
+        studio_today = datetime.now(ZoneInfo(settings.studio_timezone)).date()
+        tomorrow = studio_today + timedelta(days=1)
+
+        with Session(engine) as db:
+            db.add_all(
+                [
+                    AvailabilityBlock(
+                        space_id="standard_small",
+                        booking_date=(studio_today - timedelta(days=1)).isoformat(),
+                        start_time="10:00",
+                        duration_hours=2,
+                        reason="Collaboration",
+                    ),
+                    AvailabilityBlock(
+                        space_id="standard_small",
+                        booking_date=tomorrow.isoformat(),
+                        start_time="10:00",
+                        duration_hours=2,
+                        reason="Collaboration",
+                    ),
+                    AvailabilityBlock(
+                        space_id="premium_large",
+                        booking_date=tomorrow.isoformat(),
+                        start_time="13:00",
+                        duration_hours=1,
+                        reason="Maintenance",
+                    ),
+                    AvailabilityBlock(
+                        space_id="premium_large",
+                        booking_date=(studio_today + timedelta(days=8)).isoformat(),
+                        start_time="15:00",
+                        duration_hours=1.5,
+                        reason="Collaboration",
+                    ),
+                ]
+            )
+            db.commit()
+
+            overview = admin_unavailability_overview(
+                studio_today.strftime("%Y-%m"),
+                db,
+                year=studio_today.year,
+                date_from=studio_today,
+                date_to=studio_today + timedelta(days=7),
+            )
+
+            self.assertEqual(overview.blocked_date_from, studio_today.isoformat())
+            self.assertEqual(
+                overview.blocked_date_to,
+                (studio_today + timedelta(days=7)).isoformat(),
+            )
+            self.assertEqual(len(overview.upcoming_blocks), 2)
+            collaboration, maintenance = overview.upcoming_blocks
+            self.assertEqual(collaboration.booking_date, tomorrow.isoformat())
+            self.assertEqual(collaboration.start_time, "10:00")
+            self.assertEqual(collaboration.end_time, "12:00")
+            self.assertEqual(collaboration.space_name, "Cube")
+            self.assertEqual(collaboration.duration_hours, 2)
+            self.assertEqual(collaboration.reason, "Collaboration")
+            self.assertEqual(maintenance.start_time, "13:00")
+            self.assertEqual(maintenance.space_name, "Arena")
+            self.assertEqual(maintenance.reason, "Maintenance")
+
+            with self.assertRaises(HTTPException) as reversed_range:
+                admin_unavailability_overview(
+                    studio_today.strftime("%Y-%m"),
+                    db,
+                    date_from=tomorrow,
+                    date_to=studio_today,
+                )
+            self.assertEqual(reversed_range.exception.status_code, 400)
 
     def test_availability_booking_tile_exposes_read_only_booking_details(self) -> None:
         engine = create_engine(

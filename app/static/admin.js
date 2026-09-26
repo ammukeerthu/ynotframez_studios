@@ -46,6 +46,8 @@ let bookingEditAvailabilityRequestController = null;
 let currentBookingEditDay = null;
 let fundsRequestToken = 0;
 let fundsRequestController = null;
+let unavailabilityRequestToken = 0;
+let unavailabilityRequestController = null;
 const dashboardMessageTimers = new WeakMap();
 const MAX_BLOCK_DURATION_HOURS = 12;
 const BOOKING_COLUMN_STORAGE_KEY = "ynf_admin_booking_columns_v2";
@@ -248,6 +250,7 @@ unavailabilityOverviewFilters.addEventListener("submit", (event) => {
   event.preventDefault();
   loadUnavailabilityOverview();
 });
+unavailabilityOverviewFilters.addEventListener("change", () => loadUnavailabilityOverview());
 
 function setupOverviewFilters() {
   const currentMonth = localDate().slice(0, 7);
@@ -256,6 +259,10 @@ function setupOverviewFilters() {
   bookingsOverviewFilters.elements.day_offset.value = "0";
   bookingsOverviewFilters.elements.month.value = currentMonth;
   unavailabilityOverviewFilters.elements.month.value = currentMonth;
+  unavailabilityOverviewFilters.elements.year.value = currentMonth.slice(0, 4);
+  const currentWeek = currentWeekRange();
+  unavailabilityOverviewFilters.elements.date_from.value = currentWeek.from;
+  unavailabilityOverviewFilters.elements.date_to.value = currentWeek.to;
 }
 
 function monthLabel(value) {
@@ -421,10 +428,10 @@ async function loadBookingsOverview() {
   }
 }
 
-function renderUnavailabilityChart(items) {
-  const chart = document.querySelector("#unavailability-chart");
+function renderUnavailabilityChart(chartSelector, items, emptyMessage) {
+  const chart = document.querySelector(chartSelector);
   if (!items.length) {
-    chart.innerHTML = '<p class="analytics-empty">No blocked studio time for this month.</p>';
+    chart.innerHTML = `<p class="analytics-empty">${safe(emptyMessage)}</p>`;
     return;
   }
   const maximum = Math.max(...items.map((item) => Number(item.blocked_hours || 0)), 1);
@@ -437,19 +444,65 @@ function renderUnavailabilityChart(items) {
   }).join("");
 }
 
+function renderUpcomingBlocks(items) {
+  const body = document.querySelector("#upcoming-blocks-body");
+  body.innerHTML = items.length
+    ? items.map((item) => `<tr>
+      <td>${safe(formatDate(item.booking_date))}<small>${safe(displayTime(item.start_time))} to ${safe(displayTime(item.end_time))}</small></td>
+      <td>${safe(item.space_name)}</td>
+      <td>${safe(item.reason)}</td>
+      <td>${safe(hoursLabel(item.duration_hours))}</td>
+    </tr>`).join("")
+    : '<tr><td colspan="4" class="empty">No upcoming blocked slots in this date range.</td></tr>';
+}
+
 async function loadUnavailabilityOverview() {
+  const requestToken = ++unavailabilityRequestToken;
+  if (unavailabilityRequestController) unavailabilityRequestController.abort();
+  unavailabilityRequestController = new AbortController();
   const message = document.querySelector("#unavailability-overview-message");
   message.hidden = true;
-  const month = unavailabilityOverviewFilters.elements.month.value;
+  unavailabilityOverviewFilters.setAttribute("aria-busy", "true");
+  document.querySelector("#unavailability-total").textContent = "â€¦";
+  document.querySelector("#upcoming-blocks-body").innerHTML = '<tr><td colspan="4" class="empty">Loading blocked slotsâ€¦</td></tr>';
+  document.querySelector("#unavailability-month-chart").innerHTML = '<p class="analytics-empty">Loading blocked timeâ€¦</p>';
+  document.querySelector("#unavailability-year-chart").innerHTML = '<p class="analytics-empty">Loading blocked timeâ€¦</p>';
+  const query = new URLSearchParams({
+    month: unavailabilityOverviewFilters.elements.month.value,
+    year: unavailabilityOverviewFilters.elements.year.value,
+    date_from: unavailabilityOverviewFilters.elements.date_from.value,
+    date_to: unavailabilityOverviewFilters.elements.date_to.value,
+  });
+  if (unavailabilityOverviewFilters.elements.space_id.value) {
+    query.set("space_id", unavailabilityOverviewFilters.elements.space_id.value);
+  }
   try {
-    const overview = await api(`/api/admin/overview/unavailability?${new URLSearchParams({ month })}`);
+    const overview = await api(`/api/admin/overview/unavailability?${query}`, { signal: unavailabilityRequestController.signal });
+    if (requestToken !== unavailabilityRequestToken) return;
     const selectedMonth = monthLabel(overview.month);
-    document.querySelector("#unavailability-total").textContent = hoursLabel(overview.total_blocked_hours);
-    document.querySelector("#unavailability-month").textContent = selectedMonth;
-    document.querySelector("#unavailability-chart-title").textContent = selectedMonth;
-    renderUnavailabilityChart(overview.reasons);
+    document.querySelector("#unavailability-total").textContent = hoursLabel(overview.summary_total_blocked_hours);
+    document.querySelector("#unavailability-month-title").textContent = selectedMonth;
+    document.querySelector("#unavailability-year-title").textContent = String(overview.year);
+    document.querySelector("#upcoming-blocks-table-title").textContent = `${formatDate(overview.blocked_date_from)} to ${formatDate(overview.blocked_date_to)}`;
+    renderUpcomingBlocks(overview.upcoming_blocks);
+    renderUnavailabilityChart(
+      "#unavailability-month-chart",
+      overview.month_reasons,
+      "No blocked studio time for this month.",
+    );
+    renderUnavailabilityChart(
+      "#unavailability-year-chart",
+      overview.year_reasons,
+      "No blocked studio time for this year.",
+    );
   } catch (error) {
+    if (error.name === "AbortError") return;
     showOverviewError("#unavailability-overview-message", error);
+    document.querySelector("#upcoming-blocks-body").innerHTML = '<tr><td colspan="4" class="empty">Blocked slots could not be loaded.</td></tr>';
+    document.querySelector("#unavailability-month-chart").innerHTML = '<p class="analytics-empty">Blocked time could not be loaded.</p>';
+    document.querySelector("#unavailability-year-chart").innerHTML = '<p class="analytics-empty">Blocked time could not be loaded.</p>';
+  } finally {
+    if (requestToken === unavailabilityRequestToken) unavailabilityOverviewFilters.setAttribute("aria-busy", "false");
   }
 }
 
@@ -815,6 +868,17 @@ function syncStudioSelects() {
   ].join("");
   if (studioSettings.some((studio) => studio.id === previousFundsSpace)) {
     fundsSpaceSelect.value = previousFundsSpace;
+  }
+  const unavailabilitySpaceSelect = unavailabilityOverviewFilters.elements.space_id;
+  const previousUnavailabilitySpace = unavailabilitySpaceSelect.value;
+  unavailabilitySpaceSelect.innerHTML = [
+    '<option value="">All Spaces</option>',
+    ...studioSettings.map((studio) =>
+      `<option value="${safeAttr(studio.id)}">${safe(studio.name)}</option>`
+    ),
+  ].join("");
+  if (studioSettings.some((studio) => studio.id === previousUnavailabilitySpace)) {
+    unavailabilitySpaceSelect.value = previousUnavailabilitySpace;
   }
   setupHalfHourBlockOptions();
   setupBookingEditOptions();

@@ -614,28 +614,97 @@ def admin_bookings_overview(
 def admin_unavailability_overview(
     month: str | None = Query(default=None, pattern=r"^\d{4}-\d{2}$"),
     db: Session = Depends(get_db),
+    year: int | None = None,
+    space_id: str | None = None,
+    date_from: date | None = None,
+    date_to: date | None = None,
 ) -> AdminUnavailabilityOverviewResponse:
-    first_day, next_month, selected_month = _month_bounds(month)
-    blocks = list(
-        db.scalars(
-            select(AvailabilityBlock).where(
-                AvailabilityBlock.booking_date >= first_day.isoformat(),
-                AvailabilityBlock.booking_date < next_month.isoformat(),
-            )
+    if year is not None and not 2000 <= year <= 2100:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Year must be between 2000 and 2100.")
+    if space_id and len(space_id) > 64:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Studio space is invalid.")
+    if space_id and get_space_by_id(space_id, db, include_inactive=True) is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Studio space not found.")
+
+    studio_now = datetime.now(ZoneInfo(settings.studio_timezone))
+    week_start = studio_now.date() - timedelta(days=studio_now.weekday())
+    blocked_from = date_from or week_start
+    blocked_to = date_to or (week_start + timedelta(days=6))
+    if blocked_from > blocked_to:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="The blocked-time start date must be on or before the end date.",
         )
-    )
-    reason_hours: dict[str, float] = {}
-    for block in blocks:
-        reason = block.reason or "Other"
-        reason_hours[reason] = reason_hours.get(reason, 0) + block.duration_hours
-    reasons = [
-        {"reason": reason, "blocked_hours": round(hours, 1)}
-        for reason, hours in sorted(reason_hours.items(), key=lambda item: (-item[1], item[0]))
+
+    first_day, next_month, selected_month = _month_bounds(month)
+    selected_year = year or (first_day.year if month else studio_now.year)
+    statement = select(AvailabilityBlock)
+    if space_id:
+        statement = statement.where(AvailabilityBlock.space_id == space_id)
+    blocks = list(db.scalars(statement))
+    month_blocks = [
+        block
+        for block in blocks
+        if first_day.isoformat() <= block.booking_date < next_month.isoformat()
     ]
+    year_prefix = f"{selected_year:04d}-"
+    year_blocks = [block for block in blocks if block.booking_date.startswith(year_prefix)]
+    upcoming_blocks = []
+    for block in blocks:
+        block_date = date.fromisoformat(block.booking_date)
+        block_start = datetime.combine(
+            block_date,
+            time.fromisoformat(block.start_time),
+            tzinfo=ZoneInfo(settings.studio_timezone),
+        )
+        if not blocked_from <= block_date <= blocked_to or block_start < studio_now:
+            continue
+        block_end = block_start + timedelta(hours=block.duration_hours)
+        space = get_space_by_id(block.space_id, db, include_inactive=True)
+        upcoming_blocks.append(
+            {
+                "id": block.id,
+                "space_id": block.space_id,
+                "space_name": space.name if space else block.space_id,
+                "booking_date": block.booking_date,
+                "start_time": block.start_time,
+                "end_time": block_end.strftime("%H:%M"),
+                "duration_hours": block.duration_hours,
+                "reason": block.reason or "Other",
+            }
+        )
+    upcoming_blocks.sort(key=lambda item: (item["booking_date"], item["start_time"], item["id"]))
+
+    def reason_breakdown(items: list[AvailabilityBlock]) -> list[dict[str, str | float]]:
+        reason_hours: dict[str, float] = {}
+        for block in items:
+            reason = block.reason or "Other"
+            reason_hours[reason] = reason_hours.get(reason, 0) + block.duration_hours
+        return [
+            {"reason": reason, "blocked_hours": round(hours, 1)}
+            for reason, hours in sorted(reason_hours.items(), key=lambda item: (-item[1], item[0]))
+        ]
+
+    summary_reasons = reason_breakdown(blocks)
+    month_reasons = reason_breakdown(month_blocks)
+    year_reasons = reason_breakdown(year_blocks)
+    summary_total = round(sum(item["blocked_hours"] for item in summary_reasons), 1)
+    month_total = round(sum(item["blocked_hours"] for item in month_reasons), 1)
+    year_total = round(sum(item["blocked_hours"] for item in year_reasons), 1)
     return AdminUnavailabilityOverviewResponse(
         month=selected_month,
-        total_blocked_hours=round(sum(reason_hours.values()), 1),
-        reasons=reasons,
+        year=selected_year,
+        space_id=space_id,
+        blocked_date_from=blocked_from.isoformat(),
+        blocked_date_to=blocked_to.isoformat(),
+        upcoming_blocks=upcoming_blocks,
+        total_blocked_hours=month_total,
+        reasons=month_reasons,
+        summary_total_blocked_hours=summary_total,
+        month_total_blocked_hours=month_total,
+        year_total_blocked_hours=year_total,
+        month_reasons=month_reasons,
+        year_reasons=year_reasons,
     )
 
 
