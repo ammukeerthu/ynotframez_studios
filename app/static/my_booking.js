@@ -35,6 +35,10 @@ function formatDate(value) {
     .format(new Date(`${value}T12:00:00`));
 }
 
+function statusLabel(value) {
+  return String(value || "").replaceAll("_", " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
 function paymentMethodLabel(method) {
   const labels = {
     upi: "UPI",
@@ -59,10 +63,10 @@ function showBooking(booking) {
   document.querySelector("#result-reference").textContent = booking.reference;
   document.querySelector("#result-greeting").textContent = `Booking details for ${booking.customer_name} · ${booking.customer_email}`;
   const bookingStatus = document.querySelector("#result-booking-status");
-  bookingStatus.textContent = booking.booking_status.replaceAll("_", " ");
+  bookingStatus.textContent = statusLabel(booking.booking_status);
   bookingStatus.className = booking.booking_status;
   const paymentStatus = document.querySelector("#result-payment-status");
-  paymentStatus.textContent = `Payment ${booking.payment_status.replaceAll("_", " ")}`;
+  paymentStatus.textContent = `Payment ${statusLabel(booking.payment_status)}`;
   paymentStatus.className = booking.payment_status;
   document.querySelector("#result-space").textContent = booking.space_name;
   document.querySelector("#result-date").textContent = formatDate(booking.booking_date);

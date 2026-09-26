@@ -815,8 +815,8 @@ function bookingRow(booking) {
     <td data-table-column="schedule">${safe(date)}<small>${safe(time)}</small></td>
     <td data-table-column="customer"><b>${safe(booking.customer_name || "Incomplete booking")}</b><small>${safe(booking.phone_number || "Phone not available")}</small></td>
     <td data-table-column="purpose" class="booking-purpose-cell" title="${safeAttr(purpose)}"><span>${safe(purpose)}</span></td>
-    <td data-table-column="payment"><span class="status status-${safe(booking.payment_status)}">${safe(booking.payment_status.replaceAll("_", " "))}</span></td>
-    <td data-table-column="status"><span class="status status-${safe(booking.status)}">${safe(booking.status.replaceAll("_", " "))}</span></td>
+    <td data-table-column="payment"><span class="status status-${safe(booking.payment_status)}">${safe(readableLabel(booking.payment_status))}</span></td>
+    <td data-table-column="status"><span class="status status-${safe(booking.status)}">${safe(readableLabel(booking.status))}</span></td>
     <td data-table-column="reference" hidden><b>${safe(booking.reference)}</b><small>${safe(paymentLabel)}</small></td>
     <td data-table-column="terms" hidden>${terms}</td>
     <td data-table-column="value" hidden>${safe(currency.format(booking.total_amount))}<small>Paid ${safe(currency.format(booking.amount_paid || 0))} · Balance ${safe(currency.format(booking.balance_due || 0))}</small></td>
@@ -1364,7 +1364,7 @@ function openBookingModal(bookingId) {
     .forEach((field) => { field.disabled = !editable; });
   document.querySelector("#save-booking-button").hidden = !editable;
   document.querySelector("#cancel-booking-button").hidden = !editable;
-  document.querySelector("#booking-payment-status").textContent = booking.payment_status.replaceAll("_", " ");
+  document.querySelector("#booking-payment-status").textContent = readableLabel(booking.payment_status);
   syncBookingEditPaymentEstimate();
   renderPaymentHistory(booking);
   const paymentReference = document.querySelector("#payment-reference");
@@ -1861,7 +1861,7 @@ document.querySelector("#payment-action-button").addEventListener("click", async
     bookingModal.hidden = true;
     showDashboardMessage(
       "#dashboard-message",
-      `${booking.reference} payment marked ${booking.payment_status.replaceAll("_", " ")}.`,
+      `${booking.reference} payment marked ${readableLabel(booking.payment_status)}.`,
     );
     await Promise.all([loadDashboardAnalytics(), loadBookings()]);
   } catch (error) {

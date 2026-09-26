@@ -95,7 +95,7 @@ class AdminAvailabilityViewTest(unittest.TestCase):
         self.assertNotIn('data-table-column="studio"', self.script)
         self.assertIn('value="actions" data-booking-column-toggle checked disabled', self.html)
         self.assertIn('/static/admin.css?v=20260926-13', self.html)
-        self.assertIn('/static/admin.js?v=20260926-17', self.html)
+        self.assertIn('/static/admin.js?v=20260926-18', self.html)
         self.assertIn('BOOKING_COLUMN_STORAGE_KEY = "ynf_admin_booking_columns_v2"', self.script)
         self.assertIn(
             'DEFAULT_BOOKING_COLUMNS = ["schedule", "customer", "purpose", "payment", "status", "actions"]',
@@ -125,6 +125,9 @@ class AdminAvailabilityViewTest(unittest.TestCase):
         self.assertIn('.status-pending,.status-partially_paid,.status-payment_pending {', self.styles)
         self.assertIn('.status-refund_due,.status-cancelled {', self.styles)
         self.assertIn('.status-refunded,.status-void,.status-expired {', self.styles)
+        self.assertIn('safe(readableLabel(booking.payment_status))', self.script)
+        self.assertIn('safe(readableLabel(booking.status))', self.script)
+        self.assertIn('booking-payment-status").textContent = readableLabel(booking.payment_status)', self.script)
 
     def test_booking_directory_uses_responsive_contained_layout(self) -> None:
         self.assertIn("@media(max-width:1600px){.bookings-section .filters", self.styles)
