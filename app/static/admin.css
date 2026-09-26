@@ -123,10 +123,17 @@ button,input,select,textarea { font:inherit; }
 .analytics-bar small { display:block; margin-top:7px; }
 .analytics-bar-track { height:12px; margin-top:10px; overflow:hidden; background:#e9e5dc; }
 .analytics-bar-track i { display:block; height:100%; background:var(--orange); }
-.unavailability-bar .analytics-bar-track i { background:var(--ink); }
 .unavailability-summary-stats { grid-template-columns:1fr; }
-.unavailability-reason-chart { min-height:310px; }
+.unavailability-reason-chart { display:grid; min-height:310px; margin-top:24px; place-items:center; }
 .unavailability-reason-chart > .analytics-empty { display:grid; min-height:310px; place-items:center; }
+.unavailability-pie-layout { display:flex; align-items:center; justify-content:center; gap:34px; width:100%; }
+.unavailability-pie { flex:0 0 190px; width:190px; height:190px; border:1px solid rgba(17,17,15,.08); border-radius:50%; box-shadow:inset 0 0 0 1px rgba(255,255,255,.25); }
+.unavailability-pie-legend { display:grid; gap:13px; min-width:175px; max-width:260px; margin:0; padding:0; list-style:none; }
+.unavailability-pie-legend li { display:flex; align-items:flex-start; gap:10px; }
+.unavailability-pie-legend li > i { flex:0 0 11px; width:11px; height:11px; margin-top:3px; border-radius:50%; }
+.unavailability-pie-legend span { display:grid; gap:3px; }
+.unavailability-pie-legend b { font-size:var(--admin-body); }
+.unavailability-pie-legend small { color:var(--muted); font-size:var(--admin-caption); }
 .upcoming-blocks-date-filters { display:flex; gap:12px; }
 .upcoming-blocks-date-filters label { width:190px; }
 .upcoming-blocks-table-wrap table { min-width:660px; }
@@ -182,7 +189,7 @@ button,input,select,textarea { font:inherit; }
 @media(max-width:1100px){.funds-chart-grid{grid-template-columns:1fr}}
 @media(max-width:800px){.funds-global-filter{justify-content:stretch}.funds-global-filter label{width:100%}.funds-panel-head label{width:100%}.upcoming-blocks-date-filters{width:100%}.funds-month-chart,.funds-year-chart,.unavailability-reason-chart{min-height:280px}.unavailability-reason-chart>.analytics-empty{min-height:280px}}
 @media(max-width:520px){.upcoming-blocks-date-filters{grid-template-columns:1fr;display:grid}}
-@media(max-width:520px){.funds-donut-layout{flex-direction:column;gap:24px}.funds-donut{flex-basis:170px;width:170px;height:170px}.funds-donut::after{width:114px;height:114px}.funds-chart-legend{grid-template-columns:1fr 1fr;width:100%}.funds-year-key{justify-content:flex-start}}
+@media(max-width:520px){.funds-donut-layout,.unavailability-pie-layout{flex-direction:column;gap:24px}.funds-donut,.unavailability-pie{flex-basis:170px;width:170px;height:170px}.funds-donut::after{width:114px;height:114px}.funds-chart-legend{grid-template-columns:1fr 1fr;width:100%}.unavailability-pie-legend{grid-template-columns:1fr;width:100%;max-width:none}.funds-year-key{justify-content:flex-start}}
 .alert-center { position:absolute; z-index:40; top:58px; right:0; width:min(540px,calc(100vw - 40px)); max-height:min(720px,75vh); overflow:auto; padding:21px; border:1px solid var(--line); background:var(--white); box-shadow:0 22px 60px rgba(25,23,18,.2); }
 .alert-center-head { display:flex; align-items:center; justify-content:space-between; gap:20px; }
 .alert-center-head h2 { margin:0; font:27px Georgia,serif; }

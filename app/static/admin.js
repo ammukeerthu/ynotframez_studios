@@ -490,18 +490,36 @@ async function loadBookingsOverview() {
 
 function renderUnavailabilityChart(chartSelector, items, emptyMessage) {
   const chart = document.querySelector(chartSelector);
-  if (!items.length) {
+  const visibleItems = items.filter((item) => Number(item.blocked_hours || 0) > 0);
+  const total = visibleItems.reduce((sum, item) => sum + Number(item.blocked_hours || 0), 0);
+  if (!visibleItems.length || !total) {
     chart.innerHTML = `<p class="analytics-empty">${safe(emptyMessage)}</p>`;
     return;
   }
-  const maximum = Math.max(...items.map((item) => Number(item.blocked_hours || 0)), 1);
-  chart.innerHTML = items.map((item) => {
-    const width = Math.max(0, Math.min(100, Number(item.blocked_hours || 0) / maximum * 100));
-    return `<article class="analytics-bar unavailability-bar">
-      <div><b>${safe(item.reason)}</b><span>${safe(hoursLabel(item.blocked_hours))}</span></div>
-      <div class="analytics-bar-track" role="img" aria-label="${safeAttr(`${item.reason}: ${hoursLabel(item.blocked_hours)}`)}"><i style="width:${width}%"></i></div>
-    </article>`;
-  }).join("");
+  const colors = ["#ff5b35", "#11110f", "#416b53", "#d8a034", "#7c6aa6", "#3f7c85", "#a44a6f", "#8a7455"];
+  let position = 0;
+  const slices = visibleItems.map((item, index) => {
+    const blockedHours = Number(item.blocked_hours || 0);
+    const start = position / total * 100;
+    position += blockedHours;
+    const end = position / total * 100;
+    return {
+      ...item,
+      blockedHours,
+      percent: percentage(blockedHours, total),
+      color: colors[index % colors.length],
+      gradient: `${colors[index % colors.length]} ${start}% ${end}%`,
+    };
+  });
+  const accessibleLabel = slices
+    .map((item) => `${item.reason}: ${hoursLabel(item.blockedHours)}, ${item.percent}%`)
+    .join(". ");
+  chart.innerHTML = `<div class="unavailability-pie-layout">
+    <div class="unavailability-pie" style="background:conic-gradient(${slices.map((item) => item.gradient).join(",")})" role="img" aria-label="${safeAttr(accessibleLabel)}" title="${safeAttr(accessibleLabel)}"></div>
+    <ul class="unavailability-pie-legend" aria-label="Blocked hours by reason">
+      ${slices.map((item) => `<li><i style="background:${item.color}"></i><span><b>${safe(item.reason)}</b><small>${safe(hoursLabel(item.blockedHours))} · ${item.percent}%</small></span></li>`).join("")}
+    </ul>
+  </div>`;
 }
 
 function renderUpcomingBlocks(items) {

@@ -94,8 +94,8 @@ class AdminAvailabilityViewTest(unittest.TestCase):
         self.assertNotIn('data-table-column="studio"', self.html)
         self.assertNotIn('data-table-column="studio"', self.script)
         self.assertIn('value="actions" data-booking-column-toggle checked disabled', self.html)
-        self.assertIn('/static/admin.css?v=20260926-13', self.html)
-        self.assertIn('/static/admin.js?v=20260926-18', self.html)
+        self.assertIn('/static/admin.css?v=20260926-14', self.html)
+        self.assertIn('/static/admin.js?v=20260926-19', self.html)
         self.assertIn('BOOKING_COLUMN_STORAGE_KEY = "ynf_admin_booking_columns_v2"', self.script)
         self.assertIn(
             'DEFAULT_BOOKING_COLUMNS = ["schedule", "customer", "purpose", "payment", "status", "actions"]',
@@ -295,7 +295,14 @@ class AdminAvailabilityViewTest(unittest.TestCase):
         self.assertIn('.funds-year-track i.pending { background:#d8a034; }', self.styles)
         self.assertIn('.funds-year-chart > .analytics-empty { position:absolute; top:50%', self.styles)
         self.assertIn('.unavailability-summary-stats { grid-template-columns:1fr; }', self.styles)
-        self.assertIn('.unavailability-reason-chart { min-height:310px; }', self.styles)
+        self.assertIn('class="unavailability-reason-chart"', self.html)
+        self.assertNotIn('class="analytics-bars unavailability-reason-chart"', self.html)
+        self.assertIn('.unavailability-reason-chart { display:grid; min-height:310px;', self.styles)
+        self.assertIn('.unavailability-pie {', self.styles)
+        self.assertIn('.unavailability-pie-legend {', self.styles)
+        self.assertIn('background:conic-gradient(${slices.map((item) => item.gradient).join(",")})', self.script)
+        self.assertIn('percent: percentage(blockedHours, total)', self.script)
+        self.assertNotIn('analytics-bar unavailability-bar', self.script)
         self.assertIn('.upcoming-blocks-date-filters { display:flex; gap:12px; }', self.styles)
 
     def test_each_dashboard_page_refreshes_when_opened(self) -> None:
