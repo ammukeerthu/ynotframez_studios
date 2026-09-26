@@ -9,9 +9,9 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800&amp;display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/admin.css?v=20260926-15">
+  <link rel="stylesheet" href="/static/admin.css?v=20260927-2">
   <script src="/static/studio_cache.js?v=20260908-1" defer></script>
-  <script src="/static/admin.js?v=20260926-20" defer></script>
+  <script src="/static/admin.js?v=20260927-3" defer></script>
 </head>
 <body>
   <section id="login-view" class="login-view" hidden>
@@ -139,11 +139,19 @@
             </article>
           </div>
           <article class="analytics-panel funds-activity-panel">
-            <div class="analytics-panel-head">
+            <div class="analytics-panel-head funds-panel-head">
               <div><p>ACTUAL CASHFLOW</p><h3 id="funds-cashflow-title">Selected year</h3></div>
-              <small>Payments and refunds grouped by their transaction date</small>
+              <label><span>YEAR</span><input name="cashflow_year" type="number" min="2000" max="2100" step="1" inputmode="numeric" required></label>
             </div>
+            <small class="analytics-panel-note">Payments and refunds grouped by their transaction date</small>
             <div id="funds-cashflow-chart" class="funds-cashflow-chart"><p class="analytics-empty">Loading cashflow&hellip;</p></div>
+          </article>
+          <article class="analytics-panel payment-ageing-panel">
+            <div class="analytics-panel-head">
+              <div><p>OUTSTANDING PAYMENT AGEING</p><h3>Balances grouped by session due date</h3></div>
+              <small>Past sessions are aged from their scheduled end time</small>
+            </div>
+            <div id="funds-ageing-cards" class="payment-ageing-cards"><p class="analytics-empty">Loading payment ageing&hellip;</p></div>
           </article>
           <article class="analytics-panel outstanding-bookings-panel">
             <div class="analytics-panel-head">
@@ -152,8 +160,8 @@
             </div>
             <div class="table-wrap analytics-table-wrap outstanding-bookings-table-wrap">
               <table id="funds-outstanding-table">
-                <thead><tr><th>Booking</th><th>Customer</th><th>Studio</th><th>Total</th><th>Paid</th><th>Balance</th><th>Payment status</th></tr></thead>
-                <tbody id="funds-outstanding-body"><tr><td colspan="7" class="empty">Loading outstanding bookings&hellip;</td></tr></tbody>
+                <thead><tr><th>Booking</th><th>Customer</th><th>Studio</th><th>Total</th><th>Paid</th><th>Balance</th><th>Ageing</th><th>Payment status</th></tr></thead>
+                <tbody id="funds-outstanding-body"><tr><td colspan="8" class="empty">Loading outstanding bookings&hellip;</td></tr></tbody>
               </table>
             </div>
           </article>
@@ -161,25 +169,87 @@
       </section>
 
       <section id="overview-bookings" class="overview-section analytics-section" aria-label="Bookings overview">
-        <div class="section-heading"><div><p class="eyebrow">BOOKINGS</p></div><p>Daily booking activity and monthly studio utilisation.</p></div>
-        <form id="bookings-overview-filters" class="analytics-filters bookings-analytics-filters">
-          <label><span>BOOKING DAY</span><select name="day_offset"><option value="-1">Yesterday</option><option value="0" selected>Today</option><option value="1">Tomorrow</option></select></label>
-          <label><span>UTILISATION MONTH</span><input name="month" type="month" required></label>
-          <button type="submit">Apply</button>
-        </form>
-        <div id="bookings-overview-message" class="dashboard-message" hidden></div>
-        <div class="stats analytics-stats booking-count-stat">
-          <article><p>TOTAL BOOKINGS</p><strong id="overview-booking-count">&hellip;</strong><small id="overview-booking-date">Selected day</small></article>
+        <div class="section-heading bookings-overview-heading">
+          <div><p class="eyebrow">BOOKINGS</p><h2>Booking overview</h2></div>
         </div>
-        <div class="analytics-panel">
-          <div class="analytics-panel-head"><div><p>BOOKING DETAILS</p><h3 id="overview-bookings-table-title">Today</h3></div></div>
-          <div class="table-wrap analytics-table-wrap">
-            <table id="overview-bookings-table"><thead><tr><th>Studio</th><th>Date &amp; time</th><th>Customer</th></tr></thead><tbody id="overview-bookings-body"><tr><td colspan="3" class="empty">Loading bookings&hellip;</td></tr></tbody></table>
+        <div class="bookings-overview-content">
+          <form id="bookings-overview-filters" class="analytics-filters bookings-analytics-filters">
+            <div class="funds-global-filter"><label><span>STUDIO SPACE</span><select name="space_id"><option value="">All Spaces</option></select></label></div>
+          </form>
+          <div id="bookings-overview-message" class="dashboard-message" hidden></div>
+          <p class="funds-summary-label">OVERALL SUMMARY</p>
+          <div class="stats analytics-stats funds-summary-stats bookings-summary-stats">
+            <article class="dark"><p>TOTAL BOOKINGS</p><strong id="bookings-summary-total">&hellip;</strong><small>All saved booking records</small></article>
+            <article><p>CONFIRMED BOOKINGS</p><strong id="bookings-summary-confirmed">&hellip;</strong><small>Bookings currently confirmed</small></article>
+            <article><p>CANCELLED BOOKINGS</p><strong id="bookings-summary-cancelled">&hellip;</strong><small>Bookings cancelled by the studio or customer</small></article>
           </div>
-        </div>
-        <div class="analytics-panel">
-          <div class="analytics-panel-head"><div><p>STUDIO-WISE UTILISATION</p><h3 id="utilisation-chart-title">Selected month</h3></div><small>Confirmed booked hours / configured operating hours</small></div>
-          <div id="studio-utilisation-chart" class="analytics-bars"><p class="analytics-empty">Loading utilisation&hellip;</p></div>
+          <article class="analytics-panel upcoming-bookings-panel">
+            <div class="analytics-panel-head funds-panel-head">
+              <div><p>UPCOMING BOOKINGS</p><h3>Confirmed future sessions</h3></div>
+              <div class="upcoming-blocks-date-filters">
+                <label><span>FROM</span><input id="bookings-upcoming-from" type="date" required></label>
+                <label><span>TO</span><input id="bookings-upcoming-to" type="date" required></label>
+              </div>
+            </div>
+            <div class="table-wrap analytics-table-wrap upcoming-bookings-table-wrap">
+              <table id="upcoming-bookings-table">
+                <thead><tr><th>Reference</th><th>Studio</th><th>Date &amp; Time</th><th>Customer</th><th>Purpose</th></tr></thead>
+                <tbody id="upcoming-bookings-body"><tr><td colspan="5" class="empty">Loading upcoming bookings&hellip;</td></tr></tbody>
+              </table>
+            </div>
+          </article>
+          <article class="analytics-panel action-centre-panel">
+            <div class="analytics-panel-head">
+              <div><p>ACTION CENTRE</p><h3>Items needing attention</h3></div>
+              <small id="action-centre-count">Loading actions&hellip;</small>
+            </div>
+            <div class="table-wrap analytics-table-wrap action-centre-table-wrap">
+              <table id="action-centre-table">
+                <thead><tr><th>Attention</th><th>Booking</th><th>Customer</th><th>Date &amp; Time</th><th>Balance</th><th>Action</th></tr></thead>
+                <tbody id="action-centre-body"><tr><td colspan="6" class="empty">Loading action centre&hellip;</td></tr></tbody>
+              </table>
+            </div>
+          </article>
+          <div class="bookings-utilisation-grid bookings-balanced-grid">
+            <div class="analytics-panel utilisation-summary-panel">
+              <div class="analytics-panel-head funds-panel-head"><div><p>MONTH-WISE STUDIO UTILISATION</p><h3 id="utilisation-chart-title">Selected month</h3></div><label><span>MONTH &amp; YEAR</span><input id="bookings-utilisation-month" type="month" required></label></div>
+              <small class="analytics-panel-note">Confirmed booked hours / configured operating hours</small>
+              <div id="studio-utilisation-chart" class="analytics-bars"><p class="analytics-empty">Loading utilisation&hellip;</p></div>
+            </div>
+            <div class="analytics-panel utilisation-summary-panel">
+              <div class="analytics-panel-head funds-panel-head"><div><p>YEAR-WISE STUDIO UTILISATION</p><h3 id="year-utilisation-chart-title">Selected year</h3></div><label><span>YEAR</span><input id="bookings-utilisation-year" type="number" min="2000" max="2100" step="1" inputmode="numeric" required></label></div>
+              <small class="analytics-panel-note">Confirmed booked hours / configured operating hours</small>
+              <div id="year-studio-utilisation-chart" class="analytics-bars"><p class="analytics-empty">Loading utilisation&hellip;</p></div>
+            </div>
+          </div>
+          <div class="bookings-utilisation-grid bookings-balanced-grid">
+            <div class="analytics-panel utilisation-summary-panel">
+              <div class="analytics-panel-head funds-panel-head"><div><p>MONTH-WISE BOOKINGS BY PURPOSE</p><h3 id="purpose-month-chart-title">Selected month</h3></div><label><span>MONTH &amp; YEAR</span><input id="bookings-purpose-month" type="month" required></label></div>
+              <small class="analytics-panel-note">Share of confirmed booked hours by purpose</small>
+              <div id="purpose-month-chart" class="analytics-bars"><p class="analytics-empty">Loading purposes&hellip;</p></div>
+            </div>
+            <div class="analytics-panel utilisation-summary-panel">
+              <div class="analytics-panel-head funds-panel-head"><div><p>YEAR-WISE BOOKINGS BY PURPOSE</p><h3 id="purpose-year-chart-title">Selected year</h3></div><label><span>YEAR</span><input id="bookings-purpose-year" type="number" min="2000" max="2100" step="1" inputmode="numeric" required></label></div>
+              <small class="analytics-panel-note">Share of confirmed booked hours by purpose</small>
+              <div id="purpose-year-chart" class="analytics-bars"><p class="analytics-empty">Loading purposes&hellip;</p></div>
+            </div>
+          </div>
+          <div class="analytics-panel utilisation-heatmap-panel">
+            <div class="analytics-panel-head funds-panel-head"><div><p>UTILISATION HEATMAP</p><h3 id="utilisation-heatmap-title">Selected month</h3></div><label><span>MONTH &amp; YEAR</span><input id="bookings-heatmap-month" type="month" required></label></div>
+            <small class="analytics-panel-note">Confirmed half-hour occupancy by weekday and time</small>
+            <div id="utilisation-heatmap" class="utilisation-heatmap"><p class="analytics-empty">Loading utilisation heatmap&hellip;</p></div>
+          </div>
+          <div class="bookings-daily-grid">
+            <div class="stats analytics-stats booking-count-stat">
+              <article><p>BOOKINGS ON SELECTED DAY</p><strong id="overview-booking-count">&hellip;</strong><small id="overview-booking-date">Selected day</small></article>
+            </div>
+            <div class="analytics-panel booking-details-panel">
+              <div class="analytics-panel-head funds-panel-head"><div><p>BOOKING DETAILS</p><h3 id="overview-bookings-table-title">Today</h3></div><label><span>BOOKING DAY</span><select id="bookings-day-picker"><option value="-1">Yesterday</option><option value="0" selected>Today</option><option value="1">Tomorrow</option></select></label></div>
+              <div class="table-wrap analytics-table-wrap">
+                <table id="overview-bookings-table"><thead><tr><th>Studio</th><th>Date &amp; time</th><th>Customer</th></tr></thead><tbody id="overview-bookings-body"><tr><td colspan="3" class="empty">Loading bookings&hellip;</td></tr></tbody></table>
+              </div>
+            </div>
+          </div>
         </div>
       </section>
 
@@ -226,17 +296,19 @@
           </div>
           <div class="funds-chart-grid unavailability-insight-grid">
             <article class="analytics-panel funds-chart-panel">
-              <div class="analytics-panel-head">
+              <div class="analytics-panel-head funds-panel-head">
                 <div><p>12-MONTH BLOCKED-HOURS TREND</p><h3 id="unavailability-trend-title">Selected year</h3></div>
-                <small>Blocked hours by calendar month</small>
+                <label><span>YEAR</span><input name="trend_year" type="number" min="2000" max="2100" step="1" inputmode="numeric" required></label>
               </div>
+              <small class="analytics-panel-note">Blocked hours by calendar month</small>
               <div id="unavailability-trend-chart" class="unavailability-trend-chart"><p class="analytics-empty">Loading blocked-hours trend&hellip;</p></div>
             </article>
             <article class="analytics-panel funds-chart-panel">
-              <div class="analytics-panel-head">
+              <div class="analytics-panel-head funds-panel-head">
                 <div><p>STUDIO COMPARISON</p><h3 id="unavailability-studio-title">Selected month</h3></div>
-                <small>Blocked hours by studio</small>
+                <label><span>MONTH &amp; YEAR</span><input name="studio_month" type="month" required></label>
               </div>
+              <small class="analytics-panel-note">Blocked hours by studio</small>
               <div id="unavailability-studio-chart" class="analytics-bars unavailability-studio-chart"><p class="analytics-empty">Loading studio comparison&hellip;</p></div>
             </article>
           </div>

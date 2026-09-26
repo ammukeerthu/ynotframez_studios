@@ -94,6 +94,15 @@ class AdminOutstandingBookingItem(BaseModel):
     amount_paid: int
     balance_due: int
     payment_status: str
+    ageing_bucket: str
+    days_overdue: int
+
+
+class AdminOutstandingAgeingBucket(BaseModel):
+    key: str
+    label: str
+    booking_count: int
+    amount: int
 
 
 class AdminFundsOverviewResponse(BaseModel):
@@ -111,7 +120,25 @@ class AdminFundsOverviewResponse(BaseModel):
     month_pending_amount: int
     yearly_collections: list[AdminFundsMonthlyCollection]
     yearly_cashflow: list[AdminFundsCashflowMonth]
+    outstanding_ageing: list[AdminOutstandingAgeingBucket]
     outstanding_bookings: list[AdminOutstandingBookingItem]
+
+
+class AdminFundsMonthResponse(BaseModel):
+    month: str
+    estimated_amount: int
+    collected_amount: int
+    pending_amount: int
+
+
+class AdminFundsYearResponse(BaseModel):
+    year: int
+    collections: list[AdminFundsMonthlyCollection]
+
+
+class AdminFundsCashflowResponse(BaseModel):
+    year: int
+    cashflow: list[AdminFundsCashflowMonth]
 
 
 class AdminOverviewBookingItem(BaseModel):
@@ -123,6 +150,7 @@ class AdminOverviewBookingItem(BaseModel):
     end_time: str
     customer_name: str
     phone_number: str
+    purpose: str | None = None
 
 
 class AdminStudioUtilizationItem(BaseModel):
@@ -133,12 +161,90 @@ class AdminStudioUtilizationItem(BaseModel):
     utilization_percent: float
 
 
+class AdminPurposeUtilizationItem(BaseModel):
+    purpose: str
+    booking_count: int
+    booked_hours: float
+    utilization_percent: float
+
+
+class AdminUtilizationHeatmapCell(BaseModel):
+    space_id: str
+    space_name: str
+    weekday: int
+    time_slot: str
+    booked_occurrences: int
+    available_occurrences: int
+    utilization_percent: float
+
+
+class AdminActionItem(BaseModel):
+    id: str
+    kind: str
+    priority: str
+    title: str
+    message: str
+    booking_id: int
+    reference: str
+    customer_name: str
+    phone_number: str
+    space_id: str
+    space_name: str
+    booking_date: str
+    start_time: str
+    end_time: str
+    balance_due: int
+
+
 class AdminBookingsOverviewResponse(BaseModel):
+    space_id: str | None
+    summary_total_bookings: int
+    summary_confirmed_bookings: int
+    summary_cancelled_bookings: int
     selected_date: str
     total_bookings: int
     bookings: list[AdminOverviewBookingItem]
     utilization_month: str
     studio_utilization: list[AdminStudioUtilizationItem]
+    utilization_heatmap: list[AdminUtilizationHeatmapCell]
+    action_items: list[AdminActionItem]
+
+
+class AdminBookingsDayResponse(BaseModel):
+    selected_date: str
+    total_bookings: int
+    bookings: list[AdminOverviewBookingItem]
+
+
+class AdminBookingsUtilizationResponse(BaseModel):
+    month: str
+    studios: list[AdminStudioUtilizationItem]
+
+
+class AdminBookingsHeatmapResponse(BaseModel):
+    month: str
+    cells: list[AdminUtilizationHeatmapCell]
+
+
+class AdminBookingsUpcomingResponse(BaseModel):
+    date_from: str
+    date_to: str
+    bookings: list[AdminOverviewBookingItem]
+
+
+class AdminBookingsYearUtilizationResponse(BaseModel):
+    year: int
+    studios: list[AdminStudioUtilizationItem]
+
+
+class AdminBookingsPurposeMonthResponse(BaseModel):
+    month: str
+    purposes: list[AdminPurposeUtilizationItem]
+
+
+class AdminBookingsPurposeYearResponse(BaseModel):
+    year: int
+    purposes: list[AdminPurposeUtilizationItem]
 
 
 class AdminUnavailabilityReasonItem(BaseModel):
@@ -184,6 +290,34 @@ class AdminUnavailabilityOverviewResponse(BaseModel):
     year_reasons: list[AdminUnavailabilityReasonItem]
     yearly_blocked_hours: list[AdminUnavailabilityMonthItem]
     month_studio_hours: list[AdminUnavailabilityStudioItem]
+
+
+class AdminUpcomingBlocksResponse(BaseModel):
+    date_from: str
+    date_to: str
+    blocks: list[AdminUpcomingBlockItem]
+
+
+class AdminUnavailabilityMonthResponse(BaseModel):
+    month: str
+    total_blocked_hours: float
+    reasons: list[AdminUnavailabilityReasonItem]
+
+
+class AdminUnavailabilityYearResponse(BaseModel):
+    year: int
+    total_blocked_hours: float
+    reasons: list[AdminUnavailabilityReasonItem]
+
+
+class AdminUnavailabilityTrendResponse(BaseModel):
+    year: int
+    months: list[AdminUnavailabilityMonthItem]
+
+
+class AdminUnavailabilityStudioResponse(BaseModel):
+    month: str
+    studios: list[AdminUnavailabilityStudioItem]
 
 
 class AdminAlertItem(BaseModel):

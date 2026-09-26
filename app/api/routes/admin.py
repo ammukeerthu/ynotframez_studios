@@ -36,10 +36,25 @@ from app.schemas.admin import (
     AdminLoginRequest,
     AdminAlertItem,
     AdminAlertsResponse,
+    AdminBookingsDayResponse,
+    AdminBookingsHeatmapResponse,
     AdminBookingsOverviewResponse,
+    AdminBookingsPurposeMonthResponse,
+    AdminBookingsPurposeYearResponse,
+    AdminBookingsUpcomingResponse,
+    AdminBookingsUtilizationResponse,
+    AdminBookingsYearUtilizationResponse,
+    AdminFundsCashflowResponse,
+    AdminFundsMonthResponse,
     AdminFundsOverviewResponse,
+    AdminFundsYearResponse,
     AdminOverviewResponse,
+    AdminUnavailabilityMonthResponse,
     AdminUnavailabilityOverviewResponse,
+    AdminUnavailabilityStudioResponse,
+    AdminUnavailabilityTrendResponse,
+    AdminUnavailabilityYearResponse,
+    AdminUpcomingBlocksResponse,
     AdminPaymentUpdate,
     AdminSessionResponse,
     AdminSetupRequest,
@@ -542,6 +557,17 @@ def admin_funds_overview(
         for month_number in range(1, 13)
     ]
 
+    local_now = datetime.now(ZoneInfo(settings.studio_timezone))
+    ageing_labels = {
+        "upcoming": "Upcoming / not yet due",
+        "overdue_1_7": "Overdue 1-7 days",
+        "overdue_8_30": "Overdue 8-30 days",
+        "overdue_31_plus": "Overdue 31+ days",
+    }
+    ageing_totals = {
+        key: {"booking_count": 0, "amount": 0}
+        for key in ageing_labels
+    }
     outstanding_bookings = []
     for booking in bookings:
         record = payment_records.get(booking.id)
@@ -560,7 +586,22 @@ def admin_funds_overview(
         start_at = datetime.combine(
             date.fromisoformat(booking_date) if booking_date else date.min,
             time.fromisoformat(start_time),
+            tzinfo=ZoneInfo(settings.studio_timezone),
         )
+        end_at = start_at + timedelta(hours=booking.duration_hours or 0)
+        if end_at >= local_now:
+            ageing_bucket = "upcoming"
+            days_overdue = 0
+        else:
+            days_overdue = max(1, (local_now.date() - end_at.date()).days)
+            if days_overdue <= 7:
+                ageing_bucket = "overdue_1_7"
+            elif days_overdue <= 30:
+                ageing_bucket = "overdue_8_30"
+            else:
+                ageing_bucket = "overdue_31_plus"
+        ageing_totals[ageing_bucket]["booking_count"] += 1
+        ageing_totals[ageing_bucket]["amount"] += balance_due
         space = get_space_by_id(booking.space_id, db, include_inactive=True)
         outstanding_bookings.append(
             {
@@ -576,9 +617,20 @@ def admin_funds_overview(
                 "amount_paid": amount_paid,
                 "balance_due": balance_due,
                 "payment_status": (record.status if record else PaymentStatus.PENDING).value,
+                "ageing_bucket": ageing_bucket,
+                "days_overdue": days_overdue,
             }
         )
     outstanding_bookings.sort(key=lambda item: (item["booking_date"], item["start_time"], item["id"]))
+    outstanding_ageing = [
+        {
+            "key": key,
+            "label": label,
+            "booking_count": ageing_totals[key]["booking_count"],
+            "amount": ageing_totals[key]["amount"],
+        }
+        for key, label in ageing_labels.items()
+    ]
 
     return AdminFundsOverviewResponse(
         month=chart_month if month else None,
@@ -595,8 +647,63 @@ def admin_funds_overview(
         month_pending_amount=month_amounts[2],
         yearly_collections=yearly_collections,
         yearly_cashflow=yearly_cashflow,
+        outstanding_ageing=outstanding_ageing,
         outstanding_bookings=outstanding_bookings,
     )
+
+
+@router.get(
+    "/overview/funds/month",
+    response_model=AdminFundsMonthResponse,
+    dependencies=[Depends(require_admin)],
+)
+def admin_funds_month(
+    month: str | None = Query(default=None, pattern=r"^\d{4}-\d{2}$"),
+    db: Session = Depends(get_db),
+    space_id: str | None = None,
+) -> AdminFundsMonthResponse:
+    overview = admin_funds_overview(month=month, db=db, space_id=space_id)
+    return AdminFundsMonthResponse(
+        month=overview.month or _month_bounds(month)[2],
+        estimated_amount=overview.month_estimated_amount,
+        collected_amount=overview.month_collected_amount,
+        pending_amount=overview.month_pending_amount,
+    )
+
+
+@router.get(
+    "/overview/funds/year",
+    response_model=AdminFundsYearResponse,
+    dependencies=[Depends(require_admin)],
+)
+def admin_funds_year(
+    year: int | None = None,
+    db: Session = Depends(get_db),
+    space_id: str | None = None,
+) -> AdminFundsYearResponse:
+    overview = admin_funds_overview(db=db, year=year, space_id=space_id)
+    return AdminFundsYearResponse(year=overview.year, collections=overview.yearly_collections)
+
+
+@router.get(
+    "/overview/funds/cashflow",
+    response_model=AdminFundsCashflowResponse,
+    dependencies=[Depends(require_admin)],
+)
+def admin_funds_cashflow(
+    year: int | None = None,
+    db: Session = Depends(get_db),
+    space_id: str | None = None,
+) -> AdminFundsCashflowResponse:
+    overview = admin_funds_overview(db=db, year=year, space_id=space_id)
+    return AdminFundsCashflowResponse(year=overview.year, cashflow=overview.yearly_cashflow)
+
+
+def _validate_overview_space(space_id: str | None, db: Session) -> None:
+    if space_id and len(space_id) > 64:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Studio space is invalid.")
+    if space_id and get_space_by_id(space_id, db, include_inactive=True) is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Studio space not found.")
 
 
 @router.get(
@@ -608,29 +715,36 @@ def admin_bookings_overview(
     day_offset: int = Query(default=0, ge=-1, le=1),
     month: str | None = Query(default=None, pattern=r"^\d{4}-\d{2}$"),
     db: Session = Depends(get_db),
+    space_id: str | None = None,
 ) -> AdminBookingsOverviewResponse:
+    _validate_overview_space(space_id, db)
+
+    summary_statement = select(Booking).where(
+        Booking.booking_date.is_not(None),
+        Booking.space_id.is_not(None),
+    )
+    if space_id:
+        summary_statement = summary_statement.where(Booking.space_id == space_id)
+    summary_bookings = list(db.scalars(summary_statement))
+
     studio_today = datetime.now(ZoneInfo(settings.studio_timezone)).date()
     selected_date = studio_today + timedelta(days=day_offset)
-    day_bookings = list(
-        db.scalars(
-            select(Booking)
-            .where(
-                Booking.state == BookingState.CONFIRMED,
-                Booking.booking_date == selected_date.isoformat(),
-            )
-            .order_by(Booking.start_time, Booking.id)
-        )
+    day_statement = select(Booking).where(
+        Booking.state == BookingState.CONFIRMED,
+        Booking.booking_date == selected_date.isoformat(),
     )
+    if space_id:
+        day_statement = day_statement.where(Booking.space_id == space_id)
+    day_bookings = list(db.scalars(day_statement.order_by(Booking.start_time, Booking.id)))
     first_day, next_month, selected_month = _month_bounds(month)
-    month_bookings = list(
-        db.scalars(
-            select(Booking).where(
-                Booking.state == BookingState.CONFIRMED,
-                Booking.booking_date >= first_day.isoformat(),
-                Booking.booking_date < next_month.isoformat(),
-            )
-        )
+    month_statement = select(Booking).where(
+        Booking.state == BookingState.CONFIRMED,
+        Booking.booking_date >= first_day.isoformat(),
+        Booking.booking_date < next_month.isoformat(),
     )
+    if space_id:
+        month_statement = month_statement.where(Booking.space_id == space_id)
+    month_bookings = list(db.scalars(month_statement))
     booked_hours: dict[str, float] = {}
     for booking in month_bookings:
         if booking.space_id and booking.duration_hours:
@@ -638,7 +752,12 @@ def admin_bookings_overview(
 
     days_in_month = (next_month - first_day).days
     utilization = []
-    for space in list_spaces(db, include_inactive=True):
+    spaces = [
+        space
+        for space in list_spaces(db, include_inactive=True)
+        if not space_id or space.id == space_id
+    ]
+    for space in spaces:
         opening = datetime.combine(first_day, time.fromisoformat(space.opening_time))
         closing = datetime.combine(first_day, time.fromisoformat(space.closing_time))
         available_hours = max(0.0, (closing - opening).total_seconds() / 3600) * days_in_month
@@ -656,6 +775,50 @@ def admin_bookings_overview(
             }
         )
 
+    dates_in_month = [first_day + timedelta(days=offset) for offset in range(days_in_month)]
+    weekday_occurrences = {
+        weekday: sum(current.weekday() == weekday for current in dates_in_month)
+        for weekday in range(7)
+    }
+    heatmap_counts: dict[tuple[str, int, str], int] = {}
+    for booking in month_bookings:
+        if not booking.space_id or not booking.booking_date or not booking.start_time:
+            continue
+        booking_day = date.fromisoformat(booking.booking_date)
+        start_minutes = time.fromisoformat(booking.start_time).hour * 60 + time.fromisoformat(booking.start_time).minute
+        end_minutes = start_minutes + round((booking.duration_hours or 0) * 60)
+        for slot_minutes in range((start_minutes // 30) * 30, end_minutes, 30):
+            slot = f"{slot_minutes // 60:02d}:{slot_minutes % 60:02d}"
+            key = (booking.space_id, booking_day.weekday(), slot)
+            heatmap_counts[key] = heatmap_counts.get(key, 0) + 1
+
+    utilization_heatmap = []
+    for space in spaces:
+        opening_time = time.fromisoformat(space.opening_time)
+        closing_time = time.fromisoformat(space.closing_time)
+        opening_minutes = opening_time.hour * 60 + opening_time.minute
+        closing_minutes = closing_time.hour * 60 + closing_time.minute
+        for slot_minutes in range(opening_minutes, closing_minutes, 30):
+            slot = f"{slot_minutes // 60:02d}:{slot_minutes % 60:02d}"
+            for weekday in range(7):
+                available_occurrences = weekday_occurrences[weekday]
+                booked_occurrences = heatmap_counts.get((space.id, weekday, slot), 0)
+                utilization_heatmap.append(
+                    {
+                        "space_id": space.id,
+                        "space_name": space.name,
+                        "weekday": weekday,
+                        "time_slot": slot,
+                        "booked_occurrences": booked_occurrences,
+                        "available_occurrences": available_occurrences,
+                        "utilization_percent": round(
+                            booked_occurrences / available_occurrences * 100
+                            if available_occurrences else 0,
+                            1,
+                        ),
+                    }
+                )
+
     booking_items = []
     for booking in day_bookings:
         start = time.fromisoformat(booking.start_time or "00:00")
@@ -672,14 +835,441 @@ def admin_bookings_overview(
                 "end_time": end_time,
                 "customer_name": booking.customer_name or "Incomplete booking",
                 "phone_number": booking.phone_number,
+                "purpose": booking.purpose,
             }
         )
+
+    local_now = datetime.now(ZoneInfo(settings.studio_timezone))
+    payment_records, payment_totals, refund_totals = _payment_amount_maps(db)
+    active_statement = select(Booking).where(
+        Booking.state.in_([BookingState.CONFIRMED, BookingState.PAYMENT_PENDING])
+    )
+    if space_id:
+        active_statement = active_statement.where(Booking.space_id == space_id)
+    active_bookings = list(db.scalars(active_statement))
+    action_items = []
+    for booking in active_bookings:
+        window = _booking_window(booking, ZoneInfo(settings.studio_timezone))
+        if window is None:
+            continue
+        _, end_at = window
+        space = get_space_by_id(booking.space_id, db, include_inactive=True)
+        space_name = space.name if space else booking.space_id or "Studio"
+        record = payment_records.get(booking.id)
+        total_amount = record.amount if record else _booking_amount(booking, db)
+        amount_paid = max(0, payment_totals.get(booking.id, 0) - refund_totals.get(booking.id, 0))
+        balance_due = max(0, total_amount - amount_paid)
+        common = {
+            "booking_id": booking.id,
+            "reference": f"YNF-{booking.id:06d}",
+            "customer_name": booking.customer_name or "Customer",
+            "phone_number": booking.phone_number,
+            "space_id": booking.space_id or "",
+            "space_name": space_name,
+            "booking_date": booking.booking_date or "",
+            "start_time": booking.start_time or "",
+            "end_time": end_at.strftime("%H:%M"),
+            "balance_due": balance_due,
+        }
+
+        if end_at >= local_now and not booking.calendar_event_id:
+            action_items.append(
+                {
+                    **common,
+                    "id": f"calendar-missing-{booking.id}",
+                    "kind": "calendar_missing",
+                    "priority": "urgent",
+                    "title": "Calendar event missing",
+                    "message": "This active booking has no linked Google Calendar event.",
+                }
+            )
+
+        if booking.state == BookingState.PAYMENT_PENDING:
+            created_at = booking.created_at.replace(tzinfo=UTC) if booking.created_at.tzinfo is None else booking.created_at
+            hold_expires_at = created_at.astimezone(ZoneInfo(settings.studio_timezone)) + timedelta(
+                minutes=settings.razorpay_payment_hold_minutes
+            )
+            expired = hold_expires_at <= local_now
+            action_items.append(
+                {
+                    **common,
+                    "id": f"awaiting-confirmation-{booking.id}",
+                    "kind": "awaiting_confirmation",
+                    "priority": "urgent" if expired else "warning",
+                    "title": "Expired hold needs review" if expired else "Awaiting payment confirmation",
+                    "message": (
+                        "The payment hold has passed its expiry time."
+                        if expired
+                        else f"Payment hold expires at {hold_expires_at:%d %b %Y, %I:%M %p}."
+                    ),
+                }
+            )
+            continue
+
+        payment_status = record.status if record else PaymentStatus.PENDING
+        if balance_due and payment_status in {PaymentStatus.PENDING, PaymentStatus.PARTIALLY_PAID}:
+            overdue = end_at < local_now
+            action_items.append(
+                {
+                    **common,
+                    "id": f"payment-{booking.id}",
+                    "kind": "overdue_payment" if overdue else "upcoming_payment",
+                    "priority": "urgent" if overdue else "warning",
+                    "title": (
+                        "Payment overdue"
+                        if overdue
+                        else "Partially paid booking" if payment_status == PaymentStatus.PARTIALLY_PAID
+                        else "Upcoming payment pending"
+                    ),
+                    "message": f"{space_name} has a balance of ₹{balance_due:,}.",
+                }
+            )
+    action_items.sort(
+        key=lambda item: (
+            0 if item["priority"] == "urgent" else 1,
+            item["booking_date"],
+            item["start_time"],
+            item["id"],
+        )
+    )
     return AdminBookingsOverviewResponse(
+        space_id=space_id,
+        summary_total_bookings=len(summary_bookings),
+        summary_confirmed_bookings=sum(
+            booking.state == BookingState.CONFIRMED for booking in summary_bookings
+        ),
+        summary_cancelled_bookings=sum(
+            booking.state == BookingState.CANCELLED for booking in summary_bookings
+        ),
         selected_date=selected_date.isoformat(),
         total_bookings=len(booking_items),
         bookings=booking_items,
         utilization_month=selected_month,
         studio_utilization=utilization,
+        utilization_heatmap=utilization_heatmap,
+        action_items=action_items,
+    )
+
+
+@router.get(
+    "/overview/bookings/day",
+    response_model=AdminBookingsDayResponse,
+    dependencies=[Depends(require_admin)],
+)
+def admin_bookings_day(
+    day_offset: int = Query(default=0, ge=-1, le=1),
+    db: Session = Depends(get_db),
+    space_id: str | None = None,
+) -> AdminBookingsDayResponse:
+    _validate_overview_space(space_id, db)
+    selected_date = datetime.now(ZoneInfo(settings.studio_timezone)).date() + timedelta(days=day_offset)
+    statement = select(Booking).where(
+        Booking.state == BookingState.CONFIRMED,
+        Booking.booking_date == selected_date.isoformat(),
+    )
+    if space_id:
+        statement = statement.where(Booking.space_id == space_id)
+    bookings = list(db.scalars(statement.order_by(Booking.start_time, Booking.id)))
+    return AdminBookingsDayResponse(
+        selected_date=selected_date.isoformat(),
+        total_bookings=len(bookings),
+        bookings=[_overview_booking_item(booking, db) for booking in bookings],
+    )
+
+
+@router.get(
+    "/overview/bookings/utilization",
+    response_model=AdminBookingsUtilizationResponse,
+    dependencies=[Depends(require_admin)],
+)
+def admin_bookings_utilization(
+    month: str | None = Query(default=None, pattern=r"^\d{4}-\d{2}$"),
+    db: Session = Depends(get_db),
+    space_id: str | None = None,
+) -> AdminBookingsUtilizationResponse:
+    _validate_overview_space(space_id, db)
+    first_day, next_month, selected_month = _month_bounds(month)
+    return AdminBookingsUtilizationResponse(
+        month=selected_month,
+        studios=_studio_utilization_between(first_day, next_month, db, space_id),
+    )
+
+
+@router.get(
+    "/overview/bookings/heatmap",
+    response_model=AdminBookingsHeatmapResponse,
+    dependencies=[Depends(require_admin)],
+)
+def admin_bookings_heatmap(
+    month: str | None = Query(default=None, pattern=r"^\d{4}-\d{2}$"),
+    db: Session = Depends(get_db),
+    space_id: str | None = None,
+) -> AdminBookingsHeatmapResponse:
+    _validate_overview_space(space_id, db)
+    first_day, next_month, selected_month = _month_bounds(month)
+    return AdminBookingsHeatmapResponse(
+        month=selected_month,
+        cells=_utilization_heatmap_between(first_day, next_month, db, space_id),
+    )
+
+
+def _overview_booking_item(booking: Booking, db: Session) -> dict[str, object]:
+    booking_day = date.fromisoformat(booking.booking_date or date.today().isoformat())
+    start = time.fromisoformat(booking.start_time or "00:00")
+    end_time = (
+        datetime.combine(booking_day, start) + timedelta(hours=booking.duration_hours or 0)
+    ).strftime("%H:%M")
+    space = get_space_by_id(booking.space_id, db, include_inactive=True)
+    return {
+        "id": booking.id,
+        "reference": f"YNF-{booking.id:06d}",
+        "space_name": space.name if space else booking.space_id or "Not selected",
+        "booking_date": booking.booking_date or booking_day.isoformat(),
+        "start_time": booking.start_time or "00:00",
+        "end_time": end_time,
+        "customer_name": booking.customer_name or "Incomplete booking",
+        "phone_number": booking.phone_number,
+        "purpose": booking.purpose,
+    }
+
+
+def _studio_utilization_between(
+    date_from: date,
+    date_to_exclusive: date,
+    db: Session,
+    space_id: str | None,
+) -> list[dict[str, object]]:
+    statement = select(Booking).where(
+        Booking.state == BookingState.CONFIRMED,
+        Booking.booking_date >= date_from.isoformat(),
+        Booking.booking_date < date_to_exclusive.isoformat(),
+    )
+    if space_id:
+        statement = statement.where(Booking.space_id == space_id)
+    booked_hours: dict[str, float] = {}
+    for booking in db.scalars(statement):
+        if booking.space_id and booking.duration_hours:
+            booked_hours[booking.space_id] = booked_hours.get(booking.space_id, 0) + booking.duration_hours
+
+    day_count = (date_to_exclusive - date_from).days
+    results = []
+    for space in list_spaces(db, include_inactive=True):
+        if space_id and space.id != space_id:
+            continue
+        opening = datetime.combine(date_from, time.fromisoformat(space.opening_time))
+        closing = datetime.combine(date_from, time.fromisoformat(space.closing_time))
+        available_hours = max(0.0, (closing - opening).total_seconds() / 3600) * day_count
+        space_booked_hours = booked_hours.get(space.id, 0.0)
+        results.append(
+            {
+                "space_id": space.id,
+                "space_name": space.name,
+                "booked_hours": round(space_booked_hours, 1),
+                "available_hours": round(available_hours, 1),
+                "utilization_percent": round(
+                    space_booked_hours / available_hours * 100 if available_hours else 0,
+                    1,
+                ),
+            }
+        )
+    return results
+
+
+def _utilization_heatmap_between(
+    date_from: date,
+    date_to_exclusive: date,
+    db: Session,
+    space_id: str | None,
+) -> list[dict[str, object]]:
+    statement = select(Booking).where(
+        Booking.state == BookingState.CONFIRMED,
+        Booking.booking_date >= date_from.isoformat(),
+        Booking.booking_date < date_to_exclusive.isoformat(),
+    )
+    if space_id:
+        statement = statement.where(Booking.space_id == space_id)
+    bookings = list(db.scalars(statement))
+    dates = [date_from + timedelta(days=offset) for offset in range((date_to_exclusive - date_from).days)]
+    weekday_occurrences = {
+        weekday: sum(current.weekday() == weekday for current in dates)
+        for weekday in range(7)
+    }
+    counts: dict[tuple[str, int, str], int] = {}
+    for booking in bookings:
+        if not booking.space_id or not booking.booking_date or not booking.start_time:
+            continue
+        booking_day = date.fromisoformat(booking.booking_date)
+        start = time.fromisoformat(booking.start_time)
+        start_minutes = start.hour * 60 + start.minute
+        end_minutes = start_minutes + round((booking.duration_hours or 0) * 60)
+        for slot_minutes in range((start_minutes // 30) * 30, end_minutes, 30):
+            slot = f"{slot_minutes // 60:02d}:{slot_minutes % 60:02d}"
+            key = (booking.space_id, booking_day.weekday(), slot)
+            counts[key] = counts.get(key, 0) + 1
+
+    cells = []
+    for space in list_spaces(db, include_inactive=True):
+        if space_id and space.id != space_id:
+            continue
+        opening = time.fromisoformat(space.opening_time)
+        closing = time.fromisoformat(space.closing_time)
+        opening_minutes = opening.hour * 60 + opening.minute
+        closing_minutes = closing.hour * 60 + closing.minute
+        for slot_minutes in range(opening_minutes, closing_minutes, 30):
+            slot = f"{slot_minutes // 60:02d}:{slot_minutes % 60:02d}"
+            for weekday in range(7):
+                available_occurrences = weekday_occurrences[weekday]
+                booked_occurrences = counts.get((space.id, weekday, slot), 0)
+                cells.append(
+                    {
+                        "space_id": space.id,
+                        "space_name": space.name,
+                        "weekday": weekday,
+                        "time_slot": slot,
+                        "booked_occurrences": booked_occurrences,
+                        "available_occurrences": available_occurrences,
+                        "utilization_percent": round(
+                            booked_occurrences / available_occurrences * 100
+                            if available_occurrences else 0,
+                            1,
+                        ),
+                    }
+                )
+    return cells
+
+
+def _purpose_utilization_between(
+    date_from: date,
+    date_to_exclusive: date,
+    db: Session,
+    space_id: str | None,
+) -> list[dict[str, object]]:
+    statement = select(Booking).where(
+        Booking.state == BookingState.CONFIRMED,
+        Booking.booking_date >= date_from.isoformat(),
+        Booking.booking_date < date_to_exclusive.isoformat(),
+    )
+    if space_id:
+        statement = statement.where(Booking.space_id == space_id)
+    grouped: dict[str, dict[str, float | int]] = {}
+    total_hours = 0.0
+    for booking in db.scalars(statement):
+        purpose = (booking.purpose or "Not specified").strip() or "Not specified"
+        item = grouped.setdefault(purpose, {"booking_count": 0, "booked_hours": 0.0})
+        item["booking_count"] = int(item["booking_count"]) + 1
+        item["booked_hours"] = float(item["booked_hours"]) + float(booking.duration_hours or 0)
+        total_hours += float(booking.duration_hours or 0)
+    return [
+        {
+            "purpose": purpose,
+            "booking_count": int(values["booking_count"]),
+            "booked_hours": round(float(values["booked_hours"]), 1),
+            "utilization_percent": round(
+                float(values["booked_hours"]) / total_hours * 100 if total_hours else 0,
+                1,
+            ),
+        }
+        for purpose, values in sorted(
+            grouped.items(),
+            key=lambda item: (-float(item[1]["booked_hours"]), item[0].casefold()),
+        )
+    ]
+
+
+@router.get(
+    "/overview/bookings/upcoming",
+    response_model=AdminBookingsUpcomingResponse,
+    dependencies=[Depends(require_admin)],
+)
+def admin_bookings_upcoming(
+    date_from: date,
+    date_to: date,
+    db: Session = Depends(get_db),
+    space_id: str | None = None,
+) -> AdminBookingsUpcomingResponse:
+    _validate_overview_space(space_id, db)
+    if date_from > date_to:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="From date cannot be after To date.")
+    local_now = datetime.now(ZoneInfo(settings.studio_timezone))
+    statement = select(Booking).where(
+        Booking.state == BookingState.CONFIRMED,
+        Booking.booking_date >= date_from.isoformat(),
+        Booking.booking_date <= date_to.isoformat(),
+    )
+    if space_id:
+        statement = statement.where(Booking.space_id == space_id)
+    bookings = [
+        booking
+        for booking in db.scalars(statement.order_by(Booking.booking_date, Booking.start_time, Booking.id))
+        if (window := _booking_window(booking, ZoneInfo(settings.studio_timezone))) is not None
+        and window[0] >= local_now
+    ]
+    return AdminBookingsUpcomingResponse(
+        date_from=date_from.isoformat(),
+        date_to=date_to.isoformat(),
+        bookings=[_overview_booking_item(booking, db) for booking in bookings],
+    )
+
+
+@router.get(
+    "/overview/bookings/utilization/year",
+    response_model=AdminBookingsYearUtilizationResponse,
+    dependencies=[Depends(require_admin)],
+)
+def admin_bookings_year_utilization(
+    year: int | None = None,
+    db: Session = Depends(get_db),
+    space_id: str | None = None,
+) -> AdminBookingsYearUtilizationResponse:
+    _validate_overview_space(space_id, db)
+    selected_year = year or datetime.now(ZoneInfo(settings.studio_timezone)).year
+    if not 2000 <= selected_year <= 2100:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Year must be between 2000 and 2100.")
+    return AdminBookingsYearUtilizationResponse(
+        year=selected_year,
+        studios=_studio_utilization_between(
+            date(selected_year, 1, 1), date(selected_year + 1, 1, 1), db, space_id
+        ),
+    )
+
+
+@router.get(
+    "/overview/bookings/purposes/month",
+    response_model=AdminBookingsPurposeMonthResponse,
+    dependencies=[Depends(require_admin)],
+)
+def admin_bookings_purpose_month(
+    month: str | None = Query(default=None, pattern=r"^\d{4}-\d{2}$"),
+    db: Session = Depends(get_db),
+    space_id: str | None = None,
+) -> AdminBookingsPurposeMonthResponse:
+    _validate_overview_space(space_id, db)
+    first_day, next_month, selected_month = _month_bounds(month)
+    return AdminBookingsPurposeMonthResponse(
+        month=selected_month,
+        purposes=_purpose_utilization_between(first_day, next_month, db, space_id),
+    )
+
+
+@router.get(
+    "/overview/bookings/purposes/year",
+    response_model=AdminBookingsPurposeYearResponse,
+    dependencies=[Depends(require_admin)],
+)
+def admin_bookings_purpose_year(
+    year: int | None = None,
+    db: Session = Depends(get_db),
+    space_id: str | None = None,
+) -> AdminBookingsPurposeYearResponse:
+    _validate_overview_space(space_id, db)
+    selected_year = year or datetime.now(ZoneInfo(settings.studio_timezone)).year
+    if not 2000 <= selected_year <= 2100:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Year must be between 2000 and 2100.")
+    return AdminBookingsPurposeYearResponse(
+        year=selected_year,
+        purposes=_purpose_utilization_between(
+            date(selected_year, 1, 1), date(selected_year + 1, 1, 1), db, space_id
+        ),
     )
 
 
@@ -814,6 +1404,130 @@ def admin_unavailability_overview(
         year_reasons=year_reasons,
         yearly_blocked_hours=yearly_blocked_hours,
         month_studio_hours=month_studio_hours,
+    )
+
+
+@router.get(
+    "/overview/unavailability/upcoming",
+    response_model=AdminUpcomingBlocksResponse,
+    dependencies=[Depends(require_admin)],
+)
+def admin_unavailability_upcoming(
+    date_from: date | None = None,
+    date_to: date | None = None,
+    db: Session = Depends(get_db),
+    space_id: str | None = None,
+) -> AdminUpcomingBlocksResponse:
+    overview = admin_unavailability_overview(
+        month=None,
+        db=db,
+        year=None,
+        space_id=space_id,
+        date_from=date_from,
+        date_to=date_to,
+    )
+    return AdminUpcomingBlocksResponse(
+        date_from=overview.blocked_date_from,
+        date_to=overview.blocked_date_to,
+        blocks=overview.upcoming_blocks,
+    )
+
+
+@router.get(
+    "/overview/unavailability/month",
+    response_model=AdminUnavailabilityMonthResponse,
+    dependencies=[Depends(require_admin)],
+)
+def admin_unavailability_month(
+    month: str | None = Query(default=None, pattern=r"^\d{4}-\d{2}$"),
+    db: Session = Depends(get_db),
+    space_id: str | None = None,
+) -> AdminUnavailabilityMonthResponse:
+    overview = admin_unavailability_overview(
+        month=month,
+        db=db,
+        year=None,
+        space_id=space_id,
+        date_from=None,
+        date_to=None,
+    )
+    return AdminUnavailabilityMonthResponse(
+        month=overview.month,
+        total_blocked_hours=overview.month_total_blocked_hours,
+        reasons=overview.month_reasons,
+    )
+
+
+@router.get(
+    "/overview/unavailability/year",
+    response_model=AdminUnavailabilityYearResponse,
+    dependencies=[Depends(require_admin)],
+)
+def admin_unavailability_year(
+    year: int | None = None,
+    db: Session = Depends(get_db),
+    space_id: str | None = None,
+) -> AdminUnavailabilityYearResponse:
+    overview = admin_unavailability_overview(
+        month=None,
+        db=db,
+        year=year,
+        space_id=space_id,
+        date_from=None,
+        date_to=None,
+    )
+    return AdminUnavailabilityYearResponse(
+        year=overview.year,
+        total_blocked_hours=overview.year_total_blocked_hours,
+        reasons=overview.year_reasons,
+    )
+
+
+@router.get(
+    "/overview/unavailability/trend",
+    response_model=AdminUnavailabilityTrendResponse,
+    dependencies=[Depends(require_admin)],
+)
+def admin_unavailability_trend(
+    year: int | None = None,
+    db: Session = Depends(get_db),
+    space_id: str | None = None,
+) -> AdminUnavailabilityTrendResponse:
+    overview = admin_unavailability_overview(
+        month=None,
+        db=db,
+        year=year,
+        space_id=space_id,
+        date_from=None,
+        date_to=None,
+    )
+    return AdminUnavailabilityTrendResponse(
+        year=overview.year,
+        months=overview.yearly_blocked_hours,
+    )
+
+
+@router.get(
+    "/overview/unavailability/studios",
+    response_model=AdminUnavailabilityStudioResponse,
+    dependencies=[Depends(require_admin)],
+)
+def admin_unavailability_studios(
+    month: str | None = Query(default=None, pattern=r"^\d{4}-\d{2}$"),
+    db: Session = Depends(get_db),
+    space_id: str | None = None,
+) -> AdminUnavailabilityStudioResponse:
+    overview = admin_unavailability_overview(
+        month=month,
+        db=db,
+        year=None,
+        space_id=space_id,
+        date_from=None,
+        date_to=None,
+    )
+    return AdminUnavailabilityStudioResponse(
+        month=overview.month,
+        studios=overview.month_studio_hours,
     )
 
 

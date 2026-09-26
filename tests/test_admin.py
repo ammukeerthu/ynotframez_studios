@@ -20,7 +20,14 @@ from app.api.routes.admin import (
     admin_availability,
     admin_booking_detail,
     admin_bookings,
+    admin_bookings_day,
+    admin_bookings_heatmap,
     admin_bookings_overview,
+    admin_bookings_purpose_month,
+    admin_bookings_purpose_year,
+    admin_bookings_upcoming,
+    admin_bookings_utilization,
+    admin_bookings_year_utilization,
     admin_cancel_booking,
     admin_change_password,
     admin_create_availability_block,
@@ -31,6 +38,9 @@ from app.api.routes.admin import (
     admin_delete_staff_user,
     admin_export_bookings,
     admin_funds_overview,
+    admin_funds_cashflow,
+    admin_funds_month,
+    admin_funds_year,
     admin_login,
     admin_overview,
     admin_alerts,
@@ -41,6 +51,11 @@ from app.api.routes.admin import (
     admin_update_booking,
     admin_update_payment,
     admin_unavailability_overview,
+    admin_unavailability_month,
+    admin_unavailability_studios,
+    admin_unavailability_trend,
+    admin_unavailability_upcoming,
+    admin_unavailability_year,
     require_owner,
     require_admin,
     _operational_alerts,
@@ -291,8 +306,23 @@ class AdminAuthenticationTest(unittest.TestCase):
         }
         staff_block_access = {
             ("/api/admin/overview/funds", "GET"),
+            ("/api/admin/overview/funds/month", "GET"),
+            ("/api/admin/overview/funds/year", "GET"),
+            ("/api/admin/overview/funds/cashflow", "GET"),
             ("/api/admin/overview/bookings", "GET"),
+            ("/api/admin/overview/bookings/day", "GET"),
+            ("/api/admin/overview/bookings/upcoming", "GET"),
+            ("/api/admin/overview/bookings/utilization", "GET"),
+            ("/api/admin/overview/bookings/utilization/year", "GET"),
+            ("/api/admin/overview/bookings/purposes/month", "GET"),
+            ("/api/admin/overview/bookings/purposes/year", "GET"),
+            ("/api/admin/overview/bookings/heatmap", "GET"),
             ("/api/admin/overview/unavailability", "GET"),
+            ("/api/admin/overview/unavailability/upcoming", "GET"),
+            ("/api/admin/overview/unavailability/month", "GET"),
+            ("/api/admin/overview/unavailability/year", "GET"),
+            ("/api/admin/overview/unavailability/trend", "GET"),
+            ("/api/admin/overview/unavailability/studios", "GET"),
             ("/api/admin/bookings/{booking_id}", "GET"),
             ("/api/admin/availability/blocks", "POST"),
             ("/api/admin/availability/blocks/{block_id}/slot", "DELETE"),
@@ -333,6 +363,7 @@ class AdminAuthenticationTest(unittest.TestCase):
                 start_time="10:00",
                 duration_hours=2,
                 customer_name="Cube Customer",
+                purpose="Portrait Shoot",
                 payment_mode=PaymentMode.PAY_AT_STUDIO,
             )
             arena = Booking(
@@ -343,6 +374,7 @@ class AdminAuthenticationTest(unittest.TestCase):
                 start_time="14:00",
                 duration_hours=1,
                 customer_name="Arena Customer",
+                purpose="Fashion Shoot",
                 payment_mode=PaymentMode.PAY_AT_STUDIO,
             )
             future = Booking(
@@ -353,6 +385,7 @@ class AdminAuthenticationTest(unittest.TestCase):
                 start_time="09:00",
                 duration_hours=1,
                 customer_name="Future Customer",
+                purpose="Portrait Shoot",
                 payment_mode=PaymentMode.PAY_AT_STUDIO,
             )
             cancelled = Booking(
@@ -363,6 +396,7 @@ class AdminAuthenticationTest(unittest.TestCase):
                 start_time="17:00",
                 duration_hours=2,
                 customer_name="Cancelled Customer",
+                purpose="Product Shoot",
                 payment_mode=PaymentMode.PAY_AT_STUDIO,
             )
             db.add_all([cube, arena, future, cancelled])
@@ -459,6 +493,12 @@ class AdminAuthenticationTest(unittest.TestCase):
                 space_id="standard_small",
             )
             bookings = admin_bookings_overview(0, selected_month, db)
+            cube_bookings = admin_bookings_overview(
+                0,
+                selected_month,
+                db,
+                space_id="standard_small",
+            )
             unavailability = admin_unavailability_overview(
                 selected_month,
                 db,
@@ -470,6 +510,20 @@ class AdminAuthenticationTest(unittest.TestCase):
                 year=studio_today.year,
                 space_id="standard_small",
             )
+            funds_month_panel = admin_funds_month(selected_month, db)
+            funds_year_panel = admin_funds_year(studio_today.year, db)
+            funds_cashflow_panel = admin_funds_cashflow(studio_today.year, db)
+            bookings_day_panel = admin_bookings_day(0, db)
+            bookings_upcoming_panel = admin_bookings_upcoming(studio_today, next_month, db)
+            bookings_utilization_panel = admin_bookings_utilization(selected_month, db)
+            bookings_year_utilization_panel = admin_bookings_year_utilization(studio_today.year, db)
+            bookings_purpose_month_panel = admin_bookings_purpose_month(selected_month, db)
+            bookings_purpose_year_panel = admin_bookings_purpose_year(studio_today.year, db)
+            bookings_heatmap_panel = admin_bookings_heatmap(selected_month, db)
+            unavailability_month_panel = admin_unavailability_month(selected_month, db)
+            unavailability_year_panel = admin_unavailability_year(studio_today.year, db)
+            unavailability_trend_panel = admin_unavailability_trend(studio_today.year, db)
+            unavailability_studios_panel = admin_unavailability_studios(selected_month, db)
 
             self.assertEqual(monthly_funds.estimated_amount, 3500)
             self.assertEqual(monthly_funds.collected_amount, 2000)
@@ -479,6 +533,13 @@ class AdminAuthenticationTest(unittest.TestCase):
             self.assertEqual(overall_funds.summary_collected_amount, 2000)
             self.assertEqual(monthly_funds.month_estimated_amount, 3500)
             self.assertEqual(monthly_funds.month_pending_amount, 1500)
+            self.assertEqual(funds_month_panel.pending_amount, 1500)
+            self.assertEqual(funds_year_panel.year, studio_today.year)
+            self.assertEqual(funds_year_panel.collections[studio_today.month - 1].estimated_amount, 3500)
+            self.assertEqual(
+                funds_cashflow_panel.cashflow[studio_today.month - 1].net_amount,
+                3500,
+            )
             current_month_collection = monthly_funds.yearly_collections[studio_today.month - 1]
             self.assertEqual(current_month_collection.month, studio_today.month)
             self.assertEqual(current_month_collection.estimated_amount, 3500)
@@ -500,13 +561,67 @@ class AdminAuthenticationTest(unittest.TestCase):
                 [item.balance_due for item in monthly_funds.outstanding_bookings],
                 [1500, 1000],
             )
+            ageing = {item.key: item for item in monthly_funds.outstanding_ageing}
+            self.assertEqual(ageing["upcoming"].amount + sum(
+                ageing[key].amount
+                for key in ("overdue_1_7", "overdue_8_30", "overdue_31_plus")
+            ), 2500)
             self.assertEqual(
                 cube_funds.yearly_cashflow[studio_today.month - 1].received_amount,
                 2500,
             )
             self.assertEqual(bookings.selected_date, studio_today.isoformat())
+            self.assertIsNone(bookings.space_id)
+            self.assertEqual(bookings.summary_total_bookings, 4)
+            self.assertEqual(bookings.summary_confirmed_bookings, 3)
+            self.assertEqual(bookings.summary_cancelled_bookings, 1)
             self.assertEqual(bookings.total_bookings, 2)
+            self.assertEqual(bookings_day_panel.total_bookings, 2)
+            self.assertIn(future.id, {item.id for item in bookings_upcoming_panel.bookings})
+            self.assertEqual(bookings_utilization_panel.month, selected_month)
+            self.assertEqual(bookings_year_utilization_panel.year, studio_today.year)
+            self.assertEqual(
+                {item.space_name for item in bookings_year_utilization_panel.studios},
+                {"Cube", "Arena"},
+            )
+            self.assertEqual(bookings_purpose_month_panel.month, selected_month)
+            self.assertEqual(
+                {item.purpose for item in bookings_purpose_month_panel.purposes},
+                {"Portrait Shoot", "Fashion Shoot"},
+            )
+            self.assertEqual(bookings_purpose_year_panel.year, studio_today.year)
+            self.assertEqual(
+                sum(item.booking_count for item in bookings_purpose_year_panel.purposes),
+                3,
+            )
+            self.assertEqual(bookings_heatmap_panel.month, selected_month)
             self.assertEqual([item.space_name for item in bookings.bookings], ["Cube", "Arena"])
+            cube_heatmap_cell = next(
+                item
+                for item in bookings.utilization_heatmap
+                if item.space_id == "standard_small"
+                and item.weekday == studio_today.weekday()
+                and item.time_slot == "10:00"
+            )
+            self.assertEqual(cube_heatmap_cell.booked_occurrences, 1)
+            self.assertGreater(cube_heatmap_cell.utilization_percent, 0)
+            action_ids = {item.id for item in bookings.action_items}
+            self.assertIn(f"calendar-missing-{future.id}", action_ids)
+            self.assertIn(f"payment-{future.id}", action_ids)
+            self.assertEqual(cube_bookings.space_id, "standard_small")
+            self.assertEqual(cube_bookings.total_bookings, 1)
+            self.assertEqual([item.space_name for item in cube_bookings.bookings], ["Cube"])
+            self.assertEqual(
+                {item.space_id for item in cube_bookings.studio_utilization},
+                {"standard_small"},
+            )
+            self.assertEqual(
+                {item.space_id for item in cube_bookings.utilization_heatmap},
+                {"standard_small"},
+            )
+            self.assertTrue(
+                all(item.space_id == "standard_small" for item in cube_bookings.action_items)
+            )
             utilization = {item.space_id: item for item in bookings.studio_utilization}
             self.assertEqual(utilization["standard_small"].booked_hours, 2)
             self.assertEqual(utilization["premium_large"].booked_hours, 1)
@@ -518,6 +633,16 @@ class AdminAuthenticationTest(unittest.TestCase):
             )
             self.assertEqual(unavailability.summary_total_blocked_hours, 12)
             self.assertEqual(unavailability.month_total_blocked_hours, 3)
+            self.assertEqual(unavailability_month_panel.total_blocked_hours, 3)
+            self.assertEqual(unavailability_year_panel.total_blocked_hours, 7)
+            self.assertEqual(
+                unavailability_trend_panel.months[studio_today.month - 1].blocked_hours,
+                3,
+            )
+            self.assertEqual(
+                {item.space_name for item in unavailability_studios_panel.studios},
+                {"Cube", "Arena"},
+            )
             self.assertEqual(unavailability.year_total_blocked_hours, 7)
             self.assertEqual(
                 [(item.reason, item.blocked_hours) for item in unavailability.year_reasons],
@@ -546,6 +671,66 @@ class AdminAuthenticationTest(unittest.TestCase):
             with self.assertRaises(HTTPException) as invalid_month:
                 admin_funds_overview("2026-13", db)
             self.assertEqual(invalid_month.exception.status_code, 400)
+
+            with self.assertRaises(HTTPException) as invalid_booking_space:
+                admin_bookings_overview(
+                    0,
+                    selected_month,
+                    db,
+                    space_id="missing-space",
+                )
+            self.assertEqual(invalid_booking_space.exception.status_code, 404)
+
+    def test_funds_age_outstanding_balances_from_the_session_end(self) -> None:
+        engine = create_engine(
+            "sqlite://",
+            connect_args={"check_same_thread": False},
+            poolclass=StaticPool,
+        )
+        self.addCleanup(engine.dispose)
+        Base.metadata.create_all(engine)
+        studio_today = datetime.now(ZoneInfo(settings.studio_timezone)).date()
+
+        with Session(engine) as db:
+            cases = [
+                (-3, 100, "overdue_1_7"),
+                (-10, 200, "overdue_8_30"),
+                (-40, 300, "overdue_31_plus"),
+                (3, 400, "upcoming"),
+            ]
+            bookings = []
+            for index, (day_offset, amount, _) in enumerate(cases):
+                booking = Booking(
+                    phone_number=f"+919999998{index:03d}",
+                    state=BookingState.CONFIRMED,
+                    space_id="standard_small",
+                    booking_date=(studio_today + timedelta(days=day_offset)).isoformat(),
+                    start_time="09:00",
+                    duration_hours=1,
+                    customer_name=f"Ageing Customer {index}",
+                    payment_mode=PaymentMode.PAY_AT_STUDIO,
+                    calendar_event_id=f"event-{index}",
+                )
+                db.add(booking)
+                db.flush()
+                db.add(
+                    PaymentRecord(
+                        booking_id=booking.id,
+                        mode=PaymentMode.PAY_AT_STUDIO,
+                        amount=amount,
+                        status=PaymentStatus.PENDING,
+                    )
+                )
+                bookings.append(booking)
+            db.commit()
+
+            overview = admin_funds_overview(None, db)
+            buckets = {item.key: item for item in overview.outstanding_ageing}
+            for (_, amount, key), booking in zip(cases, bookings, strict=True):
+                self.assertEqual(buckets[key].amount, amount)
+                self.assertEqual(buckets[key].booking_count, 1)
+                item = next(row for row in overview.outstanding_bookings if row.id == booking.id)
+                self.assertEqual(item.ageing_bucket, key)
 
     def test_unavailability_lists_only_upcoming_blocks_in_selected_range(self) -> None:
         engine = create_engine(
@@ -600,6 +785,11 @@ class AdminAuthenticationTest(unittest.TestCase):
                 date_from=studio_today,
                 date_to=studio_today + timedelta(days=7),
             )
+            panel = admin_unavailability_upcoming(
+                date_from=studio_today,
+                date_to=studio_today + timedelta(days=7),
+                db=db,
+            )
 
             self.assertEqual(overview.blocked_date_from, studio_today.isoformat())
             self.assertEqual(
@@ -607,6 +797,9 @@ class AdminAuthenticationTest(unittest.TestCase):
                 (studio_today + timedelta(days=7)).isoformat(),
             )
             self.assertEqual(len(overview.upcoming_blocks), 2)
+            self.assertEqual(panel.date_from, studio_today.isoformat())
+            self.assertEqual(panel.date_to, (studio_today + timedelta(days=7)).isoformat())
+            self.assertEqual(len(panel.blocks), 2)
             collaboration, maintenance = overview.upcoming_blocks
             self.assertEqual(collaboration.booking_date, tomorrow.isoformat())
             self.assertEqual(collaboration.start_time, "10:00")

@@ -28,6 +28,14 @@ const settingsMenuToggle = document.querySelector("#settings-menu-toggle");
 const settingsSubmenu = document.querySelector("#settings-submenu");
 const fundsOverviewFilters = document.querySelector("#funds-overview-filters");
 const bookingsOverviewFilters = document.querySelector("#bookings-overview-filters");
+const bookingsDayPicker = document.querySelector("#bookings-day-picker");
+const bookingsUpcomingFrom = document.querySelector("#bookings-upcoming-from");
+const bookingsUpcomingTo = document.querySelector("#bookings-upcoming-to");
+const bookingsUtilisationMonth = document.querySelector("#bookings-utilisation-month");
+const bookingsUtilisationYear = document.querySelector("#bookings-utilisation-year");
+const bookingsPurposeMonth = document.querySelector("#bookings-purpose-month");
+const bookingsPurposeYear = document.querySelector("#bookings-purpose-year");
+const bookingsHeatmapMonth = document.querySelector("#bookings-heatmap-month");
 const unavailabilityOverviewFilters = document.querySelector("#unavailability-overview-filters");
 const staffUserForm = document.querySelector("#staff-user-form");
 const staffUsersList = document.querySelector("#staff-users-list");
@@ -51,6 +59,7 @@ let bookingsOverviewRequestToken = 0;
 let bookingsOverviewRequestController = null;
 let unavailabilityRequestToken = 0;
 let unavailabilityRequestController = null;
+const overviewPanelControllers = new Map();
 let bookingsRequestToken = 0;
 let bookingsRequestController = null;
 let dashboardOperationCount = 0;
@@ -146,6 +155,26 @@ async function api(url, options = {}) {
   } finally {
     if (blocksDashboard) endDashboardOperation();
   }
+}
+
+async function overviewPanelApi(key, url) {
+  const previous = overviewPanelControllers.get(key);
+  if (previous) previous.abort();
+  const controller = new AbortController();
+  overviewPanelControllers.set(key, controller);
+  try {
+    return await api(url, { signal: controller.signal });
+  } catch (error) {
+    if (error.name === "AbortError") return null;
+    throw error;
+  } finally {
+    if (overviewPanelControllers.get(key) === controller) overviewPanelControllers.delete(key);
+  }
+}
+
+function appendOverviewSpace(query, filters) {
+  if (filters.elements.space_id.value) query.set("space_id", filters.elements.space_id.value);
+  return query;
 }
 
 function showLogin(message = "") {
@@ -283,26 +312,51 @@ window.addEventListener("popstate", () => {
 fundsOverviewFilters.addEventListener("submit", (event) => {
   event.preventDefault();
 });
-fundsOverviewFilters.addEventListener("change", () => loadFundsOverview());
+fundsOverviewFilters.elements.space_id.addEventListener("change", () => loadFundsOverview());
+fundsOverviewFilters.elements.month.addEventListener("change", () => loadFundsMonthOverview());
+fundsOverviewFilters.elements.year.addEventListener("change", () => loadFundsYearOverview());
+fundsOverviewFilters.elements.cashflow_year.addEventListener("change", () => loadFundsCashflowOverview());
 bookingsOverviewFilters.addEventListener("submit", (event) => {
   event.preventDefault();
-  loadBookingsOverview();
 });
+bookingsOverviewFilters.elements.space_id.addEventListener("change", () => loadBookingsOverview());
+bookingsUpcomingFrom.addEventListener("change", () => loadBookingsUpcomingOverview());
+bookingsUpcomingTo.addEventListener("change", () => loadBookingsUpcomingOverview());
+bookingsDayPicker.addEventListener("change", () => loadBookingsDayOverview());
+bookingsUtilisationMonth.addEventListener("change", () => loadBookingsUtilisationOverview());
+bookingsUtilisationYear.addEventListener("change", () => loadBookingsYearUtilisationOverview());
+bookingsPurposeMonth.addEventListener("change", () => loadBookingsPurposeMonthOverview());
+bookingsPurposeYear.addEventListener("change", () => loadBookingsPurposeYearOverview());
+bookingsHeatmapMonth.addEventListener("change", () => loadBookingsHeatmapOverview());
 unavailabilityOverviewFilters.addEventListener("submit", (event) => {
   event.preventDefault();
-  loadUnavailabilityOverview();
 });
-unavailabilityOverviewFilters.addEventListener("change", () => loadUnavailabilityOverview());
+unavailabilityOverviewFilters.elements.space_id.addEventListener("change", () => loadUnavailabilityOverview());
+unavailabilityOverviewFilters.elements.month.addEventListener("change", () => loadUnavailabilityMonthOverview());
+unavailabilityOverviewFilters.elements.year.addEventListener("change", () => loadUnavailabilityYearOverview());
+unavailabilityOverviewFilters.elements.trend_year.addEventListener("change", () => loadUnavailabilityTrendOverview());
+unavailabilityOverviewFilters.elements.studio_month.addEventListener("change", () => loadUnavailabilityStudioOverview());
+unavailabilityOverviewFilters.elements.date_from.addEventListener("change", () => loadUpcomingBlocksOverview());
+unavailabilityOverviewFilters.elements.date_to.addEventListener("change", () => loadUpcomingBlocksOverview());
 
 function setupOverviewFilters() {
   const currentMonth = localDate().slice(0, 7);
   fundsOverviewFilters.elements.month.value = currentMonth;
   fundsOverviewFilters.elements.year.value = currentMonth.slice(0, 4);
-  bookingsOverviewFilters.elements.day_offset.value = "0";
-  bookingsOverviewFilters.elements.month.value = currentMonth;
+  fundsOverviewFilters.elements.cashflow_year.value = currentMonth.slice(0, 4);
+  const currentWeek = currentWeekRange();
+  bookingsDayPicker.value = "0";
+  bookingsUpcomingFrom.value = currentWeek.from;
+  bookingsUpcomingTo.value = currentWeek.to;
+  bookingsUtilisationMonth.value = currentMonth;
+  bookingsUtilisationYear.value = currentMonth.slice(0, 4);
+  bookingsPurposeMonth.value = currentMonth;
+  bookingsPurposeYear.value = currentMonth.slice(0, 4);
+  bookingsHeatmapMonth.value = currentMonth;
   unavailabilityOverviewFilters.elements.month.value = currentMonth;
   unavailabilityOverviewFilters.elements.year.value = currentMonth.slice(0, 4);
-  const currentWeek = currentWeekRange();
+  unavailabilityOverviewFilters.elements.trend_year.value = currentMonth.slice(0, 4);
+  unavailabilityOverviewFilters.elements.studio_month.value = currentMonth;
   unavailabilityOverviewFilters.elements.date_from.value = currentWeek.from;
   unavailabilityOverviewFilters.elements.date_to.value = currentWeek.to;
 }
@@ -324,23 +378,81 @@ function showOverviewError(selector, error) {
   if (error.status === 401) handleDashboardError(error);
 }
 
+async function loadFundsMonthOverview() {
+  const chart = document.querySelector("#funds-month-chart");
+  chart.innerHTML = '<p class="analytics-empty">Loading collections...</p>';
+  const query = appendOverviewSpace(new URLSearchParams({
+    month: fundsOverviewFilters.elements.month.value,
+  }), fundsOverviewFilters);
+  try {
+    const overview = await overviewPanelApi("funds-month", `/api/admin/overview/funds/month?${query}`);
+    if (!overview) return;
+    document.querySelector("#funds-month-title").textContent = monthLabel(overview.month);
+    renderFundsMonthChart({
+      month_estimated_amount: overview.estimated_amount,
+      month_collected_amount: overview.collected_amount,
+      month_pending_amount: overview.pending_amount,
+    });
+  } catch (error) {
+    showOverviewError("#funds-overview-message", error);
+    chart.innerHTML = '<p class="analytics-empty">Collections could not be loaded.</p>';
+  }
+}
+
+async function loadFundsYearOverview() {
+  const chart = document.querySelector("#funds-year-chart");
+  chart.innerHTML = '<p class="analytics-empty">Loading collections...</p>';
+  const query = appendOverviewSpace(new URLSearchParams({
+    year: fundsOverviewFilters.elements.year.value,
+  }), fundsOverviewFilters);
+  try {
+    const overview = await overviewPanelApi("funds-year", `/api/admin/overview/funds/year?${query}`);
+    if (!overview) return;
+    document.querySelector("#funds-year-title").textContent = String(overview.year);
+    renderFundsYearChart(overview.collections);
+  } catch (error) {
+    showOverviewError("#funds-overview-message", error);
+    chart.innerHTML = '<p class="analytics-empty">Collections could not be loaded.</p>';
+  }
+}
+
+async function loadFundsCashflowOverview() {
+  const chart = document.querySelector("#funds-cashflow-chart");
+  chart.innerHTML = '<p class="analytics-empty">Loading cashflow...</p>';
+  const query = appendOverviewSpace(new URLSearchParams({
+    year: fundsOverviewFilters.elements.cashflow_year.value,
+  }), fundsOverviewFilters);
+  try {
+    const overview = await overviewPanelApi("funds-cashflow", `/api/admin/overview/funds/cashflow?${query}`);
+    if (!overview) return;
+    document.querySelector("#funds-cashflow-title").textContent = String(overview.year);
+    renderFundsCashflowChart(overview.cashflow);
+  } catch (error) {
+    showOverviewError("#funds-overview-message", error);
+    chart.innerHTML = '<p class="analytics-empty">Cashflow could not be loaded.</p>';
+  }
+}
+
 async function loadFundsOverview() {
   const requestToken = ++fundsRequestToken;
   if (fundsRequestController) fundsRequestController.abort();
   fundsRequestController = new AbortController();
+  const panelLoads = Promise.all([
+    loadFundsMonthOverview(),
+    loadFundsYearOverview(),
+    loadFundsCashflowOverview(),
+  ]);
   const message = document.querySelector("#funds-overview-message");
   message.hidden = true;
   fundsOverviewFilters.setAttribute("aria-busy", "true");
   document.querySelector("#funds-estimated").textContent = "…";
   document.querySelector("#funds-collected").textContent = "…";
   document.querySelector("#funds-outstanding").textContent = "…";
-  document.querySelector("#funds-month-title").textContent = "Selected month";
-  document.querySelector("#funds-year-title").textContent = "Selected year";
-  document.querySelector("#funds-cashflow-title").textContent = "Selected year";
   document.querySelector("#funds-month-chart").innerHTML = '<p class="analytics-empty">Loading collections…</p>';
   document.querySelector("#funds-year-chart").innerHTML = '<p class="analytics-empty">Loading collections…</p>';
   document.querySelector("#funds-cashflow-chart").innerHTML = '<p class="analytics-empty">Loading cashflow...</p>';
-  document.querySelector("#funds-outstanding-body").innerHTML = '<tr><td colspan="7" class="empty">Loading outstanding bookings...</td></tr>';
+  document.querySelector("#funds-ageing-cards").innerHTML = '<p class="analytics-empty">Loading payment ageing...</p>';
+  document.querySelector("#funds-outstanding-body").innerHTML = '<tr><td colspan="8" class="empty">Loading outstanding bookings...</td></tr>';
   document.querySelector("#funds-outstanding-count").textContent = "Loading bookings...";
   const query = new URLSearchParams({
     month: fundsOverviewFilters.elements.month.value,
@@ -355,23 +467,17 @@ async function loadFundsOverview() {
     document.querySelector("#funds-estimated").textContent = currency.format(overview.summary_estimated_amount);
     document.querySelector("#funds-collected").textContent = currency.format(overview.summary_collected_amount);
     document.querySelector("#funds-outstanding").textContent = currency.format(overview.summary_pending_amount);
-    document.querySelector("#funds-month-title").textContent = monthLabel(overview.month);
-    document.querySelector("#funds-year-title").textContent = String(overview.year);
-    document.querySelector("#funds-cashflow-title").textContent = String(overview.year);
-    renderFundsMonthChart(overview);
-    renderFundsYearChart(overview.yearly_collections);
-    renderFundsCashflowChart(overview.yearly_cashflow);
+    renderPaymentAgeing(overview.outstanding_ageing);
     renderOutstandingBookings(overview.outstanding_bookings);
   } catch (error) {
     if (error.name === "AbortError") return;
     showOverviewError("#funds-overview-message", error);
-    document.querySelector("#funds-month-chart").innerHTML = '<p class="analytics-empty">Collections could not be loaded.</p>';
-    document.querySelector("#funds-year-chart").innerHTML = '<p class="analytics-empty">Collections could not be loaded.</p>';
-    document.querySelector("#funds-cashflow-chart").innerHTML = '<p class="analytics-empty">Cashflow could not be loaded.</p>';
-    document.querySelector("#funds-outstanding-body").innerHTML = '<tr><td colspan="7" class="empty">Outstanding bookings could not be loaded.</td></tr>';
+    document.querySelector("#funds-ageing-cards").innerHTML = '<p class="analytics-empty">Payment ageing could not be loaded.</p>';
+    document.querySelector("#funds-outstanding-body").innerHTML = '<tr><td colspan="8" class="empty">Outstanding bookings could not be loaded.</td></tr>';
     document.querySelector("#funds-outstanding-count").textContent = "Unavailable";
   } finally {
     if (requestToken === fundsRequestToken) fundsOverviewFilters.setAttribute("aria-busy", "false");
+    await panelLoads;
   }
 }
 
@@ -462,6 +568,15 @@ function renderFundsCashflowChart(items) {
   </div>`;
 }
 
+function renderPaymentAgeing(items) {
+  const cards = document.querySelector("#funds-ageing-cards");
+  cards.innerHTML = items.map((item) => `<article class="payment-ageing-card ageing-${safeAttr(item.key)}">
+    <p>${safe(item.label)}</p>
+    <strong>${safe(currency.format(item.amount))}</strong>
+    <small>${item.booking_count} booking${item.booking_count === 1 ? "" : "s"}</small>
+  </article>`).join("");
+}
+
 function renderOutstandingBookings(items) {
   const body = document.querySelector("#funds-outstanding-body");
   document.querySelector("#funds-outstanding-count").textContent =
@@ -478,10 +593,11 @@ function renderOutstandingBookings(items) {
       <td>${safe(currency.format(item.total_amount))}</td>
       <td>${safe(currency.format(item.amount_paid))}</td>
       <td><b>${safe(currency.format(item.balance_due))}</b></td>
+      <td>${item.days_overdue ? `${item.days_overdue} day${item.days_overdue === 1 ? "" : "s"} overdue` : "Not yet due"}</td>
       <td><span class="status status-${safeAttr(item.payment_status)}">${safe(readableLabel(item.payment_status))}</span></td>
     </tr>`;
     }).join("")
-    : '<tr><td colspan="7" class="empty">No confirmed bookings have an outstanding balance.</td></tr>';
+    : '<tr><td colspan="8" class="empty">No confirmed bookings have an outstanding balance.</td></tr>';
 }
 
 function overviewBookingRow(booking) {
@@ -492,8 +608,8 @@ function overviewBookingRow(booking) {
   </tr>`;
 }
 
-function renderUtilizationChart(items) {
-  const chart = document.querySelector("#studio-utilisation-chart");
+function renderUtilizationChart(selector, items) {
+  const chart = document.querySelector(selector);
   if (!items.length) {
     chart.innerHTML = '<p class="analytics-empty">No studios are configured.</p>';
     return;
@@ -508,42 +624,254 @@ function renderUtilizationChart(items) {
   }).join("");
 }
 
-async function loadBookingsOverview() {
-  const requestToken = ++bookingsOverviewRequestToken;
-  if (bookingsOverviewRequestController) bookingsOverviewRequestController.abort();
-  bookingsOverviewRequestController = new AbortController();
-  const message = document.querySelector("#bookings-overview-message");
-  message.hidden = true;
-  bookingsOverviewFilters.setAttribute("aria-busy", "true");
-  document.querySelector("#overview-booking-count").textContent = "…";
-  document.querySelector("#overview-booking-date").textContent = "Selected day";
-  document.querySelector("#overview-bookings-table-title").textContent = "Selected day";
-  document.querySelector("#utilisation-chart-title").textContent = "Selected month";
-  document.querySelector("#overview-bookings-body").innerHTML = '<tr><td colspan="3" class="empty">Loading bookings…</td></tr>';
-  document.querySelector("#studio-utilisation-chart").innerHTML = '<p class="analytics-empty">Loading utilisation…</p>';
-  const query = new URLSearchParams({
-    day_offset: bookingsOverviewFilters.elements.day_offset.value,
-    month: bookingsOverviewFilters.elements.month.value,
-  });
+function renderPurposeUtilization(selector, items, emptyMessage) {
+  const chart = document.querySelector(selector);
+  if (!items.length) {
+    chart.innerHTML = `<p class="analytics-empty">${safe(emptyMessage)}</p>`;
+    return;
+  }
+  chart.innerHTML = items.map((item) => {
+    const percent = Math.max(0, Math.min(100, Number(item.utilization_percent || 0)));
+    const bookingLabel = `${item.booking_count} booking${item.booking_count === 1 ? "" : "s"}`;
+    return `<article class="analytics-bar purpose-utilisation-bar">
+      <div><b>${safe(item.purpose)}</b><span>${safe(`${item.utilization_percent}% · ${hoursLabel(item.booked_hours)}`)}</span></div>
+      <div class="analytics-bar-track" role="img" aria-label="${safeAttr(`${item.purpose}: ${item.utilization_percent}% of booked hours`)}"><i style="width:${percent}%"></i></div>
+      <small>${safe(bookingLabel)}</small>
+    </article>`;
+  }).join("");
+}
+
+function renderUpcomingBookings(items) {
+  const body = document.querySelector("#upcoming-bookings-body");
+  body.innerHTML = items.length
+    ? items.map((item) => `<tr>
+      <td><b>${safe(item.reference)}</b></td>
+      <td>${safe(item.space_name)}</td>
+      <td>${safe(formatDate(item.booking_date))}<small>${safe(displayTime(item.start_time))} to ${safe(displayTime(item.end_time))}</small></td>
+      <td><b>${safe(item.customer_name)}</b><small>${safe(item.phone_number)}</small></td>
+      <td>${safe(item.purpose || "Not specified")}</td>
+    </tr>`).join("")
+    : '<tr><td colspan="5" class="empty">No upcoming confirmed bookings in this date range.</td></tr>';
+}
+
+function renderActionCentre(items) {
+  const body = document.querySelector("#action-centre-body");
+  document.querySelector("#action-centre-count").textContent =
+    `${items.length} item${items.length === 1 ? "" : "s"} need attention`;
+  body.innerHTML = items.length
+    ? items.map((item) => `<tr>
+      <td><span class="action-priority action-priority-${safeAttr(item.priority)}">${safe(item.title)}</span><small>${safe(item.message)}</small></td>
+      <td><b>${safe(item.reference)}</b><small>${safe(item.space_name)}</small></td>
+      <td><b>${safe(item.customer_name)}</b><small>${safe(item.phone_number)}</small></td>
+      <td>${safe(formatDate(item.booking_date))}<small>${safe(displayTime(item.start_time))} to ${safe(displayTime(item.end_time))}</small></td>
+      <td>${item.balance_due ? safe(currency.format(item.balance_due)) : "-"}</td>
+      <td><button type="button" class="manage-booking" data-action-booking-id="${item.booking_id}" data-action-space="${safeAttr(item.space_id)}" data-action-date="${safeAttr(item.booking_date)}">${isOwner() ? "Manage" : "View"}</button></td>
+    </tr>`).join("")
+    : '<tr><td colspan="6" class="empty">Everything is up to date. No operational action is required.</td></tr>';
+}
+
+function renderUtilizationHeatmap(items) {
+  const target = document.querySelector("#utilisation-heatmap");
+  if (!items.length) {
+    target.innerHTML = '<p class="analytics-empty">No studio utilisation data is available.</p>';
+    return;
+  }
+  const weekdays = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+  const studioIds = [...new Set(items.map((item) => item.space_id))];
+  target.innerHTML = studioIds.map((spaceId) => {
+    const studioItems = items.filter((item) => item.space_id === spaceId);
+    const times = [...new Set(studioItems.map((item) => item.time_slot))].sort();
+    const cells = new Map(studioItems.map((item) => [`${item.time_slot}-${item.weekday}`, item]));
+    return `<section class="heatmap-studio">
+      <h4>${safe(studioItems[0].space_name)}</h4>
+      <div class="heatmap-scroll"><table class="heatmap-table">
+        <thead><tr><th>Time</th>${weekdays.map((day) => `<th>${day}</th>`).join("")}</tr></thead>
+        <tbody>${times.map((timeSlot) => `<tr><th>${safe(displayTime(timeSlot))}</th>${weekdays.map((day, weekday) => {
+          const cell = cells.get(`${timeSlot}-${weekday}`);
+          const percent = Number(cell?.utilization_percent || 0);
+          const alpha = percent ? Math.max(0.16, Math.min(0.9, percent / 100)) : 0;
+          const details = `${day} ${displayTime(timeSlot)}: ${percent}% occupied (${cell?.booked_occurrences || 0} of ${cell?.available_occurrences || 0} matching days booked)`;
+          return `<td class="heatmap-cell${percent ? " has-bookings" : ""}" style="--heat:${alpha}" title="${safeAttr(details)}" aria-label="${safeAttr(details)}">${percent ? `${percent}%` : "-"}</td>`;
+        }).join("")}</tr>`).join("")}</tbody>
+      </table></div>
+    </section>`;
+  }).join("");
+}
+
+async function loadBookingsUpcomingOverview() {
+  const body = document.querySelector("#upcoming-bookings-body");
+  const dateFrom = bookingsUpcomingFrom.value;
+  const dateTo = bookingsUpcomingTo.value;
+  if (!dateFrom || !dateTo || dateFrom > dateTo) return;
+  body.innerHTML = '<tr><td colspan="5" class="empty">Loading upcoming bookings...</td></tr>';
+  const query = appendOverviewSpace(new URLSearchParams({
+    date_from: dateFrom,
+    date_to: dateTo,
+  }), bookingsOverviewFilters);
   try {
-    const overview = await api(`/api/admin/overview/bookings?${query}`, { signal: bookingsOverviewRequestController.signal });
-    if (requestToken !== bookingsOverviewRequestToken) return;
+    const overview = await overviewPanelApi("bookings-upcoming", `/api/admin/overview/bookings/upcoming?${query}`);
+    if (!overview) return;
+    renderUpcomingBookings(overview.bookings);
+  } catch (error) {
+    showOverviewError("#bookings-overview-message", error);
+    body.innerHTML = '<tr><td colspan="5" class="empty">Upcoming bookings could not be loaded.</td></tr>';
+  }
+}
+
+async function loadBookingsDayOverview() {
+  document.querySelector("#overview-booking-count").textContent = "...";
+  document.querySelector("#overview-bookings-body").innerHTML = '<tr><td colspan="3" class="empty">Loading bookings...</td></tr>';
+  const query = appendOverviewSpace(new URLSearchParams({
+    day_offset: bookingsDayPicker.value,
+  }), bookingsOverviewFilters);
+  try {
+    const overview = await overviewPanelApi("bookings-day", `/api/admin/overview/bookings/day?${query}`);
+    if (!overview) return;
     const selectedDate = formatDate(overview.selected_date);
     document.querySelector("#overview-booking-count").textContent = overview.total_bookings;
     document.querySelector("#overview-booking-date").textContent = selectedDate;
     document.querySelector("#overview-bookings-table-title").textContent = selectedDate;
-    document.querySelector("#utilisation-chart-title").textContent = monthLabel(overview.utilization_month);
     document.querySelector("#overview-bookings-body").innerHTML = overview.bookings.length
       ? overview.bookings.map(overviewBookingRow).join("")
       : '<tr><td colspan="3" class="empty">No confirmed bookings for this day.</td></tr>';
-    renderUtilizationChart(overview.studio_utilization);
+  } catch (error) {
+    showOverviewError("#bookings-overview-message", error);
+    document.querySelector("#overview-bookings-body").innerHTML = '<tr><td colspan="3" class="empty">Bookings could not be loaded.</td></tr>';
+  }
+}
+
+async function loadBookingsUtilisationOverview() {
+  const chart = document.querySelector("#studio-utilisation-chart");
+  chart.innerHTML = '<p class="analytics-empty">Loading utilisation...</p>';
+  const query = appendOverviewSpace(new URLSearchParams({
+    month: bookingsUtilisationMonth.value,
+  }), bookingsOverviewFilters);
+  try {
+    const overview = await overviewPanelApi("bookings-utilisation", `/api/admin/overview/bookings/utilization?${query}`);
+    if (!overview) return;
+    document.querySelector("#utilisation-chart-title").textContent = monthLabel(overview.month);
+    renderUtilizationChart("#studio-utilisation-chart", overview.studios);
+  } catch (error) {
+    showOverviewError("#bookings-overview-message", error);
+    chart.innerHTML = '<p class="analytics-empty">Utilisation could not be loaded.</p>';
+  }
+}
+
+async function loadBookingsYearUtilisationOverview() {
+  const chart = document.querySelector("#year-studio-utilisation-chart");
+  chart.innerHTML = '<p class="analytics-empty">Loading utilisation...</p>';
+  const query = appendOverviewSpace(new URLSearchParams({
+    year: bookingsUtilisationYear.value,
+  }), bookingsOverviewFilters);
+  try {
+    const overview = await overviewPanelApi("bookings-year-utilisation", `/api/admin/overview/bookings/utilization/year?${query}`);
+    if (!overview) return;
+    document.querySelector("#year-utilisation-chart-title").textContent = String(overview.year);
+    renderUtilizationChart("#year-studio-utilisation-chart", overview.studios);
+  } catch (error) {
+    showOverviewError("#bookings-overview-message", error);
+    chart.innerHTML = '<p class="analytics-empty">Year-wise utilisation could not be loaded.</p>';
+  }
+}
+
+async function loadBookingsPurposeMonthOverview() {
+  const chart = document.querySelector("#purpose-month-chart");
+  chart.innerHTML = '<p class="analytics-empty">Loading purposes...</p>';
+  const query = appendOverviewSpace(new URLSearchParams({
+    month: bookingsPurposeMonth.value,
+  }), bookingsOverviewFilters);
+  try {
+    const overview = await overviewPanelApi("bookings-purpose-month", `/api/admin/overview/bookings/purposes/month?${query}`);
+    if (!overview) return;
+    document.querySelector("#purpose-month-chart-title").textContent = monthLabel(overview.month);
+    renderPurposeUtilization("#purpose-month-chart", overview.purposes, "No confirmed bookings for this month.");
+  } catch (error) {
+    showOverviewError("#bookings-overview-message", error);
+    chart.innerHTML = '<p class="analytics-empty">Purpose data could not be loaded.</p>';
+  }
+}
+
+async function loadBookingsPurposeYearOverview() {
+  const chart = document.querySelector("#purpose-year-chart");
+  chart.innerHTML = '<p class="analytics-empty">Loading purposes...</p>';
+  const query = appendOverviewSpace(new URLSearchParams({
+    year: bookingsPurposeYear.value,
+  }), bookingsOverviewFilters);
+  try {
+    const overview = await overviewPanelApi("bookings-purpose-year", `/api/admin/overview/bookings/purposes/year?${query}`);
+    if (!overview) return;
+    document.querySelector("#purpose-year-chart-title").textContent = String(overview.year);
+    renderPurposeUtilization("#purpose-year-chart", overview.purposes, "No confirmed bookings for this year.");
+  } catch (error) {
+    showOverviewError("#bookings-overview-message", error);
+    chart.innerHTML = '<p class="analytics-empty">Purpose data could not be loaded.</p>';
+  }
+}
+
+async function loadBookingsHeatmapOverview() {
+  const chart = document.querySelector("#utilisation-heatmap");
+  chart.innerHTML = '<p class="analytics-empty">Loading utilisation heatmap...</p>';
+  const query = appendOverviewSpace(new URLSearchParams({
+    month: bookingsHeatmapMonth.value,
+  }), bookingsOverviewFilters);
+  try {
+    const overview = await overviewPanelApi("bookings-heatmap", `/api/admin/overview/bookings/heatmap?${query}`);
+    if (!overview) return;
+    document.querySelector("#utilisation-heatmap-title").textContent = monthLabel(overview.month);
+    renderUtilizationHeatmap(overview.cells);
+  } catch (error) {
+    showOverviewError("#bookings-overview-message", error);
+    chart.innerHTML = '<p class="analytics-empty">Utilisation heatmap could not be loaded.</p>';
+  }
+}
+
+async function loadBookingsOverview() {
+  const requestToken = ++bookingsOverviewRequestToken;
+  if (bookingsOverviewRequestController) bookingsOverviewRequestController.abort();
+  bookingsOverviewRequestController = new AbortController();
+  const panelLoads = Promise.all([
+    loadBookingsUpcomingOverview(),
+    loadBookingsDayOverview(),
+    loadBookingsUtilisationOverview(),
+    loadBookingsYearUtilisationOverview(),
+    loadBookingsPurposeMonthOverview(),
+    loadBookingsPurposeYearOverview(),
+    loadBookingsHeatmapOverview(),
+  ]);
+  const message = document.querySelector("#bookings-overview-message");
+  message.hidden = true;
+  bookingsOverviewFilters.setAttribute("aria-busy", "true");
+  document.querySelector("#bookings-summary-total").textContent = "...";
+  document.querySelector("#bookings-summary-confirmed").textContent = "...";
+  document.querySelector("#bookings-summary-cancelled").textContent = "...";
+  document.querySelector("#overview-booking-count").textContent = "…";
+  document.querySelector("#action-centre-count").textContent = "Loading actions...";
+  document.querySelector("#action-centre-body").innerHTML = '<tr><td colspan="6" class="empty">Loading action centre...</td></tr>';
+  document.querySelector("#utilisation-heatmap").innerHTML = '<p class="analytics-empty">Loading utilisation heatmap...</p>';
+  document.querySelector("#overview-bookings-body").innerHTML = '<tr><td colspan="3" class="empty">Loading bookings…</td></tr>';
+  document.querySelector("#studio-utilisation-chart").innerHTML = '<p class="analytics-empty">Loading utilisation…</p>';
+  const query = new URLSearchParams({
+    day_offset: bookingsDayPicker.value,
+    month: bookingsUtilisationMonth.value,
+  });
+  if (bookingsOverviewFilters.elements.space_id.value) {
+    query.set("space_id", bookingsOverviewFilters.elements.space_id.value);
+  }
+  try {
+    const overview = await api(`/api/admin/overview/bookings?${query}`, { signal: bookingsOverviewRequestController.signal });
+    if (requestToken !== bookingsOverviewRequestToken) return;
+    document.querySelector("#bookings-summary-total").textContent = overview.summary_total_bookings;
+    document.querySelector("#bookings-summary-confirmed").textContent = overview.summary_confirmed_bookings;
+    document.querySelector("#bookings-summary-cancelled").textContent = overview.summary_cancelled_bookings;
+    renderActionCentre(overview.action_items);
   } catch (error) {
     if (error.name === "AbortError") return;
     showOverviewError("#bookings-overview-message", error);
-    document.querySelector("#overview-bookings-body").innerHTML = '<tr><td colspan="3" class="empty">Bookings could not be loaded.</td></tr>';
-    document.querySelector("#studio-utilisation-chart").innerHTML = '<p class="analytics-empty">Utilisation could not be loaded.</p>';
+    document.querySelector("#action-centre-body").innerHTML = '<tr><td colspan="6" class="empty">Action centre could not be loaded.</td></tr>';
+    document.querySelector("#action-centre-count").textContent = "Unavailable";
   } finally {
     if (requestToken === bookingsOverviewRequestToken) bookingsOverviewFilters.setAttribute("aria-busy", "false");
+    await panelLoads;
   }
 }
 
@@ -630,18 +958,109 @@ function renderUpcomingBlocks(items) {
     : '<tr><td colspan="4" class="empty">No upcoming blocked slots in this date range.</td></tr>';
 }
 
+async function loadUpcomingBlocksOverview() {
+  const body = document.querySelector("#upcoming-blocks-body");
+  const dateFrom = unavailabilityOverviewFilters.elements.date_from.value;
+  const dateTo = unavailabilityOverviewFilters.elements.date_to.value;
+  if (!dateFrom || !dateTo || dateFrom > dateTo) return;
+  body.innerHTML = '<tr><td colspan="4" class="empty">Loading blocked slots...</td></tr>';
+  const query = appendOverviewSpace(new URLSearchParams({
+    date_from: dateFrom,
+    date_to: dateTo,
+  }), unavailabilityOverviewFilters);
+  try {
+    const overview = await overviewPanelApi("unavailability-upcoming", `/api/admin/overview/unavailability/upcoming?${query}`);
+    if (!overview) return;
+    renderUpcomingBlocks(overview.blocks);
+  } catch (error) {
+    showOverviewError("#unavailability-overview-message", error);
+    body.innerHTML = '<tr><td colspan="4" class="empty">Blocked slots could not be loaded.</td></tr>';
+  }
+}
+
+async function loadUnavailabilityMonthOverview() {
+  const chart = document.querySelector("#unavailability-month-chart");
+  chart.innerHTML = '<p class="analytics-empty">Loading blocked time...</p>';
+  const query = appendOverviewSpace(new URLSearchParams({
+    month: unavailabilityOverviewFilters.elements.month.value,
+  }), unavailabilityOverviewFilters);
+  try {
+    const overview = await overviewPanelApi("unavailability-month", `/api/admin/overview/unavailability/month?${query}`);
+    if (!overview) return;
+    document.querySelector("#unavailability-month-title").textContent = monthLabel(overview.month);
+    renderUnavailabilityChart("#unavailability-month-chart", overview.reasons, "No blocked studio time for this month.");
+  } catch (error) {
+    showOverviewError("#unavailability-overview-message", error);
+    chart.innerHTML = '<p class="analytics-empty">Blocked time could not be loaded.</p>';
+  }
+}
+
+async function loadUnavailabilityYearOverview() {
+  const chart = document.querySelector("#unavailability-year-chart");
+  chart.innerHTML = '<p class="analytics-empty">Loading blocked time...</p>';
+  const query = appendOverviewSpace(new URLSearchParams({
+    year: unavailabilityOverviewFilters.elements.year.value,
+  }), unavailabilityOverviewFilters);
+  try {
+    const overview = await overviewPanelApi("unavailability-year", `/api/admin/overview/unavailability/year?${query}`);
+    if (!overview) return;
+    document.querySelector("#unavailability-year-title").textContent = String(overview.year);
+    renderUnavailabilityChart("#unavailability-year-chart", overview.reasons, "No blocked studio time for this year.");
+  } catch (error) {
+    showOverviewError("#unavailability-overview-message", error);
+    chart.innerHTML = '<p class="analytics-empty">Blocked time could not be loaded.</p>';
+  }
+}
+
+async function loadUnavailabilityTrendOverview() {
+  const chart = document.querySelector("#unavailability-trend-chart");
+  chart.innerHTML = '<p class="analytics-empty">Loading blocked-hours trend...</p>';
+  const query = appendOverviewSpace(new URLSearchParams({
+    year: unavailabilityOverviewFilters.elements.trend_year.value,
+  }), unavailabilityOverviewFilters);
+  try {
+    const overview = await overviewPanelApi("unavailability-trend", `/api/admin/overview/unavailability/trend?${query}`);
+    if (!overview) return;
+    document.querySelector("#unavailability-trend-title").textContent = String(overview.year);
+    renderUnavailabilityTrend(overview.months);
+  } catch (error) {
+    showOverviewError("#unavailability-overview-message", error);
+    chart.innerHTML = '<p class="analytics-empty">Blocked-hours trend could not be loaded.</p>';
+  }
+}
+
+async function loadUnavailabilityStudioOverview() {
+  const chart = document.querySelector("#unavailability-studio-chart");
+  chart.innerHTML = '<p class="analytics-empty">Loading studio comparison...</p>';
+  const query = appendOverviewSpace(new URLSearchParams({
+    month: unavailabilityOverviewFilters.elements.studio_month.value,
+  }), unavailabilityOverviewFilters);
+  try {
+    const overview = await overviewPanelApi("unavailability-studios", `/api/admin/overview/unavailability/studios?${query}`);
+    if (!overview) return;
+    document.querySelector("#unavailability-studio-title").textContent = monthLabel(overview.month);
+    renderUnavailabilityStudioComparison(overview.studios);
+  } catch (error) {
+    showOverviewError("#unavailability-overview-message", error);
+    chart.innerHTML = '<p class="analytics-empty">Studio comparison could not be loaded.</p>';
+  }
+}
+
 async function loadUnavailabilityOverview() {
   const requestToken = ++unavailabilityRequestToken;
   if (unavailabilityRequestController) unavailabilityRequestController.abort();
   unavailabilityRequestController = new AbortController();
+  const panelLoads = Promise.all([
+    loadUpcomingBlocksOverview(),
+    loadUnavailabilityMonthOverview(),
+    loadUnavailabilityYearOverview(),
+    loadUnavailabilityTrendOverview(),
+    loadUnavailabilityStudioOverview(),
+  ]);
   const message = document.querySelector("#unavailability-overview-message");
   message.hidden = true;
   unavailabilityOverviewFilters.setAttribute("aria-busy", "true");
   document.querySelector("#unavailability-total").textContent = "â€¦";
-  document.querySelector("#unavailability-month-title").textContent = "Selected month";
-  document.querySelector("#unavailability-year-title").textContent = "Selected year";
-  document.querySelector("#unavailability-trend-title").textContent = "Selected year";
-  document.querySelector("#unavailability-studio-title").textContent = "Selected month";
   document.querySelector("#upcoming-blocks-body").innerHTML = '<tr><td colspan="4" class="empty">Loading blocked slotsâ€¦</td></tr>';
   document.querySelector("#unavailability-month-chart").innerHTML = '<p class="analytics-empty">Loading blocked timeâ€¦</p>';
   document.querySelector("#unavailability-year-chart").innerHTML = '<p class="analytics-empty">Loading blocked timeâ€¦</p>';
@@ -659,35 +1078,13 @@ async function loadUnavailabilityOverview() {
   try {
     const overview = await api(`/api/admin/overview/unavailability?${query}`, { signal: unavailabilityRequestController.signal });
     if (requestToken !== unavailabilityRequestToken) return;
-    const selectedMonth = monthLabel(overview.month);
     document.querySelector("#unavailability-total").textContent = hoursLabel(overview.summary_total_blocked_hours);
-    document.querySelector("#unavailability-month-title").textContent = selectedMonth;
-    document.querySelector("#unavailability-year-title").textContent = String(overview.year);
-    document.querySelector("#unavailability-trend-title").textContent = String(overview.year);
-    document.querySelector("#unavailability-studio-title").textContent = selectedMonth;
-    renderUpcomingBlocks(overview.upcoming_blocks);
-    renderUnavailabilityChart(
-      "#unavailability-month-chart",
-      overview.month_reasons,
-      "No blocked studio time for this month.",
-    );
-    renderUnavailabilityChart(
-      "#unavailability-year-chart",
-      overview.year_reasons,
-      "No blocked studio time for this year.",
-    );
-    renderUnavailabilityTrend(overview.yearly_blocked_hours);
-    renderUnavailabilityStudioComparison(overview.month_studio_hours);
   } catch (error) {
     if (error.name === "AbortError") return;
     showOverviewError("#unavailability-overview-message", error);
-    document.querySelector("#upcoming-blocks-body").innerHTML = '<tr><td colspan="4" class="empty">Blocked slots could not be loaded.</td></tr>';
-    document.querySelector("#unavailability-month-chart").innerHTML = '<p class="analytics-empty">Blocked time could not be loaded.</p>';
-    document.querySelector("#unavailability-year-chart").innerHTML = '<p class="analytics-empty">Blocked time could not be loaded.</p>';
-    document.querySelector("#unavailability-trend-chart").innerHTML = '<p class="analytics-empty">Blocked-hours trend could not be loaded.</p>';
-    document.querySelector("#unavailability-studio-chart").innerHTML = '<p class="analytics-empty">Studio comparison could not be loaded.</p>';
   } finally {
     if (requestToken === unavailabilityRequestToken) unavailabilityOverviewFilters.setAttribute("aria-busy", "false");
+    await panelLoads;
   }
 }
 
@@ -1053,6 +1450,17 @@ function syncStudioSelects() {
     ).join("");
     if (studioSettings.some((studio) => studio.id === previous)) select.value = previous;
   });
+  const bookingsOverviewSpaceSelect = bookingsOverviewFilters.elements.space_id;
+  const previousBookingsOverviewSpace = bookingsOverviewSpaceSelect.value;
+  bookingsOverviewSpaceSelect.innerHTML = [
+    '<option value="">All Spaces</option>',
+    ...studioSettings.map((studio) =>
+      `<option value="${safeAttr(studio.id)}">${safe(studio.name)}</option>`
+    ),
+  ].join("");
+  if (studioSettings.some((studio) => studio.id === previousBookingsOverviewSpace)) {
+    bookingsOverviewSpaceSelect.value = previousBookingsOverviewSpace;
+  }
   const fundsSpaceSelect = fundsOverviewFilters.elements.space_id;
   const previousFundsSpace = fundsSpaceSelect.value;
   fundsSpaceSelect.innerHTML = [
@@ -1893,6 +2301,22 @@ alertList.addEventListener("click", async (event) => {
 document.querySelector("#bookings-body").addEventListener("click", (event) => {
   const button = event.target.closest("[data-booking-id]");
   if (button) openBookingModal(button.dataset.bookingId);
+});
+document.querySelector("#action-centre-body").addEventListener("click", async (event) => {
+  const button = event.target.closest("[data-action-booking-id]");
+  if (!button) return;
+  button.disabled = true;
+  try {
+    bookingFilters.reset();
+    bookingFilters.elements.space_id.value = button.dataset.actionSpace;
+    bookingFilters.elements.date_from.value = button.dataset.actionDate;
+    bookingFilters.elements.date_to.value = button.dataset.actionDate;
+    await navigateToAdminSection("bookings");
+    openBookingModal(button.dataset.actionBookingId);
+  } catch (error) {
+    handleDashboardError(error);
+    button.disabled = false;
+  }
 });
 document.querySelector(".booking-modal-close").addEventListener("click", () => { bookingModal.hidden = true; });
 bookingModal.addEventListener("click", (event) => {
