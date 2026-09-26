@@ -11,6 +11,9 @@ class AdminAvailabilityViewTest(unittest.TestCase):
         cls.styles = (project_root / "app" / "static" / "admin.css").read_text(encoding="utf-8")
 
     def test_admin_block_controls_use_half_hour_intervals(self) -> None:
+        self.assertIn("<h3>Block Studio</h3>", self.html)
+        self.assertNotIn("CLOSE A TIME WINDOW", self.html)
+        self.assertNotIn("<h3>Block studio time</h3>", self.html)
         self.assertIn("Minimum block: 30 minutes.", self.html)
         self.assertIn("past, current, or future dates", self.html)
         self.assertNotIn("Minimum block: 2 hours.", self.html)
@@ -78,6 +81,10 @@ class AdminAvailabilityViewTest(unittest.TestCase):
 
     def test_booking_table_has_purpose_terms_and_persisted_column_controls(self) -> None:
         self.assertIn('data-table-column="purpose">Purpose', self.html)
+        self.assertIn('data-table-column="payment">Payment status', self.html)
+        self.assertIn('data-table-column="status">Booking status', self.html)
+        self.assertIn('value="payment" data-booking-column-toggle checked><span>Payment status', self.html)
+        self.assertIn('value="status" data-booking-column-toggle checked><span>Booking status', self.html)
         self.assertIn('data-table-column="terms" hidden>Terms accepted', self.html)
         self.assertIn('value="reference" data-booking-column-toggle><span>Reference', self.html)
         self.assertIn('value="value" data-booking-column-toggle><span>Amount', self.html)
@@ -87,8 +94,8 @@ class AdminAvailabilityViewTest(unittest.TestCase):
         self.assertNotIn('data-table-column="studio"', self.html)
         self.assertNotIn('data-table-column="studio"', self.script)
         self.assertIn('value="actions" data-booking-column-toggle checked disabled', self.html)
-        self.assertIn('/static/admin.css?v=20260926-3', self.html)
-        self.assertIn('/static/admin.js?v=20260926-6', self.html)
+        self.assertIn('/static/admin.css?v=20260926-7', self.html)
+        self.assertIn('/static/admin.js?v=20260926-9', self.html)
         self.assertIn('BOOKING_COLUMN_STORAGE_KEY = "ynf_admin_booking_columns_v2"', self.script)
         self.assertIn(
             'DEFAULT_BOOKING_COLUMNS = ["schedule", "customer", "purpose", "payment", "status", "actions"]',
@@ -114,6 +121,10 @@ class AdminAvailabilityViewTest(unittest.TestCase):
         self.assertIn('localStorage.setItem(BOOKING_COLUMN_STORAGE_KEY', self.script)
         self.assertIn('safe(booking.phone_number || "Phone not available")', self.script)
         self.assertNotIn('booking.customer_email || booking.phone_number', self.script)
+        self.assertIn('.status-paid,.status-confirmed {', self.styles)
+        self.assertIn('.status-pending,.status-partially_paid,.status-payment_pending {', self.styles)
+        self.assertIn('.status-refund_due,.status-cancelled {', self.styles)
+        self.assertIn('.status-refunded,.status-void,.status-expired {', self.styles)
 
     def test_booking_directory_uses_responsive_contained_layout(self) -> None:
         self.assertIn("@media(max-width:1600px){.bookings-section .filters", self.styles)
@@ -163,6 +174,9 @@ class AdminAvailabilityViewTest(unittest.TestCase):
         self.assertNotIn('payment_mode: data.get("payment_mode")', self.script)
         self.assertIn('terms_accepted: data.has("terms_accepted")', self.script)
         self.assertIn("setupOfflineBookingOptions", self.script)
+        self.assertIn("function halfHourOptions(selected = \"\", startIndex = 0, endIndex = 48, showRange = false)", self.script)
+        self.assertIn("halfHourOptions(previousStart, openingIndex, latestStartIndex + 1, true)", self.script)
+        self.assertIn('showRange ? `${displayTime(value)} - ${displayTime(rangeEnd)}`', self.script)
         self.assertNotIn('offlineBookingForm.elements.booking_date.min', self.script)
 
     def test_studio_duration_settings_include_one_hour(self) -> None:
@@ -189,13 +203,35 @@ class AdminAvailabilityViewTest(unittest.TestCase):
     def test_staff_access_hides_owner_controls_and_keeps_exports_and_blocks(self) -> None:
         self.assertIn('id="staff-user-form"', self.html)
         self.assertIn('id="staff-users-list"', self.html)
-        self.assertIn('href="#settings"', self.html)
-        self.assertIn('id="settings" class="settings-section" data-owner-only', self.html)
+        self.assertIn('class="settings-nav-group" data-owner-only', self.html)
+        self.assertIn('id="settings-menu-toggle" class="settings-menu-toggle"', self.html)
+        self.assertIn('aria-expanded="false" aria-controls="settings-submenu">Settings</button>', self.html)
+        self.assertIn('id="settings-submenu" class="settings-submenu" aria-label="Settings submenu" hidden', self.html)
+        self.assertIn('href="#staff-access">Staff Access</a>', self.html)
+        self.assertIn('href="#studio-catalogue">Studio Catalogue</a>', self.html)
+        self.assertNotIn('>i. Staff Access</a>', self.html)
+        self.assertNotIn('>ii. Studio Catalogue</a>', self.html)
+        self.assertIn('id="staff-access" class="settings-section" data-owner-only', self.html)
+        self.assertIn('id="studio-catalogue" class="settings-section" data-owner-only', self.html)
+        self.assertNotIn('id="settings" class="settings-section"', self.html)
+        self.assertNotIn('href="#settings">Studio settings</a>', self.html)
         self.assertIn('id="add-offline-booking-button" data-owner-only', self.html)
         self.assertIn('id="booking-export" href="/api/admin/bookings/export.csv"', self.html)
         self.assertIn('id="availability-block-form"', self.html)
         self.assertIn('currentAdminRole = session.role === "owner" ? "owner" : "staff"', self.script)
         self.assertIn('document.querySelectorAll("[data-owner-only]")', self.script)
+        self.assertIn('SETTINGS_SUBSECTION_IDS = new Set(["staff-access", "studio-catalogue"])', self.script)
+        self.assertIn('allowedSections.find((section) => section.id === sectionId)', self.script)
+        self.assertIn('settingsMenuToggle.addEventListener("click"', self.script)
+        self.assertIn('settingsSubmenu.hidden = expanded', self.script)
+        self.assertNotIn('scrollIntoView({ block: "start", behavior: "auto" })', self.script)
+        self.assertIn('.settings-submenu {', self.styles)
+        self.assertIn('.settings-menu-toggle[aria-expanded="true"]::after', self.styles)
+        mobile_settings = self.styles.split('@media(max-width:1000px){\n  .admin-shell aside nav {', 1)[1].split("\n}", 1)[0]
+        self.assertIn("flex-wrap:wrap", mobile_settings)
+        self.assertIn(".settings-submenu { position:absolute", mobile_settings)
+        self.assertIn("display:grid", mobile_settings)
+        self.assertNotIn(".settings-submenu{display:flex", mobile_settings)
         self.assertIn('const editable = isOwner() && booking.status === "confirmed";', self.script)
 
     def test_blocked_tiles_expose_single_slot_unblock_menu(self) -> None:

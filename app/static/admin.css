@@ -13,11 +13,10 @@ button,input,select,textarea { font:inherit; }
 @media(max-width:620px){.bookings-section .filters{grid-template-columns:minmax(0,1fr)}.filter-actions{grid-column:auto;flex-wrap:wrap}.filter-actions>*{flex:1 1 110px;min-width:0}}
 .manage-booking { padding:7px 9px; border:1px solid var(--ink); background:transparent; color:var(--ink); font-size:7px; font-weight:800; letter-spacing:.1em; text-transform:uppercase; cursor:pointer; }
 .manage-booking:hover { color:white; background:var(--ink); }
-.status-paid { color:var(--green); border-color:var(--green); }
-.status-pending { color:#956b19; border-color:#956b19; }
-.status-partially_paid { color:#956b19; border-color:#956b19; }
-.status-refund_due { color:#a43826; border-color:#a43826; }
-.status-refunded,.status-void { color:var(--muted); border-color:#aaa69e; }
+.status-paid,.status-confirmed { color:#2f6847; border-color:#6e9e80; background:#e7f3eb; }
+.status-pending,.status-partially_paid,.status-payment_pending { color:#875f13; border-color:#c7a65e; background:#fff3d8; }
+.status-refund_due,.status-cancelled { color:#9b3526; border-color:#c87b6d; background:#fde8e3; }
+.status-refunded,.status-void,.status-expired { color:#66625b; border-color:#aaa69e; background:#eceae5; }
 .password-modal .password-modal-close,.password-modal .booking-modal-close,.password-modal .offline-booking-modal-close,.password-modal .availability-booking-modal-close { position:absolute; top:20px; right:22px; padding:0; border:0; background:none; font-size:27px; cursor:pointer; }
 .password-modal.booking-modal form { width:min(100%,720px); }
 .booking-modal h2 { margin-bottom:24px; }
@@ -60,6 +59,14 @@ button,input,select,textarea { font:inherit; }
 .dashboard-message-close { position:absolute; top:50%; right:12px; width:28px; height:28px; padding:0; border:0; background:transparent; color:currentColor; font-size:20px; line-height:1; cursor:pointer; transform:translateY(-50%); }
 .dashboard-message-close:hover { background:rgba(17,17,15,.08); }
 .admin-shell { width:100%; min-height:100vh; display:grid; grid-template-columns:235px minmax(0,1fr); }.admin-shell > aside { position:sticky; top:0; height:100vh; display:flex; flex-direction:column; padding:31px 23px; border-right:1px solid var(--line); background:var(--white); }.admin-shell aside nav { display:grid; gap:5px; margin-top:55px; }.admin-shell aside nav a { display:flex; align-items:center; min-height:43px; padding:0 12px; color:#555149; text-decoration:none; font-size:11px; }.admin-shell aside nav a.active { color:white; background:var(--ink); }.admin-shell aside nav a.disabled { opacity:.45; cursor:not-allowed; }.admin-shell aside nav a small { margin-left:auto; color:var(--orange); font-size:6px; letter-spacing:.1em; }.admin-user { margin-top:auto; padding-top:20px; border-top:1px solid var(--line); }.admin-user p { margin:0; color:var(--muted); font-size:8px; text-transform:uppercase; letter-spacing:.12em; }.admin-user b { display:block; margin-top:5px; font:14px Georgia,serif; }.admin-user button { margin-top:13px; padding:0; border:0; background:none; color:var(--muted); text-decoration:underline; text-underline-offset:4px; font-size:9px; cursor:pointer; }
+.settings-nav-group { display:grid; gap:2px; }
+.admin-shell aside nav .settings-menu-toggle { display:flex; align-items:center; width:100%; min-height:43px; padding:0 12px; border:0; background:transparent; color:#555149; text-align:left; font-size:11px; cursor:pointer; }
+.admin-shell aside nav .settings-menu-toggle::after { content:"+"; margin-left:auto; color:var(--orange); font-weight:700; }
+.admin-shell aside nav .settings-menu-toggle[aria-expanded="true"]::after { content:"−"; }
+.admin-shell aside nav .settings-menu-toggle:hover,.admin-shell aside nav .settings-menu-toggle.parent-active { color:var(--ink); font-weight:700; }
+.settings-submenu { display:grid; gap:2px; margin-left:12px; padding-left:8px; border-left:1px solid var(--line); }
+.admin-shell aside nav .settings-submenu a { min-height:32px; padding:0 9px; color:var(--muted); font-size:9px; }
+.admin-shell aside nav .settings-submenu a.active { color:white; background:#3a3934; }
 .admin-shell > main { min-width:0; padding:clamp(28px,5vw,70px); }.admin-shell main > header { display:flex; align-items:end; justify-content:space-between; gap:30px; }.admin-shell header h1 { margin:10px 0 0; font:400 clamp(36px,4vw,55px)/1 Georgia,serif; letter-spacing:-.04em; }.today { display:flex; align-items:center; gap:10px; }.today > span { width:8px; height:8px; border-radius:50%; background:#55a36e; box-shadow:0 0 0 4px rgba(85,163,110,.12); }.today p,.today small { margin:0; display:block; }.today p { font-size:9px; font-weight:800; letter-spacing:.08em; }.today small { margin-top:3px; color:var(--muted); font-weight:400; }
 .admin-user { display:flex; align-items:center; justify-content:space-between; gap:12px; }
 .admin-user-identity { min-width:0; }
@@ -172,6 +179,13 @@ button,input,select,textarea { font:inherit; }
 .studio-settings-actions button:disabled { opacity:.55; cursor:wait; }
 .settings-empty { padding:40px; border:1px solid var(--line); background:var(--white); color:var(--muted); text-align:center; font-size:10px; }
 @media(max-width:1000px){.staff-access-panel{grid-template-columns:1fr}.studio-settings-fields{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:1000px){
+  .admin-shell aside nav { align-items:flex-start; flex-wrap:wrap; overflow:visible; }
+  .settings-nav-group { position:relative; display:block; flex:0 0 auto; }
+  .settings-submenu { position:absolute; z-index:45; top:calc(100% + 8px); right:0; display:grid; width:210px; margin:0; padding:6px; border:1px solid var(--line); background:var(--white); box-shadow:0 15px 35px rgba(25,23,18,.18); animation:account-menu-in-mobile .16s ease-out; }
+  .admin-shell aside nav .settings-menu-toggle { width:auto; white-space:nowrap; }
+  .admin-shell aside nav .settings-submenu a { min-height:40px; padding:0 11px; white-space:normal; }
+}
 @media(max-width:620px){.staff-user-card-actions{grid-template-columns:1fr}.staff-user-card-actions button{width:100%}.studio-settings-fields{grid-template-columns:1fr;padding:18px}.studio-settings-fields label.span-2,.studio-settings-fields label.full{grid-column:auto}.studio-settings-head{align-items:flex-start;flex-direction:column}.studio-settings-actions{align-items:stretch;flex-direction:column}.studio-settings-actions button{width:100%}}
 
 .admin-slot-heading { display:flex; justify-content:space-between; gap:18px; margin-top:22px; padding-bottom:10px; border-bottom:1px solid var(--line); }
@@ -303,7 +317,8 @@ th,
   line-height:1.35;
 }
 
-.admin-shell aside nav a {
+.admin-shell aside nav a,
+.admin-shell aside nav .settings-menu-toggle {
   min-height:46px;
   font-size:var(--admin-body);
   font-weight:500;

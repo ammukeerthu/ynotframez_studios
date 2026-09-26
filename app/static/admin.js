@@ -22,6 +22,8 @@ const desktopAlertsButton = document.querySelector("#desktop-alerts-button");
 const accountMenuButton = document.querySelector("#account-menu-button");
 const accountMenuPanel = document.querySelector("#account-menu-panel");
 const dashboardHomeLink = document.querySelector("#dashboard-home-link");
+const settingsMenuToggle = document.querySelector("#settings-menu-toggle");
+const settingsSubmenu = document.querySelector("#settings-submenu");
 const staffUserForm = document.querySelector("#staff-user-form");
 const staffUsersList = document.querySelector("#staff-users-list");
 let adminBookings = [];
@@ -56,9 +58,8 @@ const PAYMENT_METHODS_BY_FLOW = {
 let visibleBookingColumns = loadBookingColumnPreferences();
 const currency = new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 });
 const adminNavLinks = Array.from(document.querySelectorAll(".admin-shell aside nav a[href^='#']"));
-const adminSections = adminNavLinks
-  .map((link) => document.querySelector(link.getAttribute("href")))
-  .filter(Boolean);
+const adminSections = Array.from(document.querySelectorAll(".admin-shell > main > section[id]"));
+const SETTINGS_SUBSECTION_IDS = new Set(["staff-access", "studio-catalogue"]);
 
 function safe(value) {
   const element = document.createElement("span");
@@ -162,12 +163,17 @@ async function showDashboard(session) {
 }
 
 function setActiveNavigation(sectionId) {
+  const isSettingsSubsection = SETTINGS_SUBSECTION_IDS.has(sectionId);
   adminNavLinks.forEach((link) => {
-    const selected = link.getAttribute("href") === `#${sectionId}`;
+    const linkSectionId = link.getAttribute("href").slice(1);
+    const selected = linkSectionId === sectionId;
     link.classList.toggle("active", selected);
     if (selected) link.setAttribute("aria-current", "page");
     else link.removeAttribute("aria-current");
   });
+  settingsMenuToggle.classList.toggle("parent-active", isSettingsSubsection);
+  settingsMenuToggle.setAttribute("aria-expanded", String(isSettingsSubsection));
+  settingsSubmenu.hidden = !isSettingsSubsection;
 }
 
 function showAdminSection(sectionId, scrollToTop = false) {
@@ -194,6 +200,11 @@ adminNavLinks.forEach((link) => {
     event.preventDefault();
     navigateToAdminSection(link.getAttribute("href").slice(1));
   });
+});
+settingsMenuToggle.addEventListener("click", () => {
+  const expanded = settingsMenuToggle.getAttribute("aria-expanded") === "true";
+  settingsMenuToggle.setAttribute("aria-expanded", String(!expanded));
+  settingsSubmenu.hidden = expanded;
 });
 dashboardHomeLink.addEventListener("click", (event) => {
   event.preventDefault();
@@ -469,11 +480,14 @@ function displayTime(value) {
   return `${hours % 12 || 12}:${String(minutes).padStart(2, "0")} ${hours >= 12 ? "PM" : "AM"}`;
 }
 
-function halfHourOptions(selected = "", startIndex = 0, endIndex = 48) {
+function halfHourOptions(selected = "", startIndex = 0, endIndex = 48, showRange = false) {
   return Array.from({ length: endIndex - startIndex }, (_, offset) => {
     const minutes = (startIndex + offset) * 30;
     const value = `${String(Math.floor(minutes / 60)).padStart(2, "0")}:${String(minutes % 60).padStart(2, "0")}`;
-    return `<option value="${value}"${value === selected ? " selected" : ""}>${displayTime(value)}</option>`;
+    const rangeEndMinutes = (minutes + 30) % (24 * 60);
+    const rangeEnd = `${String(Math.floor(rangeEndMinutes / 60)).padStart(2, "0")}:${String(rangeEndMinutes % 60).padStart(2, "0")}`;
+    const label = showRange ? `${displayTime(value)} - ${displayTime(rangeEnd)}` : displayTime(value);
+    return `<option value="${value}"${value === selected ? " selected" : ""}>${label}</option>`;
   }).join("");
 }
 
@@ -497,7 +511,7 @@ function setupOfflineBookingOptions({ refreshAmount = true } = {}) {
   const previousStart = startSelect.value;
   const openingIndex = timeToMinutes(studio.opening_time) / 30;
   const latestStartIndex = (timeToMinutes(studio.closing_time) / 30) - (studio.min_duration_hours * 2);
-  startSelect.innerHTML = halfHourOptions(previousStart, openingIndex, latestStartIndex + 1);
+  startSelect.innerHTML = halfHourOptions(previousStart, openingIndex, latestStartIndex + 1, true);
   if (!startSelect.value && startSelect.options.length) startSelect.selectedIndex = 0;
 
   const startMinutes = timeToMinutes(startSelect.value || studio.opening_time);
