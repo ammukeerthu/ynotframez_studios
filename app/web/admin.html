@@ -9,9 +9,9 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800&amp;display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/admin.css?v=20260926-12">
+  <link rel="stylesheet" href="/static/admin.css?v=20260926-13">
   <script src="/static/studio_cache.js?v=20260908-1" defer></script>
-  <script src="/static/admin.js?v=20260926-14" defer></script>
+  <script src="/static/admin.js?v=20260926-17" defer></script>
 </head>
 <body>
   <section id="login-view" class="login-view" hidden>
@@ -42,6 +42,13 @@
   </section>
 
   <div id="dashboard-view" class="admin-shell" hidden>
+    <div id="dashboard-operation-loader" class="dashboard-operation-loader" role="status" aria-live="polite" hidden>
+      <div>
+        <span class="dashboard-operation-spinner" aria-hidden="true"></span>
+        <strong>Saving changes…</strong>
+        <small>Please wait. Dashboard navigation is temporarily disabled.</small>
+      </div>
+    </div>
     <aside>
       <a id="dashboard-home-link" href="#funds" class="admin-brand" aria-label="Studio Dashboard overview"><img class="brand-logo" src="/static/brand/ynotframez-logo.png" alt="YNotFramez Studios" width="10101" height="1632"></a>
       <nav>
@@ -169,7 +176,7 @@
           </div>
           <article class="analytics-panel upcoming-blocks-panel">
             <div class="analytics-panel-head funds-panel-head">
-              <div><p>UPCOMING BLOCKED SLOTS</p><h3 id="upcoming-blocks-table-title">Current week</h3></div>
+              <div><p>UPCOMING BLOCKED SLOTS</p></div>
               <div class="upcoming-blocks-date-filters">
                 <label><span>FROM</span><input name="date_from" type="date" required></label>
                 <label><span>TO</span><input name="date_to" type="date" required></label>

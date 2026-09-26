@@ -94,8 +94,8 @@ class AdminAvailabilityViewTest(unittest.TestCase):
         self.assertNotIn('data-table-column="studio"', self.html)
         self.assertNotIn('data-table-column="studio"', self.script)
         self.assertIn('value="actions" data-booking-column-toggle checked disabled', self.html)
-        self.assertIn('/static/admin.css?v=20260926-12', self.html)
-        self.assertIn('/static/admin.js?v=20260926-14', self.html)
+        self.assertIn('/static/admin.css?v=20260926-13', self.html)
+        self.assertIn('/static/admin.js?v=20260926-17', self.html)
         self.assertIn('BOOKING_COLUMN_STORAGE_KEY = "ynf_admin_booking_columns_v2"', self.script)
         self.assertIn(
             'DEFAULT_BOOKING_COLUMNS = ["schedule", "customer", "purpose", "payment", "status", "actions"]',
@@ -257,6 +257,8 @@ class AdminAvailabilityViewTest(unittest.TestCase):
         self.assertIn('id="unavailability-total"', self.html)
         self.assertIn('id="upcoming-blocks-table"', self.html)
         self.assertIn('id="upcoming-blocks-body"', self.html)
+        self.assertNotIn('id="upcoming-blocks-table-title"', self.html)
+        self.assertNotIn('upcoming-blocks-table-title', self.script)
         self.assertIn('<th>Date &amp; Time</th><th>Studio</th><th>Reason</th><th>Duration</th>', self.html)
         self.assertIn('<span>FROM</span><input name="date_from" type="date" required>', self.html)
         self.assertIn('<span>TO</span><input name="date_to" type="date" required>', self.html)
@@ -292,6 +294,35 @@ class AdminAvailabilityViewTest(unittest.TestCase):
         self.assertIn('.unavailability-summary-stats { grid-template-columns:1fr; }', self.styles)
         self.assertIn('.unavailability-reason-chart { min-height:310px; }', self.styles)
         self.assertIn('.upcoming-blocks-date-filters { display:flex; gap:12px; }', self.styles)
+
+    def test_each_dashboard_page_refreshes_when_opened(self) -> None:
+        self.assertIn('function refreshAdminSection(sectionId, { studioSettingsLoaded = false } = {})', self.script)
+        expected_loaders = {
+            "funds": "loadFundsOverview()",
+            "overview-bookings": "loadBookingsOverview()",
+            "unavailability": "loadUnavailabilityOverview()",
+            "bookings": "loadBookings()",
+            "availability": "loadAvailability()",
+            "staff-access": "loadStaffUsers()",
+            "studio-catalogue": "loadStudioSettings()",
+        }
+        for section_id, loader in expected_loaders.items():
+            self.assertIn(f'sectionId === "{section_id}"', self.script)
+            self.assertIn(loader, self.script)
+        self.assertGreaterEqual(self.script.count("refreshAdminSection(activeSection)"), 2)
+        self.assertIn('body.innerHTML = bookingEmptyRow("Loading bookings…")', self.script)
+        self.assertIn('Loading utilisation…', self.script)
+
+    def test_dashboard_mutations_block_page_navigation(self) -> None:
+        self.assertIn('id="dashboard-operation-loader"', self.html)
+        self.assertIn('Dashboard navigation is temporarily disabled.', self.html)
+        self.assertIn('function beginDashboardOperation(message = "Saving changes…")', self.script)
+        self.assertIn('!["GET", "HEAD"].includes(method)', self.script)
+        self.assertIn('if (blocksDashboard) beginDashboardOperation(operationMessage)', self.script)
+        self.assertIn('if (blocksDashboard) endDashboardOperation()', self.script)
+        self.assertIn('if (dashboardOperationCount) return Promise.resolve();', self.script)
+        self.assertIn('window.history.replaceState(null, "", `#${currentSection}`)', self.script)
+        self.assertIn('.dashboard-operation-loader { position:fixed; z-index:100;', self.styles)
 
     def test_manage_booking_allows_historical_studio_correction(self) -> None:
         self.assertNotIn('bookingEditForm.elements.booking_date.min', self.script)

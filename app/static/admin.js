@@ -31,6 +31,7 @@ const bookingsOverviewFilters = document.querySelector("#bookings-overview-filte
 const unavailabilityOverviewFilters = document.querySelector("#unavailability-overview-filters");
 const staffUserForm = document.querySelector("#staff-user-form");
 const staffUsersList = document.querySelector("#staff-users-list");
+const dashboardOperationLoader = document.querySelector("#dashboard-operation-loader");
 let adminBookings = [];
 let studioSettings = [];
 let currentAdminRole = "staff";
@@ -46,8 +47,13 @@ let bookingEditAvailabilityRequestController = null;
 let currentBookingEditDay = null;
 let fundsRequestToken = 0;
 let fundsRequestController = null;
+let bookingsOverviewRequestToken = 0;
+let bookingsOverviewRequestController = null;
 let unavailabilityRequestToken = 0;
 let unavailabilityRequestController = null;
+let bookingsRequestToken = 0;
+let bookingsRequestController = null;
+let dashboardOperationCount = 0;
 const dashboardMessageTimers = new WeakMap();
 const MAX_BLOCK_DURATION_HOURS = 12;
 const BOOKING_COLUMN_STORAGE_KEY = "ynf_admin_booking_columns_v2";
@@ -103,21 +109,43 @@ function syncPaymentMethodSelect(paymentMode, methodSelect, selected = "") {
   methodSelect.value = selected;
 }
 
+function beginDashboardOperation(message = "Saving changes…") {
+  dashboardOperationCount += 1;
+  dashboardOperationLoader.querySelector("strong").textContent = message;
+  dashboardOperationLoader.hidden = false;
+  dashboardView.setAttribute("aria-busy", "true");
+}
+
+function endDashboardOperation() {
+  dashboardOperationCount = Math.max(0, dashboardOperationCount - 1);
+  if (dashboardOperationCount) return;
+  dashboardOperationLoader.hidden = true;
+  dashboardView.removeAttribute("aria-busy");
+}
+
 async function api(url, options = {}) {
-  const response = await fetch(url, {
-    ...options,
-    headers: { "Content-Type": "application/json", ...(options.headers || {}) },
-  });
-  const payload = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    const detail = Array.isArray(payload.detail)
-      ? payload.detail.map((item) => item.msg).filter(Boolean).join(" ")
-      : payload.detail;
-    const error = new Error(detail || "Something went wrong.");
-    error.status = response.status;
-    throw error;
+  const { operationMessage, lockDashboard = true, ...requestOptions } = options;
+  const method = String(requestOptions.method || "GET").toUpperCase();
+  const blocksDashboard = lockDashboard && !dashboardView.hidden && !["GET", "HEAD"].includes(method);
+  if (blocksDashboard) beginDashboardOperation(operationMessage);
+  try {
+    const response = await fetch(url, {
+      ...requestOptions,
+      headers: { "Content-Type": "application/json", ...(requestOptions.headers || {}) },
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      const detail = Array.isArray(payload.detail)
+        ? payload.detail.map((item) => item.msg).filter(Boolean).join(" ")
+        : payload.detail;
+      const error = new Error(detail || "Something went wrong.");
+      error.status = response.status;
+      throw error;
+    }
+    return payload;
+  } finally {
+    if (blocksDashboard) endDashboardOperation();
   }
-  return payload;
 }
 
 function showLogin(message = "") {
@@ -166,14 +194,9 @@ async function showDashboard(session) {
   setupOverviewFilters();
   await loadStudioSettings();
   const initialLoads = [
-    loadFundsOverview(),
-    loadBookingsOverview(),
-    loadUnavailabilityOverview(),
-    loadBookings(),
     loadAlerts(),
+    refreshAdminSection(initialSection, { studioSettingsLoaded: true }),
   ];
-  if (isOwner()) initialLoads.push(loadStaffUsers());
-  if (initialSection === "availability") initialLoads.push(loadAvailability());
   await Promise.all(initialLoads);
   startAlertPolling();
   updateDesktopAlertsButton();
@@ -209,11 +232,25 @@ function showAdminSection(sectionId, scrollToTop = false) {
   return activeSection.id;
 }
 
+function refreshAdminSection(sectionId, { studioSettingsLoaded = false } = {}) {
+  if (sectionId === "funds") return loadFundsOverview();
+  if (sectionId === "overview-bookings") return loadBookingsOverview();
+  if (sectionId === "unavailability") return loadUnavailabilityOverview();
+  if (sectionId === "bookings") return loadBookings();
+  if (sectionId === "availability") return loadAvailability();
+  if (sectionId === "staff-access") return isOwner() ? loadStaffUsers() : Promise.resolve();
+  if (sectionId === "studio-catalogue") {
+    return studioSettingsLoaded ? Promise.resolve() : loadStudioSettings();
+  }
+  return Promise.resolve();
+}
+
 function navigateToAdminSection(sectionId) {
+  if (dashboardOperationCount) return Promise.resolve();
   const nextHash = `#${sectionId}`;
   if (window.location.hash !== nextHash) window.history.pushState(null, "", nextHash);
   const activeSection = showAdminSection(sectionId, true);
-  if (activeSection === "availability") loadAvailability();
+  return activeSection ? refreshAdminSection(activeSection) : Promise.resolve();
 }
 
 adminNavLinks.forEach((link) => {
@@ -235,8 +272,13 @@ dashboardHomeLink.addEventListener("click", (event) => {
   navigateToAdminSection("funds");
 });
 window.addEventListener("popstate", () => {
+  if (dashboardOperationCount) {
+    const currentSection = adminSections.find((section) => !section.hidden)?.id || "funds";
+    window.history.replaceState(null, "", `#${currentSection}`);
+    return;
+  }
   const activeSection = showAdminSection(window.location.hash.slice(1), true);
-  if (activeSection === "availability") loadAvailability();
+  if (activeSection) refreshAdminSection(activeSection);
 });
 fundsOverviewFilters.addEventListener("submit", (event) => {
   event.preventDefault();
@@ -292,6 +334,8 @@ async function loadFundsOverview() {
   document.querySelector("#funds-estimated").textContent = "…";
   document.querySelector("#funds-collected").textContent = "…";
   document.querySelector("#funds-outstanding").textContent = "…";
+  document.querySelector("#funds-month-title").textContent = "Selected month";
+  document.querySelector("#funds-year-title").textContent = "Selected year";
   document.querySelector("#funds-month-chart").innerHTML = '<p class="analytics-empty">Loading collections…</p>';
   document.querySelector("#funds-year-chart").innerHTML = '<p class="analytics-empty">Loading collections…</p>';
   const query = new URLSearchParams({
@@ -406,14 +450,25 @@ function renderUtilizationChart(items) {
 }
 
 async function loadBookingsOverview() {
+  const requestToken = ++bookingsOverviewRequestToken;
+  if (bookingsOverviewRequestController) bookingsOverviewRequestController.abort();
+  bookingsOverviewRequestController = new AbortController();
   const message = document.querySelector("#bookings-overview-message");
   message.hidden = true;
+  bookingsOverviewFilters.setAttribute("aria-busy", "true");
+  document.querySelector("#overview-booking-count").textContent = "…";
+  document.querySelector("#overview-booking-date").textContent = "Selected day";
+  document.querySelector("#overview-bookings-table-title").textContent = "Selected day";
+  document.querySelector("#utilisation-chart-title").textContent = "Selected month";
+  document.querySelector("#overview-bookings-body").innerHTML = '<tr><td colspan="3" class="empty">Loading bookings…</td></tr>';
+  document.querySelector("#studio-utilisation-chart").innerHTML = '<p class="analytics-empty">Loading utilisation…</p>';
   const query = new URLSearchParams({
     day_offset: bookingsOverviewFilters.elements.day_offset.value,
     month: bookingsOverviewFilters.elements.month.value,
   });
   try {
-    const overview = await api(`/api/admin/overview/bookings?${query}`);
+    const overview = await api(`/api/admin/overview/bookings?${query}`, { signal: bookingsOverviewRequestController.signal });
+    if (requestToken !== bookingsOverviewRequestToken) return;
     const selectedDate = formatDate(overview.selected_date);
     document.querySelector("#overview-booking-count").textContent = overview.total_bookings;
     document.querySelector("#overview-booking-date").textContent = selectedDate;
@@ -424,7 +479,12 @@ async function loadBookingsOverview() {
       : '<tr><td colspan="3" class="empty">No confirmed bookings for this day.</td></tr>';
     renderUtilizationChart(overview.studio_utilization);
   } catch (error) {
+    if (error.name === "AbortError") return;
     showOverviewError("#bookings-overview-message", error);
+    document.querySelector("#overview-bookings-body").innerHTML = '<tr><td colspan="3" class="empty">Bookings could not be loaded.</td></tr>';
+    document.querySelector("#studio-utilisation-chart").innerHTML = '<p class="analytics-empty">Utilisation could not be loaded.</p>';
+  } finally {
+    if (requestToken === bookingsOverviewRequestToken) bookingsOverviewFilters.setAttribute("aria-busy", "false");
   }
 }
 
@@ -464,6 +524,8 @@ async function loadUnavailabilityOverview() {
   message.hidden = true;
   unavailabilityOverviewFilters.setAttribute("aria-busy", "true");
   document.querySelector("#unavailability-total").textContent = "â€¦";
+  document.querySelector("#unavailability-month-title").textContent = "Selected month";
+  document.querySelector("#unavailability-year-title").textContent = "Selected year";
   document.querySelector("#upcoming-blocks-body").innerHTML = '<tr><td colspan="4" class="empty">Loading blocked slotsâ€¦</td></tr>';
   document.querySelector("#unavailability-month-chart").innerHTML = '<p class="analytics-empty">Loading blocked timeâ€¦</p>';
   document.querySelector("#unavailability-year-chart").innerHTML = '<p class="analytics-empty">Loading blocked timeâ€¦</p>';
@@ -483,7 +545,6 @@ async function loadUnavailabilityOverview() {
     document.querySelector("#unavailability-total").textContent = hoursLabel(overview.summary_total_blocked_hours);
     document.querySelector("#unavailability-month-title").textContent = selectedMonth;
     document.querySelector("#unavailability-year-title").textContent = String(overview.year);
-    document.querySelector("#upcoming-blocks-table-title").textContent = `${formatDate(overview.blocked_date_from)} to ${formatDate(overview.blocked_date_to)}`;
     renderUpcomingBlocks(overview.upcoming_blocks);
     renderUnavailabilityChart(
       "#unavailability-month-chart",
@@ -701,18 +762,28 @@ function bookingEmptyRow(message) {
 }
 
 async function loadBookings() {
+  const requestToken = ++bookingsRequestToken;
+  if (bookingsRequestController) bookingsRequestController.abort();
+  bookingsRequestController = new AbortController();
   const query = bookingFilterQuery();
   document.querySelector("#booking-export").href = `/api/admin/bookings/export.csv?${query}`;
   const body = document.querySelector("#bookings-body");
   body.innerHTML = bookingEmptyRow("Loading bookings…");
+  document.querySelector("#booking-count").textContent = "Loading bookings…";
+  bookingFilters.setAttribute("aria-busy", "true");
   try {
-    const bookings = await api(`/api/admin/bookings?${query}`);
+    const bookings = await api(`/api/admin/bookings?${query}`, { signal: bookingsRequestController.signal });
+    if (requestToken !== bookingsRequestToken) return;
     adminBookings = bookings;
     body.innerHTML = bookings.length ? bookings.map(bookingRow).join("") : bookingEmptyRow("No bookings match these filters.");
     applyBookingColumnVisibility();
     document.querySelector("#booking-count").textContent = `${bookings.length} booking${bookings.length === 1 ? "" : "s"} shown`;
   } catch (error) {
+    if (error.name === "AbortError") return;
+    body.innerHTML = bookingEmptyRow("Bookings could not be loaded.");
     handleDashboardError(error);
+  } finally {
+    if (requestToken === bookingsRequestToken) bookingFilters.setAttribute("aria-busy", "false");
   }
 }
 
@@ -1349,6 +1420,8 @@ async function loadAvailability() {
   closeSlotContextMenu();
   currentAvailabilityDay = null;
   setupHalfHourBlockOptions();
+  document.querySelector("#schedule-space").textContent = availabilityFilters.elements.space_id.selectedOptions[0]?.textContent || "Studio";
+  document.querySelector("#schedule-date").textContent = "Loading schedule…";
   slots.innerHTML = '<p class="availability-empty">Loading schedule…</p>';
   slots.setAttribute("aria-busy", "true");
   try {
@@ -1684,9 +1757,8 @@ alertList.addEventListener("click", async (event) => {
     }
     bookingFilters.reset();
     bookingFilters.elements.space_id.value = viewButton.dataset.alertSpace;
-    await loadBookings();
     setAlertPanel(false);
-    navigateToAdminSection("bookings");
+    await navigateToAdminSection("bookings");
     openBookingModal(viewButton.dataset.viewAlertBooking);
     await loadAlerts();
   } catch (error) {
