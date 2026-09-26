@@ -15,8 +15,12 @@ class AdminAvailabilityViewTest(unittest.TestCase):
         self.assertIn("past, current, or future dates", self.html)
         self.assertNotIn("Minimum block: 2 hours.", self.html)
         self.assertNotIn("availabilityFilters.elements.booking_date.min", self.script)
-        self.assertIn('new Set(["available", "past"])', self.script)
-        self.assertIn('["available", "past"].includes(slot.status)', self.script)
+        self.assertIn('isOwner() ? ["available", "past"] : ["available"]', self.script)
+        self.assertIn('slot.status === "past" && isOwner()', self.script)
+        self.assertIn('class="admin-slot-reason">${safe(slot.reason)}', self.script)
+        self.assertIn(".admin-slot-reason {", self.styles)
+        reason_style = self.styles.split(".admin-slot-reason {", 1)[1].split("}", 1)[0]
+        self.assertNotIn("text-transform:uppercase", reason_style)
         self.assertIn('availabilityBlockForm.elements.reason.focus()', self.script)
         self.assertIn("const duration = 0.5 + (index / 2);", self.script)
         self.assertIn("30 minutes", self.script)
@@ -59,8 +63,8 @@ class AdminAvailabilityViewTest(unittest.TestCase):
         self.assertNotIn('data-table-column="studio"', self.html)
         self.assertNotIn('data-table-column="studio"', self.script)
         self.assertIn('value="actions" data-booking-column-toggle checked disabled', self.html)
-        self.assertIn('/static/admin.css?v=20260926-1', self.html)
-        self.assertIn('/static/admin.js?v=20260926-2', self.html)
+        self.assertIn('/static/admin.css?v=20260926-2', self.html)
+        self.assertIn('/static/admin.js?v=20260926-4', self.html)
         self.assertIn('BOOKING_COLUMN_STORAGE_KEY = "ynf_admin_booking_columns_v2"', self.script)
         self.assertIn(
             'DEFAULT_BOOKING_COLUMNS = ["schedule", "customer", "purpose", "payment", "status", "actions"]',

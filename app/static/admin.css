@@ -170,7 +170,7 @@ button,input,select,textarea { font:inherit; }
 .availability-slots { min-height:132px; display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:9px; margin-top:0; padding-top:15px; }
 .availability-slots .availability-empty { grid-column:1/-1; margin:0; border:0; }
 .admin-slot-button { min-width:0; min-height:68px; padding:9px 7px; border:1px solid var(--line); background:var(--white); color:var(--ink); text-align:center; cursor:pointer; transition:transform .15s,background .15s,border-color .15s,color .15s; }
-.admin-slot-button span,.admin-slot-button small,.admin-slot-button em { display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.admin-slot-button span,.admin-slot-button small,.admin-slot-button em,.admin-slot-reason { display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .admin-slot-button span { font-size:11px; font-weight:700; }
 .admin-slot-button small { margin-top:5px; color:var(--green); font-size:7px; font-weight:800; letter-spacing:.1em; text-transform:uppercase; }
 .admin-slot-button em { margin-top:4px; color:var(--muted); font-size:7px; font-style:normal; }
@@ -180,6 +180,7 @@ button,input,select,textarea { font:inherit; }
 .admin-slot-button.booked small { color:var(--orange); }
 .admin-slot-button.blocked { border-color:var(--ink); background:var(--ink); color:white; }
 .admin-slot-button.blocked small { color:var(--orange); }
+.admin-slot-reason { margin-top:3px; color:white; font-size:8px; font-weight:800; letter-spacing:.06em; }
 .admin-slot-button.blocked em { color:#bbb6ad; }
 .admin-slot-button.blocked:hover { transform:translateY(-2px); background:#373630; }
 .admin-slot-button.past,.admin-slot-button.unavailable { background:#efede7; color:#aaa69e; opacity:.68; }

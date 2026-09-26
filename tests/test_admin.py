@@ -400,6 +400,20 @@ class AdminAuthenticationTest(unittest.TestCase):
         self.addCleanup(engine.dispose)
         Base.metadata.create_all(engine)
         booking_date = date.today() - timedelta(days=30)
+        owner = AdminUser(
+            username="owner",
+            password_salt="salt",
+            password_hash="hash",
+            role="owner",
+            session_version=1,
+        )
+        staff = AdminUser(
+            username="staff",
+            password_salt="salt",
+            password_hash="hash",
+            role="staff",
+            session_version=1,
+        )
 
         with Session(engine) as db:
             created = admin_create_availability_block(
@@ -411,6 +425,7 @@ class AdminAuthenticationTest(unittest.TestCase):
                     reason="Collaboration",
                 ),
                 db,
+                user=owner,
             )
             day = admin_availability("standard_small", booking_date, db)
             statuses = {slot.start_time: slot for slot in day.slots}
@@ -420,6 +435,34 @@ class AdminAuthenticationTest(unittest.TestCase):
             self.assertEqual(statuses["14:30"].status, "blocked")
             self.assertEqual(statuses["15:00"].status, "blocked")
             self.assertEqual(statuses["15:00"].block_id, created.id)
+
+            with self.assertRaises(HTTPException) as staff_past_block:
+                admin_create_availability_block(
+                    AdminAvailabilityBlockCreate(
+                        space_id="standard_small",
+                        booking_date=booking_date,
+                        start_time=time(16),
+                        duration_hours=1,
+                        reason="Maintenance",
+                    ),
+                    db,
+                    user=staff,
+                )
+            self.assertEqual(staff_past_block.exception.status_code, 403)
+            self.assertIn("Only the owner", staff_past_block.exception.detail)
+
+            staff_future_block = admin_create_availability_block(
+                AdminAvailabilityBlockCreate(
+                    space_id="standard_small",
+                    booking_date=date.today() + timedelta(days=30),
+                    start_time=time(16),
+                    duration_hours=1,
+                    reason="Maintenance",
+                ),
+                db,
+                user=staff,
+            )
+            self.assertEqual(staff_future_block.reason, "Maintenance")
 
     def test_alerts_include_new_booking_start_and_end_handover_reminders(self) -> None:
         engine = create_engine(

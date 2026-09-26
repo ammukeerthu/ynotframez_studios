@@ -715,7 +715,7 @@ function setupHalfHourBlockOptions() {
     const minutes = (openingIndex + offset) * 30;
     return `${String(Math.floor(minutes / 60)).padStart(2, "0")}:${String(minutes % 60).padStart(2, "0")}`;
   });
-  const blockableStatuses = new Set(["available", "past"]);
+  const blockableStatuses = new Set(isOwner() ? ["available", "past"] : ["available"]);
   const firstAvailable = values.find((value) => blockableStatuses.has(slotsByStart.get(value)?.status)) || "";
   startSelect.innerHTML = values.map((value) => {
     const slot = slotsByStart.get(value);
@@ -745,9 +745,10 @@ function syncBlockDurationOptions() {
     ? currentAvailabilityDay.slots.findIndex((slot) => slot.start_time === startValue)
     : -1;
   let contiguousHalfHours = 0;
+  const blockableStatuses = new Set(isOwner() ? ["available", "past"] : ["available"]);
   if (startIndex >= 0) {
     for (const slot of currentAvailabilityDay.slots.slice(startIndex)) {
-      if (!["available", "past"].includes(slot.status) || contiguousHalfHours >= MAX_BLOCK_DURATION_HOURS * 2) break;
+      if (!blockableStatuses.has(slot.status) || contiguousHalfHours >= MAX_BLOCK_DURATION_HOURS * 2) break;
       contiguousHalfHours += 1;
     }
   }
@@ -1062,20 +1063,34 @@ function availabilitySlot(slot) {
     action = "";
     disabled = "disabled";
   }
-  if (slot.status === "past") detail = "Past time available for historical blocking";
+  if (slot.status === "past") {
+    detail = isOwner()
+      ? "Past time available for historical blocking"
+      : "Past time · Owner access required to block";
+    if (!isOwner()) {
+      action = "";
+      disabled = "disabled";
+    }
+  }
   if (slot.status === "unavailable") {
     detail = "Calendar unavailable";
     action = "";
     disabled = "disabled";
   }
-  const actionLabel = ["available", "past"].includes(slot.status)
+  const canBlock = slot.status === "available" || (slot.status === "past" && isOwner());
+  const actionLabel = canBlock
     ? "Click to block"
     : slot.status === "blocked" ? "Right-click or tap to unblock" : detail;
+  const statusLabel = slot.status.replaceAll("_", " ");
+  const reasonLabel = slot.status === "blocked" && slot.reason
+    ? `<strong class="admin-slot-reason">${safe(slot.reason)}</strong>`
+    : "";
   const slotLabel = `${displayTime(slot.start_time)} - ${displayTime(slot.end_time)}`;
   const title = `${slotLabel} · ${detail}`;
   return `<button type="button" class="admin-slot-button ${safeAttr(slot.status)}" ${action} ${disabled} title="${safeAttr(title)}">
     <span>${safe(slotLabel)}</span>
-    <small>${safe(slot.status.replaceAll("_", " "))}</small>
+    <small>${safe(statusLabel)}</small>
+    ${reasonLabel}
     <em>${safe(actionLabel)}</em>
   </button>`;
 }

@@ -1083,11 +1083,11 @@ def admin_availability(
     "/availability/blocks",
     response_model=AdminAvailabilityBlockResponse,
     status_code=status.HTTP_201_CREATED,
-    dependencies=[Depends(require_admin)],
 )
 def admin_create_availability_block(
     payload: AdminAvailabilityBlockCreate,
     db: Session = Depends(get_db),
+    user: AdminUser = Depends(require_admin),
 ) -> AdminAvailabilityBlockResponse:
     space = get_space_by_id(payload.space_id, db, include_inactive=True)
     if space is None:
@@ -1100,6 +1100,12 @@ def admin_create_availability_block(
     )
     business_start = datetime.combine(payload.booking_date, time.fromisoformat(space.opening_time))
     business_end = datetime.combine(payload.booking_date, time.fromisoformat(space.closing_time))
+    studio_now = datetime.now(ZoneInfo(settings.studio_timezone)).replace(tzinfo=None)
+    if requested_start <= studio_now and user.role != OWNER_ROLE:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only the owner can record past studio blocks.",
+        )
     if requested_start < business_start or requested_end > business_end:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
