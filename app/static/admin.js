@@ -359,7 +359,7 @@ function renderFundsYearChart(items) {
     const pending = Number(item.pending_amount || 0);
     const collectedHeight = maximum ? Math.max(0, collected / maximum * 100) : 0;
     const pendingHeight = maximum ? Math.max(0, pending / maximum * 100) : 0;
-    const details = `${monthNames[item.month - 1]}: Collected ${currency.format(collected)}; Estimated ${currency.format(item.estimated_amount)}; Pending ${currency.format(item.pending_amount)}`;
+    const details = `${monthNames[item.month - 1]}: Estimated ${currency.format(item.estimated_amount)}; Collected ${currency.format(collected)}; Pending ${currency.format(item.pending_amount)}`;
     return `<article class="funds-year-column" role="img" aria-label="${safeAttr(details)}" title="${safeAttr(details)}">
       <small>${safe(currency.format(collected + pending))}</small>
       <div class="funds-year-track">

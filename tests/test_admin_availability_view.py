@@ -257,6 +257,7 @@ class AdminAvailabilityViewTest(unittest.TestCase):
         self.assertIn('/api/admin/overview/funds?${query}', self.script)
         self.assertIn('renderFundsMonthChart(overview)', self.script)
         self.assertIn('renderFundsYearChart(overview.yearly_collections)', self.script)
+        self.assertIn(': Estimated ${currency.format(item.estimated_amount)}; Collected ${currency.format(collected)}; Pending ${currency.format(item.pending_amount)}`', self.script)
         self.assertIn('class="pending" style="height:${pendingHeight}%;bottom:${collectedHeight}%"', self.script)
         self.assertIn('<span><i class="collected"></i>Collected</span>', self.script)
         self.assertIn('<span><i class="pending"></i>Pending</span>', self.script)
