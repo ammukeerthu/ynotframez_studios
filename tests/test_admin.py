@@ -20,6 +20,7 @@ from app.api.routes.admin import (
     admin_availability,
     admin_booking_detail,
     admin_bookings,
+    admin_bookings_overview,
     admin_cancel_booking,
     admin_change_password,
     admin_create_availability_block,
@@ -29,6 +30,7 @@ from app.api.routes.admin import (
     admin_delete_availability_block_slot,
     admin_delete_staff_user,
     admin_export_bookings,
+    admin_funds_overview,
     admin_login,
     admin_overview,
     admin_alerts,
@@ -38,6 +40,7 @@ from app.api.routes.admin import (
     admin_staff_users,
     admin_update_booking,
     admin_update_payment,
+    admin_unavailability_overview,
     require_owner,
     require_admin,
     _operational_alerts,
@@ -287,6 +290,9 @@ class AdminAuthenticationTest(unittest.TestCase):
             ("/api/admin/bookings/{booking_id}/payment", "POST"),
         }
         staff_block_access = {
+            ("/api/admin/overview/funds", "GET"),
+            ("/api/admin/overview/bookings", "GET"),
+            ("/api/admin/overview/unavailability", "GET"),
             ("/api/admin/bookings/{booking_id}", "GET"),
             ("/api/admin/availability/blocks", "POST"),
             ("/api/admin/availability/blocks/{block_id}/slot", "DELETE"),
@@ -302,6 +308,126 @@ class AdminAuthenticationTest(unittest.TestCase):
             self.assertIn(require_owner, [dependency.call for dependency in routes[key].dependant.dependencies])
         for key in staff_block_access:
             self.assertIn(require_admin, [dependency.call for dependency in routes[key].dependant.dependencies])
+
+    def test_dashboard_analytics_support_period_and_day_pickers(self) -> None:
+        engine = create_engine(
+            "sqlite://",
+            connect_args={"check_same_thread": False},
+            poolclass=StaticPool,
+        )
+        self.addCleanup(engine.dispose)
+        Base.metadata.create_all(engine)
+        studio_today = datetime.now(ZoneInfo(settings.studio_timezone)).date()
+        selected_month = studio_today.strftime("%Y-%m")
+        next_month = (studio_today.replace(day=28) + timedelta(days=4)).replace(day=1)
+
+        with Session(engine) as db:
+            cube = Booking(
+                phone_number="+919999999901",
+                state=BookingState.CONFIRMED,
+                space_id="standard_small",
+                booking_date=studio_today.isoformat(),
+                start_time="10:00",
+                duration_hours=2,
+                customer_name="Cube Customer",
+                payment_mode=PaymentMode.PAY_AT_STUDIO,
+            )
+            arena = Booking(
+                phone_number="+919999999902",
+                state=BookingState.CONFIRMED,
+                space_id="premium_large",
+                booking_date=studio_today.isoformat(),
+                start_time="14:00",
+                duration_hours=1,
+                customer_name="Arena Customer",
+                payment_mode=PaymentMode.PAY_AT_STUDIO,
+            )
+            future = Booking(
+                phone_number="+919999999903",
+                state=BookingState.CONFIRMED,
+                space_id="standard_small",
+                booking_date=next_month.isoformat(),
+                start_time="09:00",
+                duration_hours=1,
+                customer_name="Future Customer",
+                payment_mode=PaymentMode.PAY_AT_STUDIO,
+            )
+            db.add_all([cube, arena, future])
+            db.flush()
+            db.add_all(
+                [
+                    PaymentRecord(
+                        booking_id=cube.id,
+                        mode=PaymentMode.PAY_AT_STUDIO,
+                        amount=2000,
+                        status=PaymentStatus.PARTIALLY_PAID,
+                        payment_method="upi",
+                    ),
+                    PaymentRecord(
+                        booking_id=arena.id,
+                        mode=PaymentMode.PAY_AT_STUDIO,
+                        amount=1500,
+                        status=PaymentStatus.PAID,
+                        payment_method="cash",
+                    ),
+                    PaymentTransaction(
+                        booking_id=cube.id,
+                        transaction_type=PaymentTransactionType.PAYMENT,
+                        amount=500,
+                        mode=PaymentMode.PAY_AT_STUDIO,
+                        payment_method="upi",
+                    ),
+                    PaymentTransaction(
+                        booking_id=arena.id,
+                        transaction_type=PaymentTransactionType.PAYMENT,
+                        amount=1500,
+                        mode=PaymentMode.PAY_AT_STUDIO,
+                        payment_method="cash",
+                    ),
+                    AvailabilityBlock(
+                        space_id="standard_small",
+                        booking_date=studio_today.isoformat(),
+                        start_time="17:00",
+                        duration_hours=2,
+                        reason="Collaboration",
+                    ),
+                    AvailabilityBlock(
+                        space_id="premium_large",
+                        booking_date=studio_today.isoformat(),
+                        start_time="18:00",
+                        duration_hours=1,
+                        reason="Maintenance",
+                    ),
+                ]
+            )
+            db.commit()
+
+            monthly_funds = admin_funds_overview(selected_month, db)
+            overall_funds = admin_funds_overview(None, db)
+            bookings = admin_bookings_overview(0, selected_month, db)
+            unavailability = admin_unavailability_overview(selected_month, db)
+
+            self.assertEqual(monthly_funds.estimated_amount, 3500)
+            self.assertEqual(monthly_funds.collected_amount, 2000)
+            self.assertEqual(monthly_funds.outstanding_amount, 1500)
+            self.assertEqual(overall_funds.estimated_amount, 4500)
+            self.assertEqual(overall_funds.outstanding_amount, 2500)
+            self.assertEqual(bookings.selected_date, studio_today.isoformat())
+            self.assertEqual(bookings.total_bookings, 2)
+            self.assertEqual([item.space_name for item in bookings.bookings], ["Cube", "Arena"])
+            utilization = {item.space_id: item for item in bookings.studio_utilization}
+            self.assertEqual(utilization["standard_small"].booked_hours, 2)
+            self.assertEqual(utilization["premium_large"].booked_hours, 1)
+            self.assertGreater(utilization["standard_small"].available_hours, 0)
+            self.assertEqual(unavailability.total_blocked_hours, 3)
+            self.assertEqual(
+                [(item.reason, item.blocked_hours) for item in unavailability.reasons],
+                [("Collaboration", 2), ("Maintenance", 1)],
+            )
+
+            with self.assertRaises(HTTPException) as invalid_month:
+                admin_funds_overview("2026-13", db)
+            self.assertEqual(invalid_month.exception.status_code, 400)
 
     def test_availability_booking_tile_exposes_read_only_booking_details(self) -> None:
         engine = create_engine(

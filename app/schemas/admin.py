@@ -67,6 +67,51 @@ class AdminOverviewResponse(BaseModel):
     refund_due_value: int
 
 
+class AdminFundsOverviewResponse(BaseModel):
+    month: str | None
+    estimated_amount: int
+    collected_amount: int
+    outstanding_amount: int
+
+
+class AdminOverviewBookingItem(BaseModel):
+    id: int
+    reference: str
+    space_name: str
+    booking_date: str
+    start_time: str
+    end_time: str
+    customer_name: str
+    phone_number: str
+
+
+class AdminStudioUtilizationItem(BaseModel):
+    space_id: str
+    space_name: str
+    booked_hours: float
+    available_hours: float
+    utilization_percent: float
+
+
+class AdminBookingsOverviewResponse(BaseModel):
+    selected_date: str
+    total_bookings: int
+    bookings: list[AdminOverviewBookingItem]
+    utilization_month: str
+    studio_utilization: list[AdminStudioUtilizationItem]
+
+
+class AdminUnavailabilityReasonItem(BaseModel):
+    reason: str
+    blocked_hours: float
+
+
+class AdminUnavailabilityOverviewResponse(BaseModel):
+    month: str
+    total_blocked_hours: float
+    reasons: list[AdminUnavailabilityReasonItem]
+
+
 class AdminAlertItem(BaseModel):
     id: str
     notification_id: int | None = None

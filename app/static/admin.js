@@ -22,8 +22,13 @@ const desktopAlertsButton = document.querySelector("#desktop-alerts-button");
 const accountMenuButton = document.querySelector("#account-menu-button");
 const accountMenuPanel = document.querySelector("#account-menu-panel");
 const dashboardHomeLink = document.querySelector("#dashboard-home-link");
+const overviewMenuToggle = document.querySelector("#overview-menu-toggle");
+const overviewSubmenu = document.querySelector("#overview-submenu");
 const settingsMenuToggle = document.querySelector("#settings-menu-toggle");
 const settingsSubmenu = document.querySelector("#settings-submenu");
+const fundsOverviewFilters = document.querySelector("#funds-overview-filters");
+const bookingsOverviewFilters = document.querySelector("#bookings-overview-filters");
+const unavailabilityOverviewFilters = document.querySelector("#unavailability-overview-filters");
 const staffUserForm = document.querySelector("#staff-user-form");
 const staffUsersList = document.querySelector("#staff-users-list");
 let adminBookings = [];
@@ -59,6 +64,7 @@ let visibleBookingColumns = loadBookingColumnPreferences();
 const currency = new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 });
 const adminNavLinks = Array.from(document.querySelectorAll(".admin-shell aside nav a[href^='#']"));
 const adminSections = Array.from(document.querySelectorAll(".admin-shell > main > section[id]"));
+const OVERVIEW_SUBSECTION_IDS = new Set(["funds", "overview-bookings", "unavailability"]);
 const SETTINGS_SUBSECTION_IDS = new Set(["staff-access", "studio-catalogue"]);
 
 function safe(value) {
@@ -153,8 +159,15 @@ async function showDashboard(session) {
   const initialSection = showAdminSection(window.location.hash.slice(1));
   dashboardView.hidden = false;
   document.querySelector("#admin-username").textContent = session.username || "admin";
+  setupOverviewFilters();
   await loadStudioSettings();
-  const initialLoads = [loadOverview(), loadBookings(), loadAlerts()];
+  const initialLoads = [
+    loadFundsOverview(),
+    loadBookingsOverview(),
+    loadUnavailabilityOverview(),
+    loadBookings(),
+    loadAlerts(),
+  ];
   if (isOwner()) initialLoads.push(loadStaffUsers());
   if (initialSection === "availability") initialLoads.push(loadAvailability());
   await Promise.all(initialLoads);
@@ -163,6 +176,7 @@ async function showDashboard(session) {
 }
 
 function setActiveNavigation(sectionId) {
+  const isOverviewSubsection = OVERVIEW_SUBSECTION_IDS.has(sectionId);
   const isSettingsSubsection = SETTINGS_SUBSECTION_IDS.has(sectionId);
   adminNavLinks.forEach((link) => {
     const linkSectionId = link.getAttribute("href").slice(1);
@@ -171,6 +185,9 @@ function setActiveNavigation(sectionId) {
     if (selected) link.setAttribute("aria-current", "page");
     else link.removeAttribute("aria-current");
   });
+  overviewMenuToggle.classList.toggle("parent-active", isOverviewSubsection);
+  overviewMenuToggle.setAttribute("aria-expanded", String(isOverviewSubsection));
+  overviewSubmenu.hidden = !isOverviewSubsection;
   settingsMenuToggle.classList.toggle("parent-active", isSettingsSubsection);
   settingsMenuToggle.setAttribute("aria-expanded", String(isSettingsSubsection));
   settingsSubmenu.hidden = !isSettingsSubsection;
@@ -201,33 +218,174 @@ adminNavLinks.forEach((link) => {
     navigateToAdminSection(link.getAttribute("href").slice(1));
   });
 });
-settingsMenuToggle.addEventListener("click", () => {
-  const expanded = settingsMenuToggle.getAttribute("aria-expanded") === "true";
-  settingsMenuToggle.setAttribute("aria-expanded", String(!expanded));
-  settingsSubmenu.hidden = expanded;
-});
+function toggleSectionSubmenu(toggle, submenu) {
+  const expanded = toggle.getAttribute("aria-expanded") === "true";
+  toggle.setAttribute("aria-expanded", String(!expanded));
+  submenu.hidden = expanded;
+}
+
+overviewMenuToggle.addEventListener("click", () => toggleSectionSubmenu(overviewMenuToggle, overviewSubmenu));
+settingsMenuToggle.addEventListener("click", () => toggleSectionSubmenu(settingsMenuToggle, settingsSubmenu));
 dashboardHomeLink.addEventListener("click", (event) => {
   event.preventDefault();
-  navigateToAdminSection("overview");
+  navigateToAdminSection("funds");
 });
 window.addEventListener("popstate", () => {
   const activeSection = showAdminSection(window.location.hash.slice(1), true);
   if (activeSection === "availability") loadAvailability();
 });
+fundsOverviewFilters.elements.scope.addEventListener("change", syncFundsMonthPicker);
+fundsOverviewFilters.addEventListener("submit", (event) => {
+  event.preventDefault();
+  loadFundsOverview();
+});
+bookingsOverviewFilters.addEventListener("submit", (event) => {
+  event.preventDefault();
+  loadBookingsOverview();
+});
+unavailabilityOverviewFilters.addEventListener("submit", (event) => {
+  event.preventDefault();
+  loadUnavailabilityOverview();
+});
 
-async function loadOverview() {
-  try {
-    const overview = await api("/api/admin/overview");
-    document.querySelector("#stat-today").textContent = overview.bookings_today;
-    document.querySelector("#stat-upcoming").textContent = overview.upcoming_bookings;
-    document.querySelector("#stat-confirmed").textContent = overview.confirmed_bookings;
-    document.querySelector("#stat-value").textContent = currency.format(overview.estimated_value);
-    document.querySelector("#stat-collected").textContent = currency.format(overview.collected_value);
-    document.querySelector("#stat-outstanding").textContent = currency.format(overview.outstanding_value);
-    document.querySelector("#stat-refunds").textContent = currency.format(overview.refund_due_value);
-  } catch (error) {
-    handleDashboardError(error);
+function setupOverviewFilters() {
+  const currentMonth = localDate().slice(0, 7);
+  fundsOverviewFilters.elements.scope.value = "overall";
+  fundsOverviewFilters.elements.month.value = currentMonth;
+  bookingsOverviewFilters.elements.day_offset.value = "0";
+  bookingsOverviewFilters.elements.month.value = currentMonth;
+  unavailabilityOverviewFilters.elements.month.value = currentMonth;
+  syncFundsMonthPicker();
+}
+
+function syncFundsMonthPicker() {
+  const isMonth = fundsOverviewFilters.elements.scope.value === "month";
+  fundsOverviewFilters.elements.month.disabled = !isMonth;
+  fundsOverviewFilters.elements.month.required = isMonth;
+  document.querySelector("#funds-month-field").classList.toggle("is-disabled", !isMonth);
+}
+
+function monthLabel(value) {
+  return new Intl.DateTimeFormat("en-IN", { month: "long", year: "numeric" })
+    .format(new Date(`${value}-01T12:00:00`));
+}
+
+function hoursLabel(value) {
+  const hours = Number(value || 0);
+  return `${hours.toLocaleString("en-IN", { maximumFractionDigits: 1 })} hour${hours === 1 ? "" : "s"}`;
+}
+
+function showOverviewError(selector, error) {
+  const message = document.querySelector(selector);
+  message.textContent = error.message;
+  message.hidden = false;
+  if (error.status === 401) handleDashboardError(error);
+}
+
+async function loadFundsOverview() {
+  const message = document.querySelector("#funds-overview-message");
+  message.hidden = true;
+  const query = new URLSearchParams();
+  if (fundsOverviewFilters.elements.scope.value === "month") {
+    query.set("month", fundsOverviewFilters.elements.month.value);
   }
+  try {
+    const queryString = query.toString();
+    const suffix = queryString ? `?${queryString}` : "";
+    const overview = await api(`/api/admin/overview/funds${suffix}`);
+    document.querySelector("#funds-estimated").textContent = currency.format(overview.estimated_amount);
+    document.querySelector("#funds-collected").textContent = currency.format(overview.collected_amount);
+    document.querySelector("#funds-outstanding").textContent = currency.format(overview.outstanding_amount);
+  } catch (error) {
+    showOverviewError("#funds-overview-message", error);
+  }
+}
+
+function overviewBookingRow(booking) {
+  return `<tr>
+    <td><b>${safe(booking.space_name)}</b><small>${safe(booking.reference)}</small></td>
+    <td>${safe(formatDate(booking.booking_date))}<small>${safe(displayTime(booking.start_time))} to ${safe(displayTime(booking.end_time))}</small></td>
+    <td><b>${safe(booking.customer_name)}</b><small>${safe(booking.phone_number)}</small></td>
+  </tr>`;
+}
+
+function renderUtilizationChart(items) {
+  const chart = document.querySelector("#studio-utilisation-chart");
+  if (!items.length) {
+    chart.innerHTML = '<p class="analytics-empty">No studios are configured.</p>';
+    return;
+  }
+  chart.innerHTML = items.map((item) => {
+    const percent = Math.max(0, Math.min(100, Number(item.utilization_percent || 0)));
+    return `<article class="analytics-bar">
+      <div><b>${safe(item.space_name)}</b><span>${safe(`${item.utilization_percent}% · ${hoursLabel(item.booked_hours)} booked`)}</span></div>
+      <div class="analytics-bar-track" role="img" aria-label="${safeAttr(`${item.space_name} utilization ${item.utilization_percent}%`)}"><i style="width:${percent}%"></i></div>
+      <small>${safe(`${hoursLabel(item.booked_hours)} of ${hoursLabel(item.available_hours)}`)}</small>
+    </article>`;
+  }).join("");
+}
+
+async function loadBookingsOverview() {
+  const message = document.querySelector("#bookings-overview-message");
+  message.hidden = true;
+  const query = new URLSearchParams({
+    day_offset: bookingsOverviewFilters.elements.day_offset.value,
+    month: bookingsOverviewFilters.elements.month.value,
+  });
+  try {
+    const overview = await api(`/api/admin/overview/bookings?${query}`);
+    const selectedDate = formatDate(overview.selected_date);
+    document.querySelector("#overview-booking-count").textContent = overview.total_bookings;
+    document.querySelector("#overview-booking-date").textContent = selectedDate;
+    document.querySelector("#overview-bookings-table-title").textContent = selectedDate;
+    document.querySelector("#utilisation-chart-title").textContent = monthLabel(overview.utilization_month);
+    document.querySelector("#overview-bookings-body").innerHTML = overview.bookings.length
+      ? overview.bookings.map(overviewBookingRow).join("")
+      : '<tr><td colspan="3" class="empty">No confirmed bookings for this day.</td></tr>';
+    renderUtilizationChart(overview.studio_utilization);
+  } catch (error) {
+    showOverviewError("#bookings-overview-message", error);
+  }
+}
+
+function renderUnavailabilityChart(items) {
+  const chart = document.querySelector("#unavailability-chart");
+  if (!items.length) {
+    chart.innerHTML = '<p class="analytics-empty">No blocked studio time for this month.</p>';
+    return;
+  }
+  const maximum = Math.max(...items.map((item) => Number(item.blocked_hours || 0)), 1);
+  chart.innerHTML = items.map((item) => {
+    const width = Math.max(0, Math.min(100, Number(item.blocked_hours || 0) / maximum * 100));
+    return `<article class="analytics-bar unavailability-bar">
+      <div><b>${safe(item.reason)}</b><span>${safe(hoursLabel(item.blocked_hours))}</span></div>
+      <div class="analytics-bar-track" role="img" aria-label="${safeAttr(`${item.reason}: ${hoursLabel(item.blocked_hours)}`)}"><i style="width:${width}%"></i></div>
+    </article>`;
+  }).join("");
+}
+
+async function loadUnavailabilityOverview() {
+  const message = document.querySelector("#unavailability-overview-message");
+  message.hidden = true;
+  const month = unavailabilityOverviewFilters.elements.month.value;
+  try {
+    const overview = await api(`/api/admin/overview/unavailability?${new URLSearchParams({ month })}`);
+    const selectedMonth = monthLabel(overview.month);
+    document.querySelector("#unavailability-total").textContent = hoursLabel(overview.total_blocked_hours);
+    document.querySelector("#unavailability-month").textContent = selectedMonth;
+    document.querySelector("#unavailability-chart-title").textContent = selectedMonth;
+    renderUnavailabilityChart(overview.reasons);
+  } catch (error) {
+    showOverviewError("#unavailability-overview-message", error);
+  }
+}
+
+function loadDashboardAnalytics() {
+  return Promise.all([
+    loadFundsOverview(),
+    loadBookingsOverview(),
+    loadUnavailabilityOverview(),
+  ]);
 }
 
 function notifiedAlertIds() {
@@ -1284,7 +1442,7 @@ offlineBookingForm.addEventListener("submit", async (event) => {
       "#dashboard-message",
       `${booking.reference} created as a confirmed offline booking. Payment is pending.`,
     );
-    await Promise.all([loadOverview(), loadBookings(), loadAvailability()]);
+    await Promise.all([loadDashboardAnalytics(), loadBookings(), loadAvailability()]);
   } catch (error) {
     message.textContent = error.message;
     message.hidden = false;
@@ -1419,7 +1577,7 @@ bookingEditForm.addEventListener("submit", async (event) => {
     });
     bookingModal.hidden = true;
     showDashboardMessage("#dashboard-message", `${booking.reference} updated successfully.`);
-    await Promise.all([loadOverview(), loadBookings(), loadAvailability()]);
+    await Promise.all([loadDashboardAnalytics(), loadBookings(), loadAvailability()]);
   } catch (error) {
     message.textContent = error.message;
     message.hidden = false;
@@ -1441,7 +1599,7 @@ document.querySelector("#cancel-booking-button").addEventListener("click", async
       ? `${booking.reference} cancelled. Its time is available and a refund is now due.`
       : `${booking.reference} cancelled. Its time is available again.`;
     showDashboardMessage("#dashboard-message", confirmation);
-    await Promise.all([loadOverview(), loadBookings(), loadAvailability()]);
+    await Promise.all([loadDashboardAnalytics(), loadBookings(), loadAvailability()]);
   } catch (error) {
     message.textContent = error.message;
     message.hidden = false;
@@ -1485,7 +1643,7 @@ document.querySelector("#payment-action-button").addEventListener("click", async
       "#dashboard-message",
       `${booking.reference} payment marked ${booking.payment_status.replaceAll("_", " ")}.`,
     );
-    await Promise.all([loadOverview(), loadBookings()]);
+    await Promise.all([loadDashboardAnalytics(), loadBookings()]);
   } catch (error) {
     const message = document.querySelector("#booking-edit-message");
     message.textContent = error.message;
@@ -1689,7 +1847,7 @@ document.querySelector("#studio-settings-list").addEventListener("submit", async
     );
     window.YNFStudioCache?.clear();
     await loadStudioSettings();
-    await Promise.all([loadOverview(), loadBookings(), loadAvailability()]);
+    await Promise.all([loadDashboardAnalytics(), loadBookings(), loadAvailability()]);
   } catch (error) {
     showDashboardMessage(message, error.message, { autoHide: false, kind: "error" });
     if (error.status === 401) handleDashboardError(error);

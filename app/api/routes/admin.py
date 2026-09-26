@@ -36,7 +36,10 @@ from app.schemas.admin import (
     AdminLoginRequest,
     AdminAlertItem,
     AdminAlertsResponse,
+    AdminBookingsOverviewResponse,
+    AdminFundsOverviewResponse,
     AdminOverviewResponse,
+    AdminUnavailabilityOverviewResponse,
     AdminPaymentUpdate,
     AdminSessionResponse,
     AdminSetupRequest,
@@ -56,7 +59,7 @@ from app.services.admin_auth import (
 from app.services.availability_service import interval_for, intervals_overlap, overlapping_block, overlapping_booking
 from app.services.booking_service import BookingApplicationService, BookingUnavailableError
 from app.services.payment_service import PaymentLifecycleError, PaymentService
-from app.services.spaces import get_space_by_id, invalidate_public_space_cache, seed_studio_settings
+from app.services.spaces import get_space_by_id, invalidate_public_space_cache, list_spaces, seed_studio_settings
 
 router = APIRouter(prefix="/api/admin", tags=["Admin"])
 SESSION_COOKIE = "ynf_admin_session"
@@ -377,6 +380,197 @@ def admin_overview(db: Session = Depends(get_db)) -> AdminOverviewResponse:
         collected_value=collected_value,
         outstanding_value=outstanding_value,
         refund_due_value=refund_due_value,
+    )
+
+
+def _month_bounds(month: str | None) -> tuple[date, date, str]:
+    selected_month = month or datetime.now(ZoneInfo(settings.studio_timezone)).strftime("%Y-%m")
+    try:
+        first_day = datetime.strptime(f"{selected_month}-01", "%Y-%m-%d").date()
+    except ValueError as error:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Month must use YYYY-MM format.",
+        ) from error
+    next_month = (
+        date(first_day.year + 1, 1, 1)
+        if first_day.month == 12
+        else date(first_day.year, first_day.month + 1, 1)
+    )
+    return first_day, next_month, selected_month
+
+
+def _payment_amount_maps(
+    db: Session,
+) -> tuple[dict[int, PaymentRecord], dict[int, int], dict[int, int]]:
+    payment_records = {record.booking_id: record for record in db.scalars(select(PaymentRecord))}
+    payment_totals: dict[int, int] = {}
+    refund_totals: dict[int, int] = {}
+    for transaction in db.scalars(select(PaymentTransaction)):
+        target = (
+            payment_totals
+            if transaction.transaction_type == PaymentTransactionType.PAYMENT
+            else refund_totals
+        )
+        target[transaction.booking_id] = target.get(transaction.booking_id, 0) + transaction.amount
+    return payment_records, payment_totals, refund_totals
+
+
+@router.get(
+    "/overview/funds",
+    response_model=AdminFundsOverviewResponse,
+    dependencies=[Depends(require_admin)],
+)
+def admin_funds_overview(
+    month: str | None = Query(default=None, pattern=r"^\d{4}-\d{2}$"),
+    db: Session = Depends(get_db),
+) -> AdminFundsOverviewResponse:
+    statement = select(Booking).where(Booking.state == BookingState.CONFIRMED)
+    selected_month: str | None = None
+    if month:
+        first_day, next_month, selected_month = _month_bounds(month)
+        statement = statement.where(
+            Booking.booking_date >= first_day.isoformat(),
+            Booking.booking_date < next_month.isoformat(),
+        )
+    bookings = list(db.scalars(statement))
+    payment_records, payment_totals, refund_totals = _payment_amount_maps(db)
+    estimated_amount = 0
+    collected_amount = 0
+    outstanding_amount = 0
+    for booking in bookings:
+        record = payment_records.get(booking.id)
+        amount = record.amount if record else _booking_amount(booking, db)
+        received = max(
+            0,
+            payment_totals.get(booking.id, 0) - refund_totals.get(booking.id, 0),
+        )
+        estimated_amount += amount
+        collected_amount += received
+        if record is None or record.status in {PaymentStatus.PENDING, PaymentStatus.PARTIALLY_PAID}:
+            outstanding_amount += max(0, amount - received)
+    return AdminFundsOverviewResponse(
+        month=selected_month,
+        estimated_amount=estimated_amount,
+        collected_amount=collected_amount,
+        outstanding_amount=outstanding_amount,
+    )
+
+
+@router.get(
+    "/overview/bookings",
+    response_model=AdminBookingsOverviewResponse,
+    dependencies=[Depends(require_admin)],
+)
+def admin_bookings_overview(
+    day_offset: int = Query(default=0, ge=-1, le=1),
+    month: str | None = Query(default=None, pattern=r"^\d{4}-\d{2}$"),
+    db: Session = Depends(get_db),
+) -> AdminBookingsOverviewResponse:
+    studio_today = datetime.now(ZoneInfo(settings.studio_timezone)).date()
+    selected_date = studio_today + timedelta(days=day_offset)
+    day_bookings = list(
+        db.scalars(
+            select(Booking)
+            .where(
+                Booking.state == BookingState.CONFIRMED,
+                Booking.booking_date == selected_date.isoformat(),
+            )
+            .order_by(Booking.start_time, Booking.id)
+        )
+    )
+    first_day, next_month, selected_month = _month_bounds(month)
+    month_bookings = list(
+        db.scalars(
+            select(Booking).where(
+                Booking.state == BookingState.CONFIRMED,
+                Booking.booking_date >= first_day.isoformat(),
+                Booking.booking_date < next_month.isoformat(),
+            )
+        )
+    )
+    booked_hours: dict[str, float] = {}
+    for booking in month_bookings:
+        if booking.space_id and booking.duration_hours:
+            booked_hours[booking.space_id] = booked_hours.get(booking.space_id, 0) + booking.duration_hours
+
+    days_in_month = (next_month - first_day).days
+    utilization = []
+    for space in list_spaces(db, include_inactive=True):
+        opening = datetime.combine(first_day, time.fromisoformat(space.opening_time))
+        closing = datetime.combine(first_day, time.fromisoformat(space.closing_time))
+        available_hours = max(0.0, (closing - opening).total_seconds() / 3600) * days_in_month
+        space_booked_hours = booked_hours.get(space.id, 0.0)
+        utilization.append(
+            {
+                "space_id": space.id,
+                "space_name": space.name,
+                "booked_hours": round(space_booked_hours, 1),
+                "available_hours": round(available_hours, 1),
+                "utilization_percent": round(
+                    (space_booked_hours / available_hours * 100) if available_hours else 0,
+                    1,
+                ),
+            }
+        )
+
+    booking_items = []
+    for booking in day_bookings:
+        start = time.fromisoformat(booking.start_time or "00:00")
+        start_at = datetime.combine(selected_date, start)
+        end_time = (start_at + timedelta(hours=booking.duration_hours or 0)).strftime("%H:%M")
+        space = get_space_by_id(booking.space_id, db, include_inactive=True)
+        booking_items.append(
+            {
+                "id": booking.id,
+                "reference": f"YNF-{booking.id:06d}",
+                "space_name": space.name if space else booking.space_id or "Not selected",
+                "booking_date": booking.booking_date or selected_date.isoformat(),
+                "start_time": booking.start_time or "00:00",
+                "end_time": end_time,
+                "customer_name": booking.customer_name or "Incomplete booking",
+                "phone_number": booking.phone_number,
+            }
+        )
+    return AdminBookingsOverviewResponse(
+        selected_date=selected_date.isoformat(),
+        total_bookings=len(booking_items),
+        bookings=booking_items,
+        utilization_month=selected_month,
+        studio_utilization=utilization,
+    )
+
+
+@router.get(
+    "/overview/unavailability",
+    response_model=AdminUnavailabilityOverviewResponse,
+    dependencies=[Depends(require_admin)],
+)
+def admin_unavailability_overview(
+    month: str | None = Query(default=None, pattern=r"^\d{4}-\d{2}$"),
+    db: Session = Depends(get_db),
+) -> AdminUnavailabilityOverviewResponse:
+    first_day, next_month, selected_month = _month_bounds(month)
+    blocks = list(
+        db.scalars(
+            select(AvailabilityBlock).where(
+                AvailabilityBlock.booking_date >= first_day.isoformat(),
+                AvailabilityBlock.booking_date < next_month.isoformat(),
+            )
+        )
+    )
+    reason_hours: dict[str, float] = {}
+    for block in blocks:
+        reason = block.reason or "Other"
+        reason_hours[reason] = reason_hours.get(reason, 0) + block.duration_hours
+    reasons = [
+        {"reason": reason, "blocked_hours": round(hours, 1)}
+        for reason, hours in sorted(reason_hours.items(), key=lambda item: (-item[1], item[0]))
+    ]
+    return AdminUnavailabilityOverviewResponse(
+        month=selected_month,
+        total_blocked_hours=round(sum(reason_hours.values()), 1),
+        reasons=reasons,
     )
 
 

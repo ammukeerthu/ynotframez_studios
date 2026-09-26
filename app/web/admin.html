@@ -9,9 +9,9 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800&amp;display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/admin.css?v=20260926-7">
+  <link rel="stylesheet" href="/static/admin.css?v=20260926-8">
   <script src="/static/studio_cache.js?v=20260908-1" defer></script>
-  <script src="/static/admin.js?v=20260926-9" defer></script>
+  <script src="/static/admin.js?v=20260926-10" defer></script>
 </head>
 <body>
   <section id="login-view" class="login-view" hidden>
@@ -43,14 +43,21 @@
 
   <div id="dashboard-view" class="admin-shell" hidden>
     <aside>
-      <a id="dashboard-home-link" href="#overview" class="admin-brand" aria-label="Studio Dashboard overview"><img class="brand-logo" src="/static/brand/ynotframez-logo.png" alt="YNotFramez Studios" width="10101" height="1632"></a>
+      <a id="dashboard-home-link" href="#funds" class="admin-brand" aria-label="Studio Dashboard overview"><img class="brand-logo" src="/static/brand/ynotframez-logo.png" alt="YNotFramez Studios" width="10101" height="1632"></a>
       <nav>
-        <a class="active" href="#overview">Overview</a>
+        <div class="overview-nav-group">
+          <button id="overview-menu-toggle" class="section-menu-toggle" type="button" aria-expanded="false" aria-controls="overview-submenu">Overview</button>
+          <div id="overview-submenu" class="section-submenu" aria-label="Overview submenu" hidden>
+            <a href="#funds">Funds</a>
+            <a href="#overview-bookings">Bookings</a>
+            <a href="#unavailability">Unavailability</a>
+          </div>
+        </div>
         <a href="#bookings">Bookings</a>
         <a href="#availability">Availability</a>
         <div class="settings-nav-group" data-owner-only>
-          <button id="settings-menu-toggle" class="settings-menu-toggle" type="button" aria-expanded="false" aria-controls="settings-submenu">Settings</button>
-          <div id="settings-submenu" class="settings-submenu" aria-label="Settings submenu" hidden>
+          <button id="settings-menu-toggle" class="section-menu-toggle" type="button" aria-expanded="false" aria-controls="settings-submenu">Settings</button>
+          <div id="settings-submenu" class="section-submenu" aria-label="Settings submenu" hidden>
             <a href="#staff-access">Staff Access</a>
             <a href="#studio-catalogue">Studio Catalogue</a>
           </div>
@@ -96,16 +103,57 @@
 
       <div id="dashboard-message" class="dashboard-message" hidden></div>
 
-      <section id="overview" class="overview-section" aria-label="Booking overview">
-        <div class="section-heading"><div><p class="eyebrow">STUDIO DASHBOARD</p></div><p>Live booking and payment overview.</p></div>
-        <div class="stats">
-          <article><p>BOOKINGS TODAY</p><strong id="stat-today">…</strong><small>Confirmed sessions</small></article>
-          <article><p>UPCOMING</p><strong id="stat-upcoming">…</strong><small>Confirmed bookings</small></article>
-          <article><p>ALL CONFIRMED</p><strong id="stat-confirmed">…</strong><small>Lifetime bookings</small></article>
-          <article class="dark"><p>ESTIMATED VALUE</p><strong id="stat-value">…</strong><small>At current studio rates</small></article>
-          <article><p>COLLECTED</p><strong id="stat-collected">…</strong><small>Paid bookings</small></article>
-          <article><p>OUTSTANDING</p><strong id="stat-outstanding">…</strong><small>Pending collection</small></article>
-          <article><p>REFUNDS DUE</p><strong id="stat-refunds">…</strong><small>Cancelled paid bookings</small></article>
+      <section id="funds" class="overview-section analytics-section" aria-label="Funds overview">
+        <div class="section-heading"><div><p class="eyebrow">FUNDS</p></div><p>Booking value, collections, and outstanding amounts.</p></div>
+        <form id="funds-overview-filters" class="analytics-filters">
+          <label><span>PERIOD</span><select name="scope"><option value="overall">Overall</option><option value="month">Month-wise</option></select></label>
+          <label id="funds-month-field"><span>MONTH</span><input name="month" type="month"></label>
+          <button type="submit">Apply</button>
+        </form>
+        <div id="funds-overview-message" class="dashboard-message" hidden></div>
+        <div class="stats analytics-stats">
+          <article class="dark"><p>ESTIMATED BOOKINGS AMOUNT</p><strong id="funds-estimated">&hellip;</strong><small>Total confirmed booking amount</small></article>
+          <article><p>COLLECTED AMOUNT</p><strong id="funds-collected">&hellip;</strong><small>Net payments received</small></article>
+          <article><p>OUTSTANDING / PENDING AMOUNT</p><strong id="funds-outstanding">&hellip;</strong><small>Balance pending collection</small></article>
+        </div>
+      </section>
+
+      <section id="overview-bookings" class="overview-section analytics-section" aria-label="Bookings overview">
+        <div class="section-heading"><div><p class="eyebrow">BOOKINGS</p></div><p>Daily booking activity and monthly studio utilisation.</p></div>
+        <form id="bookings-overview-filters" class="analytics-filters bookings-analytics-filters">
+          <label><span>BOOKING DAY</span><select name="day_offset"><option value="-1">Yesterday</option><option value="0" selected>Today</option><option value="1">Tomorrow</option></select></label>
+          <label><span>UTILISATION MONTH</span><input name="month" type="month" required></label>
+          <button type="submit">Apply</button>
+        </form>
+        <div id="bookings-overview-message" class="dashboard-message" hidden></div>
+        <div class="stats analytics-stats booking-count-stat">
+          <article><p>TOTAL BOOKINGS</p><strong id="overview-booking-count">&hellip;</strong><small id="overview-booking-date">Selected day</small></article>
+        </div>
+        <div class="analytics-panel">
+          <div class="analytics-panel-head"><div><p>BOOKING DETAILS</p><h3 id="overview-bookings-table-title">Today</h3></div></div>
+          <div class="table-wrap analytics-table-wrap">
+            <table id="overview-bookings-table"><thead><tr><th>Studio</th><th>Date &amp; time</th><th>Customer</th></tr></thead><tbody id="overview-bookings-body"><tr><td colspan="3" class="empty">Loading bookings&hellip;</td></tr></tbody></table>
+          </div>
+        </div>
+        <div class="analytics-panel">
+          <div class="analytics-panel-head"><div><p>STUDIO-WISE UTILISATION</p><h3 id="utilisation-chart-title">Selected month</h3></div><small>Confirmed booked hours / configured operating hours</small></div>
+          <div id="studio-utilisation-chart" class="analytics-bars"><p class="analytics-empty">Loading utilisation&hellip;</p></div>
+        </div>
+      </section>
+
+      <section id="unavailability" class="overview-section analytics-section" aria-label="Unavailability overview">
+        <div class="section-heading"><div><p class="eyebrow">UNAVAILABILITY</p></div><p>Blocked studio time grouped by reason.</p></div>
+        <form id="unavailability-overview-filters" class="analytics-filters">
+          <label><span>MONTH</span><input name="month" type="month" required></label>
+          <button type="submit">Apply</button>
+        </form>
+        <div id="unavailability-overview-message" class="dashboard-message" hidden></div>
+        <div class="stats analytics-stats booking-count-stat">
+          <article><p>TOTAL BLOCKED HOURS</p><strong id="unavailability-total">&hellip;</strong><small id="unavailability-month">Selected month</small></article>
+        </div>
+        <div class="analytics-panel">
+          <div class="analytics-panel-head"><div><p>BLOCKED TIME BY REASON</p><h3 id="unavailability-chart-title">Selected month</h3></div></div>
+          <div id="unavailability-chart" class="analytics-bars"><p class="analytics-empty">Loading blocked time&hellip;</p></div>
         </div>
       </section>
 
