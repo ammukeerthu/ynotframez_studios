@@ -118,8 +118,56 @@ button,input,select,textarea { font:inherit; }
 .analytics-bar-track i { display:block; height:100%; background:var(--orange); }
 .unavailability-bar .analytics-bar-track i { background:var(--ink); }
 .analytics-empty { margin:0; padding:35px; border:1px dashed var(--line); color:var(--muted); text-align:center; }
+.funds-dashboard { margin-top:25px; }
+.funds-global-filter { display:flex; justify-content:flex-end; }
+.funds-global-filter label,.funds-panel-head label { width:min(100%,240px); }
+.funds-global-filter label span,.funds-panel-head label span { display:block; margin-bottom:8px; color:#555149; font-size:var(--admin-caption); font-weight:800; letter-spacing:.075em; }
+.funds-global-filter select,.funds-panel-head input { width:100%; min-height:47px; padding:0 14px; border:1px solid var(--line); background:var(--white); outline:none; }
+.funds-global-filter select:focus,.funds-panel-head input:focus { border-color:var(--ink); }
+.funds-summary-label { margin:18px 0 0; color:var(--orange); font-size:var(--admin-caption); font-weight:800; letter-spacing:.075em; }
+.funds-summary-stats { margin-top:12px; }
+.funds-chart-grid { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1.35fr); gap:18px; }
+.funds-chart-panel { min-width:0; }
+.funds-panel-head { align-items:flex-start; }
+.funds-panel-head h3 { white-space:nowrap; }
+.funds-month-chart,.funds-year-chart { min-height:310px; margin-top:22px; }
+.funds-month-chart { display:grid; place-items:center; }
+.funds-month-chart > .analytics-empty,.funds-year-chart > .analytics-empty { width:100%; align-self:center; }
+.funds-year-chart { position:relative; }
+.funds-year-chart > .analytics-empty { position:absolute; top:50%; right:0; left:0; transform:translateY(-50%); }
+.funds-donut-layout { display:flex; align-items:center; justify-content:center; gap:36px; width:100%; }
+.funds-donut { --collected-angle:0deg; position:relative; display:grid; flex:0 0 190px; width:190px; height:190px; place-items:center; border-radius:50%; background:conic-gradient(var(--green) 0 var(--collected-angle),#d8a034 var(--collected-angle) 360deg); }
+.funds-donut::after { position:absolute; width:128px; height:128px; border-radius:50%; background:var(--white); content:""; }
+.funds-donut > div { position:relative; z-index:1; max-width:112px; text-align:center; }
+.funds-donut small { display:block; color:var(--muted); font-size:7px; font-weight:800; letter-spacing:.11em; }
+.funds-donut strong { display:block; overflow:hidden; margin-top:7px; font:600 19px/1.2 var(--admin-font); text-overflow:ellipsis; white-space:nowrap; }
+.funds-chart-legend { display:grid; gap:19px; min-width:155px; margin:0; padding:0; list-style:none; }
+.funds-chart-legend li { display:flex; align-items:flex-start; gap:10px; }
+.funds-chart-legend > li > i { flex:0 0 11px; width:11px; height:11px; margin-top:3px; border-radius:50%; }
+.funds-chart-legend i.collected { background:var(--green); }
+.funds-chart-legend i.pending { background:#d8a034; }
+.funds-chart-legend span { display:grid; gap:4px; }
+.funds-chart-legend b { font-size:var(--admin-body); }
+.funds-chart-legend small { color:var(--muted); font-size:var(--admin-caption); }
+.funds-year-scroll { overflow-x:auto; padding:4px 2px 12px; }
+.funds-year-bars { display:grid; grid-template-columns:repeat(12,minmax(54px,1fr)); gap:9px; min-width:720px; height:255px; }
+.funds-year-column { display:grid; grid-template-rows:28px 1fr 22px; min-width:0; text-align:center; }
+.funds-year-column > small { overflow:hidden; color:var(--muted); font-size:7px; line-height:18px; text-overflow:ellipsis; white-space:nowrap; }
+.funds-year-column > b { align-self:end; font-size:8px; letter-spacing:.04em; }
+.funds-year-track { position:relative; overflow:hidden; border-bottom:1px solid var(--line); background:linear-gradient(to top,transparent 49%,#eeeae2 50%,transparent 51%); }
+.funds-year-track i { position:absolute; right:8px; bottom:0; left:8px; display:block; transition:height .2s ease,bottom .2s ease; }
+.funds-year-track i.collected { background:var(--green); }
+.funds-year-track i.pending { background:#d8a034; }
+.funds-year-key { display:flex; align-items:center; justify-content:flex-end; gap:18px; margin-top:10px; color:var(--muted); font-size:var(--admin-caption); }
+.funds-year-key span { display:flex; align-items:center; gap:7px; }
+.funds-year-key i { width:10px; height:10px; }
+.funds-year-key i.collected { background:var(--green); }
+.funds-year-key i.pending { background:#d8a034; }
 @media(max-width:800px){.analytics-filters{grid-template-columns:1fr 1fr}.analytics-filters button{grid-column:1/-1}.analytics-stats{grid-template-columns:1fr}.booking-count-stat{grid-template-columns:1fr}.analytics-panel{padding:18px}.analytics-panel-head{align-items:flex-start;flex-direction:column}.analytics-panel-head small{text-align:left}}
 @media(max-width:520px){.analytics-filters{grid-template-columns:1fr}.analytics-filters button{grid-column:auto}.analytics-bar>div:first-child{align-items:flex-start;flex-direction:column;gap:4px}}
+@media(max-width:1100px){.funds-chart-grid{grid-template-columns:1fr}}
+@media(max-width:800px){.funds-global-filter{justify-content:stretch}.funds-global-filter label{width:100%}.funds-panel-head label{width:100%}.funds-month-chart,.funds-year-chart{min-height:280px}}
+@media(max-width:520px){.funds-donut-layout{flex-direction:column;gap:24px}.funds-donut{flex-basis:170px;width:170px;height:170px}.funds-donut::after{width:114px;height:114px}.funds-chart-legend{grid-template-columns:1fr 1fr;width:100%}.funds-year-key{justify-content:flex-start}}
 .alert-center { position:absolute; z-index:40; top:58px; right:0; width:min(540px,calc(100vw - 40px)); max-height:min(720px,75vh); overflow:auto; padding:21px; border:1px solid var(--line); background:var(--white); box-shadow:0 22px 60px rgba(25,23,18,.2); }
 .alert-center-head { display:flex; align-items:center; justify-content:space-between; gap:20px; }
 .alert-center-head h2 { margin:0; font:27px Georgia,serif; }

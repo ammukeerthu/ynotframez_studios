@@ -67,11 +67,27 @@ class AdminOverviewResponse(BaseModel):
     refund_due_value: int
 
 
+class AdminFundsMonthlyCollection(BaseModel):
+    month: int
+    estimated_amount: int
+    collected_amount: int
+    pending_amount: int
+
+
 class AdminFundsOverviewResponse(BaseModel):
     month: str | None
+    year: int
+    space_id: str | None
     estimated_amount: int
     collected_amount: int
     outstanding_amount: int
+    summary_estimated_amount: int
+    summary_collected_amount: int
+    summary_pending_amount: int
+    month_estimated_amount: int
+    month_collected_amount: int
+    month_pending_amount: int
+    yearly_collections: list[AdminFundsMonthlyCollection]
 
 
 class AdminOverviewBookingItem(BaseModel):

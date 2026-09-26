@@ -352,7 +352,17 @@ class AdminAuthenticationTest(unittest.TestCase):
                 customer_name="Future Customer",
                 payment_mode=PaymentMode.PAY_AT_STUDIO,
             )
-            db.add_all([cube, arena, future])
+            cancelled = Booking(
+                phone_number="+919999999904",
+                state=BookingState.CANCELLED,
+                space_id="standard_small",
+                booking_date=studio_today.isoformat(),
+                start_time="17:00",
+                duration_hours=2,
+                customer_name="Cancelled Customer",
+                payment_mode=PaymentMode.PAY_AT_STUDIO,
+            )
+            db.add_all([cube, arena, future, cancelled])
             db.flush()
             db.add_all(
                 [
@@ -370,6 +380,13 @@ class AdminAuthenticationTest(unittest.TestCase):
                         status=PaymentStatus.PAID,
                         payment_method="cash",
                     ),
+                    PaymentRecord(
+                        booking_id=cancelled.id,
+                        mode=PaymentMode.PAY_AT_STUDIO,
+                        amount=2000,
+                        status=PaymentStatus.REFUND_DUE,
+                        payment_method="upi",
+                    ),
                     PaymentTransaction(
                         booking_id=cube.id,
                         transaction_type=PaymentTransactionType.PAYMENT,
@@ -383,6 +400,13 @@ class AdminAuthenticationTest(unittest.TestCase):
                         amount=1500,
                         mode=PaymentMode.PAY_AT_STUDIO,
                         payment_method="cash",
+                    ),
+                    PaymentTransaction(
+                        booking_id=cancelled.id,
+                        transaction_type=PaymentTransactionType.PAYMENT,
+                        amount=2000,
+                        mode=PaymentMode.PAY_AT_STUDIO,
+                        payment_method="upi",
                     ),
                     AvailabilityBlock(
                         space_id="standard_small",
@@ -404,6 +428,12 @@ class AdminAuthenticationTest(unittest.TestCase):
 
             monthly_funds = admin_funds_overview(selected_month, db)
             overall_funds = admin_funds_overview(None, db)
+            cube_funds = admin_funds_overview(
+                selected_month,
+                db,
+                year=studio_today.year,
+                space_id="standard_small",
+            )
             bookings = admin_bookings_overview(0, selected_month, db)
             unavailability = admin_unavailability_overview(selected_month, db)
 
@@ -412,6 +442,18 @@ class AdminAuthenticationTest(unittest.TestCase):
             self.assertEqual(monthly_funds.outstanding_amount, 1500)
             self.assertEqual(overall_funds.estimated_amount, 4500)
             self.assertEqual(overall_funds.outstanding_amount, 2500)
+            self.assertEqual(overall_funds.summary_collected_amount, 2000)
+            self.assertEqual(monthly_funds.month_estimated_amount, 3500)
+            self.assertEqual(monthly_funds.month_pending_amount, 1500)
+            current_month_collection = monthly_funds.yearly_collections[studio_today.month - 1]
+            self.assertEqual(current_month_collection.month, studio_today.month)
+            self.assertEqual(current_month_collection.estimated_amount, 3500)
+            self.assertEqual(current_month_collection.collected_amount, 2000)
+            self.assertEqual(current_month_collection.pending_amount, 1500)
+            self.assertEqual(cube_funds.summary_estimated_amount, 3000)
+            self.assertEqual(cube_funds.summary_collected_amount, 500)
+            self.assertEqual(cube_funds.month_pending_amount, 1500)
+            self.assertEqual(len(cube_funds.yearly_collections), 12)
             self.assertEqual(bookings.selected_date, studio_today.isoformat())
             self.assertEqual(bookings.total_bookings, 2)
             self.assertEqual([item.space_name for item in bookings.bookings], ["Cube", "Arena"])

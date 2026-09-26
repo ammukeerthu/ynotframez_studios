@@ -44,6 +44,8 @@ let contextSlot = null;
 let bookingEditAvailabilityRequestToken = 0;
 let bookingEditAvailabilityRequestController = null;
 let currentBookingEditDay = null;
+let fundsRequestToken = 0;
+let fundsRequestController = null;
 const dashboardMessageTimers = new WeakMap();
 const MAX_BLOCK_DURATION_HOURS = 12;
 const BOOKING_COLUMN_STORAGE_KEY = "ynf_admin_booking_columns_v2";
@@ -234,11 +236,10 @@ window.addEventListener("popstate", () => {
   const activeSection = showAdminSection(window.location.hash.slice(1), true);
   if (activeSection === "availability") loadAvailability();
 });
-fundsOverviewFilters.elements.scope.addEventListener("change", syncFundsMonthPicker);
 fundsOverviewFilters.addEventListener("submit", (event) => {
   event.preventDefault();
-  loadFundsOverview();
 });
+fundsOverviewFilters.addEventListener("change", () => loadFundsOverview());
 bookingsOverviewFilters.addEventListener("submit", (event) => {
   event.preventDefault();
   loadBookingsOverview();
@@ -250,19 +251,11 @@ unavailabilityOverviewFilters.addEventListener("submit", (event) => {
 
 function setupOverviewFilters() {
   const currentMonth = localDate().slice(0, 7);
-  fundsOverviewFilters.elements.scope.value = "overall";
   fundsOverviewFilters.elements.month.value = currentMonth;
+  fundsOverviewFilters.elements.year.value = currentMonth.slice(0, 4);
   bookingsOverviewFilters.elements.day_offset.value = "0";
   bookingsOverviewFilters.elements.month.value = currentMonth;
   unavailabilityOverviewFilters.elements.month.value = currentMonth;
-  syncFundsMonthPicker();
-}
-
-function syncFundsMonthPicker() {
-  const isMonth = fundsOverviewFilters.elements.scope.value === "month";
-  fundsOverviewFilters.elements.month.disabled = !isMonth;
-  fundsOverviewFilters.elements.month.required = isMonth;
-  document.querySelector("#funds-month-field").classList.toggle("is-disabled", !isMonth);
 }
 
 function monthLabel(value) {
@@ -283,22 +276,102 @@ function showOverviewError(selector, error) {
 }
 
 async function loadFundsOverview() {
+  const requestToken = ++fundsRequestToken;
+  if (fundsRequestController) fundsRequestController.abort();
+  fundsRequestController = new AbortController();
   const message = document.querySelector("#funds-overview-message");
   message.hidden = true;
-  const query = new URLSearchParams();
-  if (fundsOverviewFilters.elements.scope.value === "month") {
-    query.set("month", fundsOverviewFilters.elements.month.value);
+  fundsOverviewFilters.setAttribute("aria-busy", "true");
+  document.querySelector("#funds-estimated").textContent = "…";
+  document.querySelector("#funds-collected").textContent = "…";
+  document.querySelector("#funds-outstanding").textContent = "…";
+  document.querySelector("#funds-month-chart").innerHTML = '<p class="analytics-empty">Loading collections…</p>';
+  document.querySelector("#funds-year-chart").innerHTML = '<p class="analytics-empty">Loading collections…</p>';
+  const query = new URLSearchParams({
+    month: fundsOverviewFilters.elements.month.value,
+    year: fundsOverviewFilters.elements.year.value,
+  });
+  if (fundsOverviewFilters.elements.space_id.value) {
+    query.set("space_id", fundsOverviewFilters.elements.space_id.value);
   }
   try {
-    const queryString = query.toString();
-    const suffix = queryString ? `?${queryString}` : "";
-    const overview = await api(`/api/admin/overview/funds${suffix}`);
-    document.querySelector("#funds-estimated").textContent = currency.format(overview.estimated_amount);
-    document.querySelector("#funds-collected").textContent = currency.format(overview.collected_amount);
-    document.querySelector("#funds-outstanding").textContent = currency.format(overview.outstanding_amount);
+    const overview = await api(`/api/admin/overview/funds?${query}`, { signal: fundsRequestController.signal });
+    if (requestToken !== fundsRequestToken) return;
+    document.querySelector("#funds-estimated").textContent = currency.format(overview.summary_estimated_amount);
+    document.querySelector("#funds-collected").textContent = currency.format(overview.summary_collected_amount);
+    document.querySelector("#funds-outstanding").textContent = currency.format(overview.summary_pending_amount);
+    document.querySelector("#funds-month-title").textContent = monthLabel(overview.month);
+    document.querySelector("#funds-year-title").textContent = String(overview.year);
+    renderFundsMonthChart(overview);
+    renderFundsYearChart(overview.yearly_collections);
   } catch (error) {
+    if (error.name === "AbortError") return;
     showOverviewError("#funds-overview-message", error);
+    document.querySelector("#funds-month-chart").innerHTML = '<p class="analytics-empty">Collections could not be loaded.</p>';
+    document.querySelector("#funds-year-chart").innerHTML = '<p class="analytics-empty">Collections could not be loaded.</p>';
+  } finally {
+    if (requestToken === fundsRequestToken) fundsOverviewFilters.setAttribute("aria-busy", "false");
   }
+}
+
+function percentage(value, total) {
+  if (!total) return 0;
+  return Math.round((Number(value || 0) / total) * 1000) / 10;
+}
+
+function renderFundsMonthChart(overview) {
+  const chart = document.querySelector("#funds-month-chart");
+  const estimated = Number(overview.month_estimated_amount || 0);
+  const collected = Number(overview.month_collected_amount || 0);
+  const pending = Number(overview.month_pending_amount || 0);
+  if (!estimated && !collected && !pending) {
+    chart.innerHTML = '<p class="analytics-empty">No confirmed bookings for this month.</p>';
+    return;
+  }
+  const total = collected + pending;
+  const collectedPercent = percentage(collected, total);
+  const pendingPercent = percentage(pending, total);
+  const accessibleLabel = `Collected ${currency.format(collected)}, ${collectedPercent}%. Pending ${currency.format(pending)}, ${pendingPercent}%.`;
+  chart.innerHTML = `<div class="funds-donut-layout">
+    <div class="funds-donut" style="--collected-angle:${Math.max(0, Math.min(360, collectedPercent * 3.6))}deg" role="img" aria-label="${safeAttr(accessibleLabel)}" title="${safeAttr(accessibleLabel)}">
+      <div><small>ESTIMATED</small><strong>${safe(currency.format(estimated))}</strong></div>
+    </div>
+    <ul class="funds-chart-legend" aria-label="Monthly collection breakdown">
+      <li><i class="collected"></i><span><b>Collected</b><small>${safe(currency.format(collected))} · ${collectedPercent}%</small></span></li>
+      <li><i class="pending"></i><span><b>Pending</b><small>${safe(currency.format(pending))} · ${pendingPercent}%</small></span></li>
+    </ul>
+  </div>`;
+}
+
+function renderFundsYearChart(items) {
+  const chart = document.querySelector("#funds-year-chart");
+  const maximum = Math.max(
+    ...items.map((item) => Number(item.collected_amount || 0) + Number(item.pending_amount || 0)),
+    0,
+  );
+  if (!maximum && !items.some((item) => Number(item.estimated_amount || 0) || Number(item.pending_amount || 0))) {
+    chart.innerHTML = '<p class="analytics-empty">No confirmed bookings for this year.</p>';
+    return;
+  }
+  const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  chart.innerHTML = `<div class="funds-year-scroll"><div class="funds-year-bars">${items.map((item) => {
+    const collected = Number(item.collected_amount || 0);
+    const pending = Number(item.pending_amount || 0);
+    const collectedHeight = maximum ? Math.max(0, collected / maximum * 100) : 0;
+    const pendingHeight = maximum ? Math.max(0, pending / maximum * 100) : 0;
+    const details = `${monthNames[item.month - 1]}: Collected ${currency.format(collected)}; Estimated ${currency.format(item.estimated_amount)}; Pending ${currency.format(item.pending_amount)}`;
+    return `<article class="funds-year-column" role="img" aria-label="${safeAttr(details)}" title="${safeAttr(details)}">
+      <small>${safe(currency.format(collected + pending))}</small>
+      <div class="funds-year-track">
+        <i class="pending" style="height:${pendingHeight}%;bottom:${collectedHeight}%"></i>
+        <i class="collected" style="height:${collectedHeight}%"></i>
+      </div>
+      <b>${monthNames[item.month - 1]}</b>
+    </article>`;
+  }).join("")}</div></div><div class="funds-year-key" aria-label="Year-wise chart legend">
+    <span><i class="collected"></i>Collected</span>
+    <span><i class="pending"></i>Pending</span>
+  </div>`;
 }
 
 function overviewBookingRow(booking) {
@@ -732,6 +805,17 @@ function syncStudioSelects() {
     ).join("");
     if (studioSettings.some((studio) => studio.id === previous)) select.value = previous;
   });
+  const fundsSpaceSelect = fundsOverviewFilters.elements.space_id;
+  const previousFundsSpace = fundsSpaceSelect.value;
+  fundsSpaceSelect.innerHTML = [
+    '<option value="">All Spaces</option>',
+    ...studioSettings.map((studio) =>
+      `<option value="${safeAttr(studio.id)}">${safe(studio.name)}</option>`
+    ),
+  ].join("");
+  if (studioSettings.some((studio) => studio.id === previousFundsSpace)) {
+    fundsSpaceSelect.value = previousFundsSpace;
+  }
   setupHalfHourBlockOptions();
   setupBookingEditOptions();
   setupOfflineBookingOptions();
@@ -1924,7 +2008,6 @@ availabilityFilters.elements.booking_date.value = localDate();
 const bookingWeek = currentWeekRange();
 bookingFilters.elements.date_from.value = bookingWeek.from;
 bookingFilters.elements.date_to.value = bookingWeek.to;
-bookingEditForm.elements.booking_date.min = localDate();
 applyBookingColumnVisibility();
 setupHalfHourBlockOptions();
 setupBookingEditOptions();

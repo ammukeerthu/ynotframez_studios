@@ -416,30 +416,20 @@ def _payment_amount_maps(
     return payment_records, payment_totals, refund_totals
 
 
-@router.get(
-    "/overview/funds",
-    response_model=AdminFundsOverviewResponse,
-    dependencies=[Depends(require_admin)],
-)
-def admin_funds_overview(
-    month: str | None = Query(default=None, pattern=r"^\d{4}-\d{2}$"),
-    db: Session = Depends(get_db),
-) -> AdminFundsOverviewResponse:
-    statement = select(Booking).where(Booking.state == BookingState.CONFIRMED)
-    selected_month: str | None = None
-    if month:
-        first_day, next_month, selected_month = _month_bounds(month)
-        statement = statement.where(
-            Booking.booking_date >= first_day.isoformat(),
-            Booking.booking_date < next_month.isoformat(),
-        )
-    bookings = list(db.scalars(statement))
-    payment_records, payment_totals, refund_totals = _payment_amount_maps(db)
+def _fund_amounts(
+    bookings: list[Booking],
+    payment_records: dict[int, PaymentRecord],
+    payment_totals: dict[int, int],
+    refund_totals: dict[int, int],
+    db: Session,
+) -> tuple[int, int, int]:
     estimated_amount = 0
     collected_amount = 0
-    outstanding_amount = 0
+    pending_amount = 0
     for booking in bookings:
         record = payment_records.get(booking.id)
+        if record and record.status in {PaymentStatus.REFUND_DUE, PaymentStatus.REFUNDED, PaymentStatus.VOID}:
+            continue
         amount = record.amount if record else _booking_amount(booking, db)
         received = max(
             0,
@@ -448,12 +438,87 @@ def admin_funds_overview(
         estimated_amount += amount
         collected_amount += received
         if record is None or record.status in {PaymentStatus.PENDING, PaymentStatus.PARTIALLY_PAID}:
-            outstanding_amount += max(0, amount - received)
+            pending_amount += max(0, amount - received)
+    return estimated_amount, collected_amount, pending_amount
+
+
+@router.get(
+    "/overview/funds",
+    response_model=AdminFundsOverviewResponse,
+    dependencies=[Depends(require_admin)],
+)
+def admin_funds_overview(
+    month: str | None = None,
+    db: Session = Depends(get_db),
+    year: int | None = None,
+    space_id: str | None = None,
+) -> AdminFundsOverviewResponse:
+    if year is not None and not 2000 <= year <= 2100:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Year must be between 2000 and 2100.")
+    if space_id and len(space_id) > 64:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Studio space is invalid.")
+    if space_id and get_space_by_id(space_id, db, include_inactive=True) is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Studio space not found.")
+
+    statement = select(Booking).where(Booking.state == BookingState.CONFIRMED)
+    if space_id:
+        statement = statement.where(Booking.space_id == space_id)
+    bookings = list(db.scalars(statement))
+
+    month_first, month_next, chart_month = _month_bounds(month)
+    selected_year = year or (month_first.year if month else datetime.now(ZoneInfo(settings.studio_timezone)).year)
+    month_bookings = [
+        booking
+        for booking in bookings
+        if booking.booking_date
+        and month_first.isoformat() <= booking.booking_date < month_next.isoformat()
+    ]
+    year_prefix = f"{selected_year:04d}-"
+    year_bookings = [
+        booking for booking in bookings if booking.booking_date and booking.booking_date.startswith(year_prefix)
+    ]
+    payment_records, payment_totals, refund_totals = _payment_amount_maps(db)
+
+    summary_amounts = _fund_amounts(bookings, payment_records, payment_totals, refund_totals, db)
+    month_amounts = _fund_amounts(month_bookings, payment_records, payment_totals, refund_totals, db)
+    legacy_amounts = month_amounts if month else summary_amounts
+    yearly_collections = []
+    for month_number in range(1, 13):
+        month_prefix = f"{selected_year:04d}-{month_number:02d}-"
+        month_values = _fund_amounts(
+            [
+                booking
+                for booking in year_bookings
+                if booking.booking_date and booking.booking_date.startswith(month_prefix)
+            ],
+            payment_records,
+            payment_totals,
+            refund_totals,
+            db,
+        )
+        yearly_collections.append(
+            {
+                "month": month_number,
+                "estimated_amount": month_values[0],
+                "collected_amount": month_values[1],
+                "pending_amount": month_values[2],
+            }
+        )
+
     return AdminFundsOverviewResponse(
-        month=selected_month,
-        estimated_amount=estimated_amount,
-        collected_amount=collected_amount,
-        outstanding_amount=outstanding_amount,
+        month=chart_month if month else None,
+        year=selected_year,
+        space_id=space_id,
+        estimated_amount=legacy_amounts[0],
+        collected_amount=legacy_amounts[1],
+        outstanding_amount=legacy_amounts[2],
+        summary_estimated_amount=summary_amounts[0],
+        summary_collected_amount=summary_amounts[1],
+        summary_pending_amount=summary_amounts[2],
+        month_estimated_amount=month_amounts[0],
+        month_collected_amount=month_amounts[1],
+        month_pending_amount=month_amounts[2],
+        yearly_collections=yearly_collections,
     )
 
 
