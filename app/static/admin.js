@@ -3,6 +3,7 @@ const dashboardView = document.querySelector("#dashboard-view");
 const loginForm = document.querySelector("#admin-login-form");
 const setupForm = document.querySelector("#admin-setup-form");
 const passwordModal = document.querySelector("#password-modal");
+const availabilityBookingModal = document.querySelector("#availability-booking-modal");
 const bookingModal = document.querySelector("#booking-modal");
 const bookingEditForm = document.querySelector("#booking-edit-form");
 const offlineBookingModal = document.querySelector("#offline-booking-modal");
@@ -71,6 +72,11 @@ function safeAttr(value) {
 
 function paymentFlowLabel(value) {
   return value === "pay_now" ? "Online" : "Pay at studio";
+}
+
+function readableLabel(value, fallback = "Not available") {
+  if (!value) return fallback;
+  return value.replaceAll("_", " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
 function syncPaymentMethodSelect(paymentMode, methodSelect, selected = "") {
@@ -441,7 +447,7 @@ function bookingRow(booking) {
     : paymentFlowLabel(booking.payment_mode);
   return `<tr>
     <td data-table-column="schedule">${safe(date)}<small>${safe(time)}</small></td>
-    <td data-table-column="customer"><b>${safe(booking.customer_name || "Incomplete booking")}</b><small>${safe(booking.customer_email || booking.phone_number)}</small></td>
+    <td data-table-column="customer"><b>${safe(booking.customer_name || "Incomplete booking")}</b><small>${safe(booking.phone_number || "Phone not available")}</small></td>
     <td data-table-column="purpose" class="booking-purpose-cell" title="${safeAttr(purpose)}"><span>${safe(purpose)}</span></td>
     <td data-table-column="payment"><span class="status status-${safe(booking.payment_status)}">${safe(booking.payment_status.replaceAll("_", " "))}</span></td>
     <td data-table-column="status"><span class="status status-${safe(booking.status)}">${safe(booking.status.replaceAll("_", " "))}</span></td>
@@ -1060,8 +1066,12 @@ function availabilitySlot(slot) {
     action = `data-unblock="${slot.block_id}" data-slot-start="${safeAttr(slot.start_time)}" data-slot-end="${safeAttr(slot.end_time)}" aria-haspopup="menu"`;
   }
   if (slot.status === "booked") {
-    action = "";
-    disabled = "disabled";
+    if (slot.booking_id) {
+      action = `data-view-availability-booking="${slot.booking_id}"`;
+    } else {
+      action = "";
+      disabled = "disabled";
+    }
   }
   if (slot.status === "past") {
     detail = isOwner()
@@ -1078,7 +1088,9 @@ function availabilitySlot(slot) {
     disabled = "disabled";
   }
   const canBlock = slot.status === "available" || (slot.status === "past" && isOwner());
-  const actionLabel = canBlock
+  const actionLabel = slot.status === "booked" && slot.booking_id
+    ? "Click to view booking"
+    : canBlock
     ? "Click to block"
     : slot.status === "blocked" ? "Right-click or tap to unblock" : detail;
   const statusLabel = slot.status.replaceAll("_", " ");
@@ -1093,6 +1105,46 @@ function availabilitySlot(slot) {
     ${reasonLabel}
     <em>${safe(actionLabel)}</em>
   </button>`;
+}
+
+function setAvailabilityBookingDetail(field, value) {
+  document.querySelector(`#availability-detail-${field}`).textContent = value;
+}
+
+async function openAvailabilityBookingModal(bookingId) {
+  const message = document.querySelector("#availability-booking-modal-message");
+  message.hidden = true;
+  setAvailabilityBookingDetail("reference", "Loading…");
+  ["schedule", "customer", "studio", "purpose", "payment", "status"].forEach((field) => {
+    setAvailabilityBookingDetail(field, "—");
+  });
+  availabilityBookingModal.hidden = false;
+
+  try {
+    const booking = await api(`/api/admin/bookings/${bookingId}`);
+    const duration = booking.duration_hours
+      ? `${booking.duration_hours} hour${booking.duration_hours === 1 ? "" : "s"}`
+      : "Duration not available";
+    const schedule = booking.booking_date && booking.start_time
+      ? `${formatDate(booking.booking_date)} · ${displayTime(booking.start_time)} to ${displayTime(booking.end_time)} · ${duration}`
+      : "Not scheduled";
+    const customer = [booking.customer_name, booking.phone_number].filter(Boolean).join(" · ") || "Not provided";
+    const paymentMethod = booking.payment_method ? readableLabel(booking.payment_method) : "Method not recorded";
+    const payment = `${readableLabel(booking.payment_status)} · ${currency.format(booking.amount_paid || 0)} paid of ${currency.format(booking.total_amount || 0)} · ${paymentFlowLabel(booking.payment_mode)} / ${paymentMethod}`;
+
+    setAvailabilityBookingDetail("reference", booking.reference);
+    setAvailabilityBookingDetail("schedule", schedule);
+    setAvailabilityBookingDetail("customer", customer);
+    setAvailabilityBookingDetail("studio", booking.space_name || "Not selected");
+    setAvailabilityBookingDetail("purpose", booking.purpose || "Not provided");
+    setAvailabilityBookingDetail("payment", payment);
+    setAvailabilityBookingDetail("status", readableLabel(booking.status));
+  } catch (error) {
+    message.textContent = error.message;
+    message.hidden = false;
+    setAvailabilityBookingDetail("reference", "Unable to load booking");
+    if (error.status === 401) handleDashboardError(error);
+  }
 }
 
 function closeSlotContextMenu() {
@@ -1266,6 +1318,7 @@ document.addEventListener("keydown", (event) => {
     setAlertPanel(false);
     setAccountMenu(false);
     setBookingColumnsPanel(false);
+    availabilityBookingModal.hidden = true;
     bookingModal.hidden = true;
     offlineBookingModal.hidden = true;
   }
@@ -1473,6 +1526,11 @@ availabilityBlockForm.addEventListener("submit", async (event) => {
   }
 });
 document.querySelector("#availability-slots").addEventListener("click", (event) => {
+  const bookingButton = event.target.closest("[data-view-availability-booking]");
+  if (bookingButton) {
+    openAvailabilityBookingModal(bookingButton.dataset.viewAvailabilityBooking);
+    return;
+  }
   const blockButton = event.target.closest("[data-block-start]");
   if (blockButton) {
     availabilityBlockForm.elements.start_time.value = blockButton.dataset.blockStart;
@@ -1638,6 +1696,12 @@ document.querySelector("#change-password-button").addEventListener("click", () =
 document.querySelector(".password-modal-close").addEventListener("click", () => { passwordModal.hidden = true; });
 passwordModal.addEventListener("click", (event) => {
   if (event.target === passwordModal) passwordModal.hidden = true;
+});
+document.querySelector(".availability-booking-modal-close").addEventListener("click", () => {
+  availabilityBookingModal.hidden = true;
+});
+availabilityBookingModal.addEventListener("click", (event) => {
+  if (event.target === availabilityBookingModal) availabilityBookingModal.hidden = true;
 });
 document.querySelector("#change-password-form").addEventListener("submit", async (event) => {
   event.preventDefault();

@@ -319,6 +319,7 @@ class AdminAvailabilitySlotResponse(BaseModel):
     start_time: str
     end_time: str
     status: str
+    booking_id: int | None = None
     booking_reference: str | None = None
     customer_name: str | None = None
     block_id: int | None = None

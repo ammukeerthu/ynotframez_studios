@@ -38,6 +38,30 @@ class AdminAvailabilityViewTest(unittest.TestCase):
             self.assertIn(f'<option value="{reason}">{reason}</option>', self.html)
         self.assertNotIn('<input name="reason"', self.html)
 
+    def test_booked_availability_tile_opens_read_only_booking_summary(self) -> None:
+        modal = self.html.split('<div id="availability-booking-modal"', 1)[1].split(
+            '<div id="booking-modal"', 1
+        )[0]
+        for label in (
+            "REFERENCE",
+            "DATE &amp; TIME",
+            "CUSTOMER",
+            "STUDIO",
+            "PURPOSE",
+            "PAYMENT",
+            "STATUS",
+        ):
+            self.assertIn(f"<span>{label}</span>", modal)
+        self.assertIn('role="dialog"', modal)
+        self.assertNotIn("<form", modal)
+        self.assertNotIn("<input", modal)
+        self.assertIn('data-view-availability-booking="${slot.booking_id}"', self.script)
+        self.assertIn("openAvailabilityBookingModal(bookingButton.dataset.viewAvailabilityBooking)", self.script)
+        self.assertIn("await api(`/api/admin/bookings/${bookingId}`)", self.script)
+        self.assertIn("availabilityBookingModal.hidden = true", self.script)
+        self.assertIn(".availability-booking-summary {", self.styles)
+        self.assertIn(".admin-slot-button.booked:hover", self.styles)
+
     def test_dashboard_date_views_open_on_today(self) -> None:
         self.assertIn('<span>FROM</span><input name="date_from" type="date">', self.html)
         self.assertIn('<span>TO</span><input name="date_to" type="date">', self.html)
@@ -63,8 +87,8 @@ class AdminAvailabilityViewTest(unittest.TestCase):
         self.assertNotIn('data-table-column="studio"', self.html)
         self.assertNotIn('data-table-column="studio"', self.script)
         self.assertIn('value="actions" data-booking-column-toggle checked disabled', self.html)
-        self.assertIn('/static/admin.css?v=20260926-2', self.html)
-        self.assertIn('/static/admin.js?v=20260926-4', self.html)
+        self.assertIn('/static/admin.css?v=20260926-3', self.html)
+        self.assertIn('/static/admin.js?v=20260926-6', self.html)
         self.assertIn('BOOKING_COLUMN_STORAGE_KEY = "ynf_admin_booking_columns_v2"', self.script)
         self.assertIn(
             'DEFAULT_BOOKING_COLUMNS = ["schedule", "customer", "purpose", "payment", "status", "actions"]',
@@ -88,6 +112,8 @@ class AdminAvailabilityViewTest(unittest.TestCase):
         self.assertIn('data-table-column="purpose" class="booking-purpose-cell"', self.script)
         self.assertIn('data-table-column="terms" hidden>${terms}', self.script)
         self.assertIn('localStorage.setItem(BOOKING_COLUMN_STORAGE_KEY', self.script)
+        self.assertIn('safe(booking.phone_number || "Phone not available")', self.script)
+        self.assertNotIn('booking.customer_email || booking.phone_number', self.script)
 
     def test_booking_directory_uses_responsive_contained_layout(self) -> None:
         self.assertIn("@media(max-width:1600px){.bookings-section .filters", self.styles)

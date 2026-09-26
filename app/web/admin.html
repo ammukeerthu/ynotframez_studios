@@ -9,9 +9,9 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800&amp;display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/admin.css?v=20260926-2">
+  <link rel="stylesheet" href="/static/admin.css?v=20260926-3">
   <script src="/static/studio_cache.js?v=20260908-1" defer></script>
-  <script src="/static/admin.js?v=20260926-4" defer></script>
+  <script src="/static/admin.js?v=20260926-6" defer></script>
 </head>
 <body>
   <section id="login-view" class="login-view" hidden>
@@ -172,6 +172,26 @@
         <div id="studio-settings-list" class="studio-settings-list"><p class="settings-empty">Loading studio settings…</p></div>
       </section>
     </main>
+  </div>
+
+  <div id="availability-booking-modal" class="password-modal availability-booking-modal" hidden>
+    <article role="dialog" aria-modal="true" aria-labelledby="availability-booking-modal-title">
+      <button class="availability-booking-modal-close" type="button" aria-label="Close">&times;</button>
+      <header>
+        <p class="eyebrow">BOOKING DETAILS</p>
+        <h2 id="availability-booking-modal-title">Booking summary</h2>
+      </header>
+      <div class="availability-booking-summary" aria-live="polite">
+        <div><span>REFERENCE</span><strong id="availability-detail-reference">Loading&hellip;</strong></div>
+        <div><span>DATE &amp; TIME</span><strong id="availability-detail-schedule">&mdash;</strong></div>
+        <div><span>CUSTOMER</span><strong id="availability-detail-customer">&mdash;</strong></div>
+        <div><span>STUDIO</span><strong id="availability-detail-studio">&mdash;</strong></div>
+        <div><span>PURPOSE</span><strong id="availability-detail-purpose">&mdash;</strong></div>
+        <div><span>PAYMENT</span><strong id="availability-detail-payment">&mdash;</strong></div>
+        <div><span>STATUS</span><strong id="availability-detail-status">&mdash;</strong></div>
+      </div>
+      <p id="availability-booking-modal-message" class="form-message" role="alert" hidden></p>
+    </article>
   </div>
 
   <div id="booking-modal" class="password-modal booking-modal" hidden>

@@ -18,6 +18,7 @@ from app.api.routes.admin import (
     _session_user,
     router,
     admin_availability,
+    admin_booking_detail,
     admin_bookings,
     admin_cancel_booking,
     admin_change_password,
@@ -45,7 +46,7 @@ from app.core.config import settings
 from app.core.database import Base
 from app.models.admin import AdminUser
 from app.models.availability import AvailabilityBlock
-from app.models.booking import Booking, BookingState
+from app.models.booking import Booking, BookingState, PaymentMode
 from app.models.notification import AdminNotification
 from app.models.payment import (
     PaymentRecord,
@@ -286,6 +287,7 @@ class AdminAuthenticationTest(unittest.TestCase):
             ("/api/admin/bookings/{booking_id}/payment", "POST"),
         }
         staff_block_access = {
+            ("/api/admin/bookings/{booking_id}", "GET"),
             ("/api/admin/availability/blocks", "POST"),
             ("/api/admin/availability/blocks/{block_id}/slot", "DELETE"),
             ("/api/admin/availability/blocks/{block_id}", "DELETE"),
@@ -300,6 +302,62 @@ class AdminAuthenticationTest(unittest.TestCase):
             self.assertIn(require_owner, [dependency.call for dependency in routes[key].dependant.dependencies])
         for key in staff_block_access:
             self.assertIn(require_admin, [dependency.call for dependency in routes[key].dependant.dependencies])
+
+    def test_availability_booking_tile_exposes_read_only_booking_details(self) -> None:
+        engine = create_engine(
+            "sqlite://",
+            connect_args={"check_same_thread": False},
+            poolclass=StaticPool,
+        )
+        self.addCleanup(engine.dispose)
+        Base.metadata.create_all(engine)
+        booking_date = date.today() + timedelta(days=30)
+
+        with Session(engine) as db:
+            booking = Booking(
+                phone_number="+919999999999",
+                state=BookingState.CONFIRMED,
+                space_id="standard_small",
+                booking_date=booking_date.isoformat(),
+                start_time="14:30",
+                duration_hours=1,
+                customer_name="Calendar Customer",
+                customer_email="calendar@example.com",
+                purpose="Fine Arts",
+                terms_accepted="yes",
+                payment_mode=PaymentMode.PAY_AT_STUDIO,
+            )
+            db.add(booking)
+            db.flush()
+            db.add(
+                PaymentRecord(
+                    booking_id=booking.id,
+                    mode=PaymentMode.PAY_AT_STUDIO,
+                    amount=1000,
+                    status=PaymentStatus.PENDING,
+                    payment_method="upi",
+                )
+            )
+            db.commit()
+
+            day = admin_availability("standard_small", booking_date, db)
+            booked_slot = next(slot for slot in day.slots if slot.start_time == "14:30")
+            details = admin_booking_detail(booking.id, db)
+
+            self.assertEqual(booked_slot.status, "booked")
+            self.assertEqual(booked_slot.booking_id, booking.id)
+            self.assertEqual(booked_slot.booking_reference, f"YNF-{booking.id:06d}")
+            self.assertEqual(details.reference, f"YNF-{booking.id:06d}")
+            self.assertEqual(details.customer_name, "Calendar Customer")
+            self.assertEqual(details.phone_number, "+919999999999")
+            self.assertEqual(details.space_name, "Cube")
+            self.assertEqual(details.purpose, "Fine Arts")
+            self.assertEqual(details.payment_status, "pending")
+            self.assertEqual(details.status, "confirmed")
+
+            with self.assertRaises(HTTPException) as missing:
+                admin_booking_detail(999999, db)
+            self.assertEqual(missing.exception.status_code, 404)
 
     def test_admin_can_block_and_reopen_studio_time(self) -> None:
         engine = create_engine(

@@ -833,6 +833,21 @@ def _filtered_booking_statement(
     return statement
 
 
+@router.get(
+    "/bookings/{booking_id}",
+    response_model=AdminBookingResponse,
+    dependencies=[Depends(require_admin)],
+)
+def admin_booking_detail(
+    booking_id: int,
+    db: Session = Depends(get_db),
+) -> AdminBookingResponse:
+    booking = db.get(Booking, booking_id)
+    if booking is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Booking not found.")
+    return _serialize_booking(booking, db)
+
+
 @router.patch(
     "/bookings/{booking_id}",
     response_model=AdminBookingResponse,
@@ -1062,6 +1077,7 @@ def admin_availability(
                 start_time=base_slot.start_time,
                 end_time=base_slot.end_time,
                 status="booked" if booking else "blocked" if block else base_slot.status,
+                booking_id=booking.id if booking else None,
                 booking_reference=f"YNF-{booking.id:06d}" if booking else None,
                 customer_name=booking.customer_name if booking else None,
                 block_id=block.id if block else None,
