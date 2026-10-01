@@ -83,6 +83,13 @@ def apply_schema_compatibility_updates(target_engine: Engine | None = None) -> N
     if "bookings" in table_names:
         booking_columns = {column["name"] for column in inspector.get_columns("bookings")}
         with migration_engine.begin() as connection:
+            if "expiration_reminder_sent_at" not in booking_columns:
+                connection.execute(
+                    text(
+                        "ALTER TABLE bookings "
+                        "ADD COLUMN expiration_reminder_sent_at TIMESTAMP"
+                    )
+                )
             connection.execute(
                 text(
                     "CREATE TABLE IF NOT EXISTS app_migrations ("

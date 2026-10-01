@@ -153,6 +153,19 @@ class AdminOverviewBookingItem(BaseModel):
     purpose: str | None = None
 
 
+class AdminExpiredBookingItem(AdminOverviewBookingItem):
+    payment_status: str
+    reminder_eligible: bool
+    reminder_status: str
+    rebooked_reference: str | None = None
+    expiration_reminder_sent_at: str | None = None
+
+
+class AdminExpirationReminderResponse(BaseModel):
+    reference: str
+    sent_at: str
+
+
 class AdminStudioUtilizationItem(BaseModel):
     space_id: str
     space_name: str
@@ -201,6 +214,8 @@ class AdminBookingsOverviewResponse(BaseModel):
     summary_total_bookings: int
     summary_confirmed_bookings: int
     summary_cancelled_bookings: int
+    summary_expired_bookings: int
+    expired_bookings: list[AdminExpiredBookingItem]
     selected_date: str
     total_bookings: int
     bookings: list[AdminOverviewBookingItem]

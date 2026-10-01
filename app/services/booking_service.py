@@ -25,7 +25,12 @@ from app.services.calendar_service import GoogleCalendarService
 from app.services.availability_service import overlapping_block, overlapping_booking
 from app.services.email_service import EmailService
 from app.services.payment_service import PaymentService
-from app.services.notification_service import notify_new_booking, notify_payment_issue
+from app.services.notification_service import (
+    notify_booking_expired,
+    notify_booking_request,
+    notify_new_booking,
+    notify_payment_issue,
+)
 from app.services.razorpay_service import RazorpayService
 from app.services.spaces import StudioSpace, get_space_by_id
 
@@ -296,6 +301,8 @@ class BookingApplicationService:
             booking.state = BookingState.EXPIRED
             booking.payment_link = None
             self.payments.void_pending(booking)
+            notify_booking_expired(self.db, booking)
+            self.email.send_booking_expired(booking)
             return True
 
     def expire_stale_payment_holds(self) -> int:
@@ -529,6 +536,7 @@ class BookingApplicationService:
                 calendar_hold_id = self.calendar.create_hold_event(booking)
                 booking.calendar_event_id = calendar_hold_id
                 checkout = self.prepare_standard_checkout(booking)
+                notify_booking_request(self.db, booking)
                 self.db.commit()
             except Exception:
                 self.db.rollback()

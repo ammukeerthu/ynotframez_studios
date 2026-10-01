@@ -14,7 +14,7 @@ from app.core.config import settings
 from app.core.database import get_db
 from app.models.availability import AvailabilityBlock
 from app.models.admin import AdminUser
-from app.models.booking import Booking, BookingState, PaymentMode
+from app.models.booking import Booking, BookingState, PaymentMode, utc_now
 from app.models.notification import AdminNotification
 from app.models.payment import (
     PaymentRecord,
@@ -48,6 +48,7 @@ from app.schemas.admin import (
     AdminFundsMonthResponse,
     AdminFundsOverviewResponse,
     AdminFundsYearResponse,
+    AdminExpirationReminderResponse,
     AdminOverviewResponse,
     AdminUnavailabilityMonthResponse,
     AdminUnavailabilityOverviewResponse,
@@ -706,6 +707,59 @@ def _validate_overview_space(space_id: str | None, db: Session) -> None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Studio space not found.")
 
 
+def _normalized_phone(value: str | None) -> str:
+    digits = "".join(character for character in (value or "") if character.isdigit())
+    return digits[-10:] if len(digits) >= 10 else digits
+
+
+def _same_booking_customer(first: Booking, second: Booking) -> bool:
+    first_phone = _normalized_phone(first.phone_number)
+    second_phone = _normalized_phone(second.phone_number)
+    if first_phone and second_phone and first_phone == second_phone:
+        return True
+    first_email = (first.customer_email or "").strip().casefold()
+    second_email = (second.customer_email or "").strip().casefold()
+    return bool(first_email and second_email and first_email == second_email)
+
+
+def _expiration_reminder_eligibility(
+    booking: Booking,
+    candidates: list[Booking],
+    local_now: datetime,
+) -> tuple[str, Booking | None]:
+    """Classify one expired booking without using occupancy by another customer."""
+    matching_rebookings = []
+    hold_cutoff = datetime.now(UTC).replace(tzinfo=None) - timedelta(
+        minutes=settings.razorpay_payment_hold_minutes
+    )
+    for candidate in candidates:
+        if (
+            candidate.id == booking.id
+            or candidate.space_id != booking.space_id
+            or candidate.booking_date != booking.booking_date
+            or not _same_booking_customer(booking, candidate)
+        ):
+            continue
+        if candidate.created_at < booking.created_at or (
+            candidate.created_at == booking.created_at and candidate.id <= booking.id
+        ):
+            continue
+        if candidate.state == BookingState.PAYMENT_PENDING and candidate.updated_at < hold_cutoff:
+            continue
+        if candidate.state in {BookingState.PAYMENT_PENDING, BookingState.CONFIRMED}:
+            matching_rebookings.append(candidate)
+    if matching_rebookings:
+        return "rebooked", min(matching_rebookings, key=lambda item: (item.created_at, item.id))
+    window = _booking_window(booking, ZoneInfo(settings.studio_timezone))
+    if window is None or window[0] <= local_now:
+        return "session_elapsed", None
+    if not (booking.customer_email or "").strip():
+        return "missing_email", None
+    if booking.expiration_reminder_sent_at is not None:
+        return "reminder_sent", None
+    return "eligible", None
+
+
 @router.get(
     "/overview/bookings",
     response_model=AdminBookingsOverviewResponse,
@@ -841,6 +895,60 @@ def admin_bookings_overview(
 
     local_now = datetime.now(ZoneInfo(settings.studio_timezone))
     payment_records, payment_totals, refund_totals = _payment_amount_maps(db)
+    expired_statement = select(Booking).where(Booking.state == BookingState.EXPIRED)
+    if space_id:
+        expired_statement = expired_statement.where(Booking.space_id == space_id)
+    expired_bookings = list(
+        db.scalars(
+            expired_statement.order_by(Booking.updated_at.desc(), Booking.id.desc()).limit(100)
+        )
+    )
+    candidate_dates = {booking.booking_date for booking in expired_bookings if booking.booking_date}
+    candidate_spaces = {booking.space_id for booking in expired_bookings if booking.space_id}
+    reminder_candidates = (
+        list(
+            db.scalars(
+                select(Booking).where(
+                    Booking.state.in_([BookingState.PAYMENT_PENDING, BookingState.CONFIRMED]),
+                    Booking.booking_date.in_(candidate_dates),
+                    Booking.space_id.in_(candidate_spaces),
+                )
+            )
+        )
+        if candidate_dates and candidate_spaces
+        else []
+    )
+    reminder_states = {
+        booking.id: _expiration_reminder_eligibility(
+            booking,
+            reminder_candidates,
+            local_now,
+        )
+        for booking in expired_bookings
+    }
+    expired_items = [
+        {
+            **_overview_booking_item(booking, db),
+            "payment_status": (
+                payment_records[booking.id].status.value
+                if booking.id in payment_records
+                else PaymentStatus.VOID.value
+            ),
+            "reminder_eligible": reminder_states[booking.id][0] == "eligible",
+            "reminder_status": reminder_states[booking.id][0],
+            "rebooked_reference": (
+                f"YNF-{reminder_states[booking.id][1].id:06d}"
+                if reminder_states[booking.id][1] is not None
+                else None
+            ),
+            "expiration_reminder_sent_at": (
+                booking.expiration_reminder_sent_at.isoformat()
+                if booking.expiration_reminder_sent_at
+                else None
+            ),
+        }
+        for booking in expired_bookings
+    ]
     active_statement = select(Booking).where(
         Booking.state.in_([BookingState.CONFIRMED, BookingState.PAYMENT_PENDING])
     )
@@ -941,6 +1049,10 @@ def admin_bookings_overview(
         summary_cancelled_bookings=sum(
             booking.state == BookingState.CANCELLED for booking in summary_bookings
         ),
+        summary_expired_bookings=sum(
+            booking.state == BookingState.EXPIRED for booking in summary_bookings
+        ),
+        expired_bookings=expired_items,
         selected_date=selected_date.isoformat(),
         total_bookings=len(booking_items),
         bookings=booking_items,
@@ -948,6 +1060,77 @@ def admin_bookings_overview(
         studio_utilization=utilization,
         utilization_heatmap=utilization_heatmap,
         action_items=action_items,
+    )
+
+
+@router.post(
+    "/bookings/{booking_id}/expiration-reminder",
+    response_model=AdminExpirationReminderResponse,
+    dependencies=[Depends(require_owner)],
+)
+def admin_send_expiration_reminder(
+    booking_id: int,
+    db: Session = Depends(get_db),
+) -> AdminExpirationReminderResponse:
+    booking = db.get(Booking, booking_id)
+    if booking is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Booking not found.")
+    if booking.state != BookingState.EXPIRED:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Only an expired booking can receive this reminder.",
+        )
+
+    service = BookingApplicationService(db)
+    with service.booking_creation_guard(booking.space_id or "", booking.booking_date or ""):
+        db.refresh(booking)
+        candidates = list(
+            db.scalars(
+                select(Booking).where(
+                    Booking.id != booking.id,
+                    Booking.state.in_([BookingState.PAYMENT_PENDING, BookingState.CONFIRMED]),
+                    Booking.space_id == booking.space_id,
+                    Booking.booking_date == booking.booking_date,
+                )
+            )
+        )
+        reminder_status, rebooked = _expiration_reminder_eligibility(
+            booking,
+            candidates,
+            datetime.now(ZoneInfo(settings.studio_timezone)),
+        )
+        if reminder_status == "rebooked":
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"The customer has already re-booked as YNF-{rebooked.id:06d}.",
+            )
+        if reminder_status == "session_elapsed":
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="The original session date and time have already elapsed.",
+            )
+        if reminder_status == "missing_email":
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="This booking does not have a customer email address.",
+            )
+        if reminder_status == "reminder_sent":
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="An expiration reminder has already been sent for this booking.",
+            )
+        if not service.email.send_booking_expired(booking):
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail="The reminder email could not be delivered. Please try again.",
+            )
+        booking.expiration_reminder_sent_at = utc_now()
+        db.commit()
+        sent_at = booking.expiration_reminder_sent_at
+
+    return AdminExpirationReminderResponse(
+        reference=f"YNF-{booking.id:06d}",
+        sent_at=f"{sent_at.isoformat()}Z",
     )
 
 
@@ -1650,26 +1833,40 @@ def admin_alerts(db: Session = Depends(get_db)) -> AdminAlertsResponse:
         space = get_space_by_id(booking.space_id, db, include_inactive=True)
         space_name = space.name if space else booking.space_id or "Studio"
         is_payment_issue = notification.kind == "payment_issue"
+        is_booking_request = notification.kind == "booking_request"
+        is_booking_expired = notification.kind == "booking_expired"
+        if is_payment_issue:
+            title = f"Payment needs review · {space_name}"
+            message = (
+                "Payment was captured, but the studio could not be reserved. "
+                "Review this booking and arrange a refund or contact the customer."
+            )
+        elif is_booking_expired:
+            title = f"Booking request expired · {space_name}"
+            message = (
+                f"{booking.customer_name or 'Customer'} did not complete payment. "
+                "The temporary hold expired and the studio slot was released."
+            )
+        elif is_booking_request:
+            title = f"Booking request · {space_name}"
+            message = (
+                f"{booking.customer_name or 'Customer'} requested {booking.booking_date} at "
+                f"{booking.start_time}; payment is pending and the slot is temporarily held."
+            )
+        else:
+            title = f"New booking · {space_name}"
+            message = (
+                f"{booking.customer_name or 'Customer'} booked {booking.booking_date} at "
+                f"{booking.start_time} for {booking.duration_hours:g} hour(s)."
+            )
         new_bookings.append(
             AdminAlertItem(
                 id=f"{notification.kind.replace('_', '-')}-{notification.id}",
                 notification_id=notification.id,
                 kind=notification.kind,
                 priority="urgent" if is_payment_issue else "new",
-                title=(
-                    f"Payment needs review · {space_name}"
-                    if is_payment_issue
-                    else f"New booking · {space_name}"
-                ),
-                message=(
-                    "Payment was captured, but the studio could not be reserved. "
-                    "Review this booking and arrange a refund or contact the customer."
-                    if is_payment_issue
-                    else (
-                        f"{booking.customer_name or 'Customer'} booked {booking.booking_date} at "
-                        f"{booking.start_time} for {booking.duration_hours:g} hour(s)."
-                    )
-                ),
+                title=title,
+                message=message,
                 booking_id=booking.id,
                 reference=f"YNF-{booking.id:06d}",
                 space_id=booking.space_id or "",

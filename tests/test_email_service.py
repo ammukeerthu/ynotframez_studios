@@ -166,6 +166,28 @@ class EmailServiceTest(unittest.TestCase):
         self.assertIn("Payment pending — this is not a confirmed booking", html)
         self.assertIn("VIEW BOOKING &amp; COMPLETE PAYMENT", html)
 
+    def test_expiration_email_releases_the_slot_and_invites_a_new_booking(self) -> None:
+        with patch.object(
+            settings,
+            "razorpay_callback_base_url",
+            "https://ynotframezstudios.com",
+        ):
+            message = EmailService()._build_message(self.booking(), "expiration")
+
+        plain = message.get_body(preferencelist=("plain",)).get_content()
+        html = message.get_body(preferencelist=("html",)).get_content()
+        self.assertEqual(
+            message["Subject"],
+            "Booking request expired - please book again (YNF-000042)",
+        )
+        self.assertIn("booking was not confirmed", plain)
+        self.assertIn("studio slot has been released", plain)
+        self.assertIn("https://ynotframezstudios.com/book", plain)
+        self.assertIn("BOOK AGAIN", html)
+        self.assertIn("studio slot has been released", html)
+        self.assertNotIn("COMPLETE PAYMENT", html)
+        self.assertNotIn("Studio rules", html)
+
     def test_smtp_mode_uses_starttls_login_and_multipart_message(self) -> None:
         smtp = MagicMock()
         smtp_context = smtp.return_value.__enter__.return_value

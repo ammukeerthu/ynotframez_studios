@@ -1,3 +1,5 @@
+import asyncio
+from contextlib import asynccontextmanager, suppress
 from pathlib import Path
 
 from fastapi import FastAPI
@@ -10,6 +12,7 @@ from app.api.routes.whatsapp import router as whatsapp_router
 from app.core.config import settings
 from app.core.database import Base, SessionLocal, apply_schema_compatibility_updates, engine
 from app.services.availability_block_sync import sync_missing_availability_block_events
+from app.services.booking_service import BookingApplicationService
 from app.services.spaces import list_public_spaces_cached, seed_studio_settings
 
 Base.metadata.create_all(bind=engine)
@@ -35,11 +38,44 @@ with SessionLocal() as seed_session:
                 {"error": f"{type(error).__name__}: {error}"},
             )
 
+def expire_stale_payment_holds_once() -> int:
+    """Expire stale holds independently of dashboard or customer traffic."""
+    with SessionLocal() as session:
+        expired = BookingApplicationService(session).expire_stale_payment_holds()
+        if expired:
+            session.commit()
+        return expired
+
+
+async def payment_hold_expiry_sweeper() -> None:
+    while True:
+        try:
+            await asyncio.to_thread(expire_stale_payment_holds_once)
+        except Exception as error:
+            print(
+                "Payment hold expiry sweep failed; it will be retried:",
+                {"error": f"{type(error).__name__}: {error}"},
+            )
+        await asyncio.sleep(60)
+
+
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    expiry_task = asyncio.create_task(payment_hold_expiry_sweeper())
+    try:
+        yield
+    finally:
+        expiry_task.cancel()
+        with suppress(asyncio.CancelledError):
+            await expiry_task
+
+
 app = FastAPI(
     title=settings.app_name,
     docs_url=None,
     redoc_url=None,
     openapi_url=None,
+    lifespan=lifespan,
 )
 app.include_router(admin_router)
 app.include_router(bookings_router)

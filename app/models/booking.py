@@ -50,6 +50,7 @@ class Booking(Base):
     payment_mode: Mapped[PaymentMode | None] = mapped_column(Enum(PaymentMode), nullable=True)
     payment_link: Mapped[str | None] = mapped_column(String(500), nullable=True)
     calendar_event_id: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    expiration_reminder_sent_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, onupdate=utc_now)
 

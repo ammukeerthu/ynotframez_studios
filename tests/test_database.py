@@ -189,6 +189,9 @@ class DatabaseConfigurationTests(unittest.TestCase):
             apply_schema_compatibility_updates(engine)
             apply_schema_compatibility_updates(engine)
 
+            booking_columns = {
+                column["name"] for column in inspect(engine).get_columns("bookings")
+            }
             with engine.connect() as connection:
                 booking_modes = dict(
                     connection.execute(
@@ -222,6 +225,7 @@ class DatabaseConfigurationTests(unittest.TestCase):
                         "WHERE migration_key = 'rename_arena_family_shoots_booking_purpose'"
                     )
                 )
+            self.assertIn("expiration_reminder_sent_at", booking_columns)
             self.assertEqual(
                 booking_modes,
                 {

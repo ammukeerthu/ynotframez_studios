@@ -654,6 +654,38 @@ function renderUpcomingBookings(items) {
     : '<tr><td colspan="5" class="empty">No upcoming confirmed bookings in this date range.</td></tr>';
 }
 
+function renderExpiredBookings(items) {
+  const body = document.querySelector("#expired-bookings-body");
+  document.querySelector("#expired-bookings-count").textContent =
+    `${items.length} expired booking${items.length === 1 ? "" : "s"} shown`;
+  body.innerHTML = items.length
+    ? items.map((item) => `<tr>
+      <td><b>${safe(item.reference)}</b></td>
+      <td>${safe(item.space_name)}</td>
+      <td>${safe(formatDate(item.booking_date))}<small>${safe(displayTime(item.start_time))} to ${safe(displayTime(item.end_time))}</small></td>
+      <td><b>${safe(item.customer_name)}</b><small>${safe(item.phone_number)}</small></td>
+      <td>${safe(item.purpose || "Not specified")}</td>
+      <td><span class="status status-${safeAttr(item.payment_status)}">${safe(readableLabel(item.payment_status))}</span></td>
+      <td>${expiredReminderAction(item)}</td>
+    </tr>`).join("")
+    : '<tr><td colspan="7" class="empty">No expired booking holds for this studio selection.</td></tr>';
+}
+
+function expiredReminderAction(item) {
+  if (item.reminder_eligible && isOwner()) {
+    return `<button type="button" class="manage-booking" data-expiration-reminder="${item.id}" data-reminder-reference="${safeAttr(item.reference)}">Remind Customer</button>`;
+  }
+  const labels = {
+    rebooked: item.rebooked_reference ? `Rebooked as ${item.rebooked_reference}` : "Customer Rebooked",
+    session_elapsed: "Session Date Elapsed",
+    missing_email: "Email Unavailable",
+    reminder_sent: "Reminder Sent",
+    eligible: "Owner Access Required",
+  };
+  const label = labels[item.reminder_status] || "Unavailable";
+  return `<button type="button" class="manage-booking" disabled title="${safeAttr(label)}">${safe(label)}</button>`;
+}
+
 function renderActionCentre(items) {
   const body = document.querySelector("#action-centre-body");
   document.querySelector("#action-centre-count").textContent =
@@ -844,6 +876,9 @@ async function loadBookingsOverview() {
   document.querySelector("#bookings-summary-total").textContent = "...";
   document.querySelector("#bookings-summary-confirmed").textContent = "...";
   document.querySelector("#bookings-summary-cancelled").textContent = "...";
+  document.querySelector("#bookings-summary-expired").textContent = "...";
+  document.querySelector("#expired-bookings-count").textContent = "Loading expired bookings...";
+  document.querySelector("#expired-bookings-body").innerHTML = '<tr><td colspan="7" class="empty">Loading expired bookings...</td></tr>';
   document.querySelector("#overview-booking-count").textContent = "…";
   document.querySelector("#action-centre-count").textContent = "Loading actions...";
   document.querySelector("#action-centre-body").innerHTML = '<tr><td colspan="6" class="empty">Loading action centre...</td></tr>';
@@ -863,12 +898,16 @@ async function loadBookingsOverview() {
     document.querySelector("#bookings-summary-total").textContent = overview.summary_total_bookings;
     document.querySelector("#bookings-summary-confirmed").textContent = overview.summary_confirmed_bookings;
     document.querySelector("#bookings-summary-cancelled").textContent = overview.summary_cancelled_bookings;
+    document.querySelector("#bookings-summary-expired").textContent = overview.summary_expired_bookings;
+    renderExpiredBookings(overview.expired_bookings);
     renderActionCentre(overview.action_items);
   } catch (error) {
     if (error.name === "AbortError") return;
     showOverviewError("#bookings-overview-message", error);
     document.querySelector("#action-centre-body").innerHTML = '<tr><td colspan="6" class="empty">Action centre could not be loaded.</td></tr>';
     document.querySelector("#action-centre-count").textContent = "Unavailable";
+    document.querySelector("#expired-bookings-body").innerHTML = '<tr><td colspan="7" class="empty">Expired bookings could not be loaded.</td></tr>';
+    document.querySelector("#expired-bookings-count").textContent = "Unavailable";
   } finally {
     if (requestToken === bookingsOverviewRequestToken) bookingsOverviewFilters.setAttribute("aria-busy", "false");
     await panelLoads;
@@ -1149,9 +1188,13 @@ function alertCard(alert) {
   const kindClass = alert.kind.replaceAll("_", "-");
   const label = alert.kind === "new_booking"
     ? "New booking"
-    : alert.kind === "payment_issue"
-      ? "Payment issue"
-      : alert.kind === "starts_soon" ? "Starting soon" : "Session ending";
+    : alert.kind === "booking_request"
+      ? "Booking request"
+      : alert.kind === "booking_expired"
+        ? "Booking expired"
+        : alert.kind === "payment_issue"
+          ? "Payment issue"
+          : alert.kind === "starts_soon" ? "Starting soon" : "Session ending";
   const seenButton = alert.notification_id && !alert.is_read
     ? `<button type="button" data-read-alert="${alert.notification_id}">Mark seen</button>`
     : "";
@@ -2301,6 +2344,46 @@ alertList.addEventListener("click", async (event) => {
 document.querySelector("#bookings-body").addEventListener("click", (event) => {
   const button = event.target.closest("[data-booking-id]");
   if (button) openBookingModal(button.dataset.bookingId);
+});
+document.querySelector("#expired-bookings-body").addEventListener("click", async (event) => {
+  const button = event.target.closest("[data-expiration-reminder]");
+  if (!button) return;
+  const reference = button.dataset.reminderReference;
+  if (!window.confirm(`Send the hold-expired reminder for ${reference}?`)) return;
+  const originalLabel = button.textContent;
+  button.disabled = true;
+  button.textContent = "Sending...";
+  try {
+    await api(`/api/admin/bookings/${button.dataset.expirationReminder}/expiration-reminder`, {
+      method: "POST",
+      operationMessage: "Sending customer reminder...",
+    });
+    button.textContent = "Reminder Sent";
+    delete button.dataset.expirationReminder;
+    showDashboardMessage(
+      "#bookings-overview-message",
+      `${reference} expiration reminder sent successfully.`,
+    );
+  } catch (error) {
+    const conflictLabel = error.status === 409
+      ? error.message.includes("re-booked")
+        ? "Customer Rebooked"
+        : error.message.includes("elapsed")
+          ? "Session Date Elapsed"
+          : error.message.includes("already been sent")
+            ? "Reminder Sent"
+            : error.message.includes("email address") ? "Email Unavailable" : "Unavailable"
+      : null;
+    button.disabled = Boolean(conflictLabel);
+    button.textContent = conflictLabel || originalLabel;
+    if (conflictLabel) delete button.dataset.expirationReminder;
+    showDashboardMessage(
+      "#bookings-overview-message",
+      error.message,
+      { autoHide: false, kind: "error" },
+    );
+    if (error.status === 401) handleDashboardError(error);
+  }
 });
 document.querySelector("#action-centre-body").addEventListener("click", async (event) => {
   const button = event.target.closest("[data-action-booking-id]");

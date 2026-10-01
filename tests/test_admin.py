@@ -45,6 +45,7 @@ from app.api.routes.admin import (
     admin_overview,
     admin_alerts,
     admin_read_alert,
+    admin_send_expiration_reminder,
     admin_reset_staff_password,
     admin_setup,
     admin_staff_users,
@@ -303,6 +304,7 @@ class AdminAuthenticationTest(unittest.TestCase):
             ("/api/admin/bookings/{booking_id}", "PATCH"),
             ("/api/admin/bookings/{booking_id}/cancel", "POST"),
             ("/api/admin/bookings/{booking_id}/payment", "POST"),
+            ("/api/admin/bookings/{booking_id}/expiration-reminder", "POST"),
         }
         staff_block_access = {
             ("/api/admin/overview/funds", "GET"),
@@ -399,7 +401,18 @@ class AdminAuthenticationTest(unittest.TestCase):
                 purpose="Product Shoot",
                 payment_mode=PaymentMode.PAY_AT_STUDIO,
             )
-            db.add_all([cube, arena, future, cancelled])
+            expired = Booking(
+                phone_number="+919999999905",
+                state=BookingState.EXPIRED,
+                space_id="premium_large",
+                booking_date=studio_today.isoformat(),
+                start_time="16:00",
+                duration_hours=1,
+                customer_name="Expired Customer",
+                purpose="Portrait Shoot",
+                payment_mode=PaymentMode.PAY_NOW,
+            )
+            db.add_all([cube, arena, future, cancelled, expired])
             db.flush()
             db.add_all(
                 [
@@ -423,6 +436,12 @@ class AdminAuthenticationTest(unittest.TestCase):
                         amount=2000,
                         status=PaymentStatus.REFUND_DUE,
                         payment_method="upi",
+                    ),
+                    PaymentRecord(
+                        booking_id=expired.id,
+                        mode=PaymentMode.PAY_NOW,
+                        amount=1500,
+                        status=PaymentStatus.VOID,
                     ),
                     PaymentTransaction(
                         booking_id=cube.id,
@@ -572,9 +591,12 @@ class AdminAuthenticationTest(unittest.TestCase):
             )
             self.assertEqual(bookings.selected_date, studio_today.isoformat())
             self.assertIsNone(bookings.space_id)
-            self.assertEqual(bookings.summary_total_bookings, 4)
+            self.assertEqual(bookings.summary_total_bookings, 5)
             self.assertEqual(bookings.summary_confirmed_bookings, 3)
             self.assertEqual(bookings.summary_cancelled_bookings, 1)
+            self.assertEqual(bookings.summary_expired_bookings, 1)
+            self.assertEqual([item.id for item in bookings.expired_bookings], [expired.id])
+            self.assertEqual(bookings.expired_bookings[0].payment_status, "void")
             self.assertEqual(bookings.total_bookings, 2)
             self.assertEqual(bookings_day_panel.total_bookings, 2)
             self.assertIn(future.id, {item.id for item in bookings_upcoming_panel.bookings})
@@ -1092,6 +1114,7 @@ class AdminAuthenticationTest(unittest.TestCase):
             self.assertIn("Next Customer", ending.message)
             self.assertEqual(response.unread_count, 1)
             self.assertEqual(response.new_bookings[0].booking_id, upcoming.id)
+            self.assertEqual(response.new_bookings[0].title, "New booking · Cube")
             self.assertFalse(response.new_bookings[0].is_read)
 
             admin_read_alert(notification.id, db)
@@ -1099,6 +1122,145 @@ class AdminAuthenticationTest(unittest.TestCase):
             self.assertEqual(read_response.unread_count, 0)
             self.assertEqual(len(read_response.new_bookings), 1)
             self.assertTrue(read_response.new_bookings[0].is_read)
+
+            notification.kind = "booking_request"
+            db.commit()
+            request_response = admin_alerts(db)
+            self.assertEqual(request_response.new_bookings[0].title, "Booking request · Cube")
+            self.assertIn("payment is pending", request_response.new_bookings[0].message)
+
+            notification.kind = "booking_expired"
+            db.commit()
+            expired_response = admin_alerts(db)
+            self.assertEqual(
+                expired_response.new_bookings[0].title,
+                "Booking request expired · Cube",
+            )
+            self.assertIn("slot was released", expired_response.new_bookings[0].message)
+
+    def test_expired_booking_reminder_requires_future_unrebooked_session(self) -> None:
+        engine = create_engine(
+            "sqlite://",
+            connect_args={"check_same_thread": False},
+            poolclass=StaticPool,
+        )
+        self.addCleanup(engine.dispose)
+        Base.metadata.create_all(engine)
+        studio_today = datetime.now(ZoneInfo(settings.studio_timezone)).date()
+        created_at = datetime.now() - timedelta(hours=3)
+        future_date = (studio_today + timedelta(days=7)).isoformat()
+
+        with Session(engine) as db:
+            eligible = Booking(
+                phone_number="+919111111111",
+                state=BookingState.EXPIRED,
+                space_id="standard_small",
+                booking_date=future_date,
+                start_time="10:00",
+                duration_hours=1,
+                customer_name="Eligible Customer",
+                customer_email="eligible@example.com",
+                purpose="Fashion Shoot",
+                payment_mode=PaymentMode.PAY_NOW,
+                created_at=created_at,
+                updated_at=created_at,
+            )
+            rebooked_hold = Booking(
+                phone_number="+919222222222",
+                state=BookingState.EXPIRED,
+                space_id="standard_small",
+                booking_date=future_date,
+                start_time="11:00",
+                duration_hours=1,
+                customer_name="Rebooked Customer",
+                customer_email="old-address@example.com",
+                purpose="Fashion Shoot",
+                payment_mode=PaymentMode.PAY_NOW,
+                created_at=created_at,
+                updated_at=created_at,
+            )
+            replacement = Booking(
+                phone_number="92222 22222",
+                state=BookingState.CONFIRMED,
+                space_id="standard_small",
+                booking_date=future_date,
+                start_time="14:00",
+                duration_hours=1,
+                customer_name="Rebooked Customer",
+                customer_email="new-address@example.com",
+                purpose="Fashion Shoot",
+                payment_mode=PaymentMode.PAY_NOW,
+                created_at=created_at + timedelta(hours=1),
+                updated_at=created_at + timedelta(hours=1),
+            )
+            other_customer_same_slot = Booking(
+                phone_number="+919444444444",
+                state=BookingState.CONFIRMED,
+                space_id="standard_small",
+                booking_date=future_date,
+                start_time="10:00",
+                duration_hours=1,
+                customer_name="Different Customer",
+                customer_email="different@example.com",
+                purpose="Fashion Shoot",
+                payment_mode=PaymentMode.PAY_NOW,
+                created_at=created_at + timedelta(hours=1),
+                updated_at=created_at + timedelta(hours=1),
+            )
+            elapsed = Booking(
+                phone_number="+919333333333",
+                state=BookingState.EXPIRED,
+                space_id="standard_small",
+                booking_date=(studio_today - timedelta(days=1)).isoformat(),
+                start_time="10:00",
+                duration_hours=1,
+                customer_name="Elapsed Customer",
+                customer_email="elapsed@example.com",
+                purpose="Fashion Shoot",
+                payment_mode=PaymentMode.PAY_NOW,
+                created_at=created_at,
+                updated_at=created_at,
+            )
+            db.add_all(
+                [eligible, rebooked_hold, replacement, other_customer_same_slot, elapsed]
+            )
+            db.commit()
+
+            overview = admin_bookings_overview(day_offset=0, month=None, db=db)
+            expired_by_id = {item.id: item for item in overview.expired_bookings}
+            self.assertTrue(expired_by_id[eligible.id].reminder_eligible)
+            self.assertEqual(expired_by_id[eligible.id].reminder_status, "eligible")
+            self.assertFalse(expired_by_id[rebooked_hold.id].reminder_eligible)
+            self.assertEqual(expired_by_id[rebooked_hold.id].reminder_status, "rebooked")
+            self.assertEqual(
+                expired_by_id[rebooked_hold.id].rebooked_reference,
+                f"YNF-{replacement.id:06d}",
+            )
+            self.assertEqual(expired_by_id[elapsed.id].reminder_status, "session_elapsed")
+
+            with patch(
+                "app.services.email_service.EmailService.send_booking_expired",
+                return_value=True,
+            ) as send_email:
+                response = admin_send_expiration_reminder(eligible.id, db)
+
+                self.assertEqual(response.reference, f"YNF-{eligible.id:06d}")
+                self.assertIsNotNone(eligible.expiration_reminder_sent_at)
+                send_email.assert_called_once_with(eligible)
+                with self.assertRaises(HTTPException) as already_sent:
+                    admin_send_expiration_reminder(eligible.id, db)
+                self.assertEqual(already_sent.exception.status_code, 409)
+                send_email.assert_called_once_with(eligible)
+
+            with self.assertRaises(HTTPException) as customer_rebooked:
+                admin_send_expiration_reminder(rebooked_hold.id, db)
+            self.assertEqual(customer_rebooked.exception.status_code, 409)
+            self.assertIn(f"YNF-{replacement.id:06d}", customer_rebooked.exception.detail)
+
+            with self.assertRaises(HTTPException) as session_elapsed:
+                admin_send_expiration_reminder(elapsed.id, db)
+            self.assertEqual(session_elapsed.exception.status_code, 409)
+            self.assertIn("elapsed", session_elapsed.exception.detail)
 
     def test_admin_can_reschedule_edit_and_cancel_a_booking(self) -> None:
         engine = create_engine(

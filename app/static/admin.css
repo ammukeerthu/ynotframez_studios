@@ -13,6 +13,7 @@ button,input,select,textarea { font:inherit; }
 @media(max-width:620px){.bookings-section .filters{grid-template-columns:minmax(0,1fr)}.filter-actions{grid-column:auto;flex-wrap:wrap}.filter-actions>*{flex:1 1 110px;min-width:0}}
 .manage-booking { padding:7px 9px; border:1px solid var(--ink); background:transparent; color:var(--ink); font-size:7px; font-weight:800; letter-spacing:.1em; text-transform:uppercase; cursor:pointer; }
 .manage-booking:hover { color:white; background:var(--ink); }
+.manage-booking:disabled,.manage-booking:disabled:hover { opacity:.5; cursor:default; color:var(--muted); background:transparent; border-color:var(--line); }
 .status-paid,.status-confirmed { color:#2f6847; border-color:#6e9e80; background:#e7f3eb; }
 .status-pending,.status-partially_paid,.status-payment_pending { color:#875f13; border-color:#c7a65e; background:#fff3d8; }
 .status-refund_due,.status-cancelled { color:#9b3526; border-color:#c87b6d; background:#fde8e3; }
@@ -223,7 +224,9 @@ button,input,select,textarea { font:inherit; }
 .bookings-overview-content { display:grid; gap:18px; margin-top:24px; }
 .bookings-overview-content > .analytics-panel,.bookings-overview-content > .analytics-filters,.bookings-overview-content .analytics-panel,.bookings-overview-content .bookings-daily-grid .analytics-stats { margin-top:0; }
 .bookings-analytics-filters { display:block; margin:0; padding:0; border:0; background:transparent; }
-.bookings-summary-stats { margin-top:-6px; }
+.bookings-summary-stats { grid-template-columns:repeat(4,minmax(0,1fr)); margin-top:-6px; }
+.expired-bookings-table-wrap table { min-width:1180px; }
+.expired-bookings-table-wrap td:nth-child(1),.expired-bookings-table-wrap td:nth-child(3) { white-space:nowrap; }
 .upcoming-bookings-table-wrap table { min-width:900px; }
 .upcoming-bookings-table-wrap td:nth-child(1),.upcoming-bookings-table-wrap td:nth-child(3) { white-space:nowrap; }
 .bookings-daily-grid { display:grid; grid-template-columns:minmax(235px,.32fr) minmax(0,1fr); gap:18px; align-items:stretch; }
@@ -260,9 +263,11 @@ button,input,select,textarea { font:inherit; }
 @media(max-width:1350px){.bookings-utilisation-grid{grid-template-columns:1fr}}
 @media(max-width:1350px){.bookings-balanced-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:1000px){.bookings-balanced-grid{grid-template-columns:1fr}}
+@media(max-width:1100px){.bookings-summary-stats{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:900px){.bookings-daily-grid{grid-template-columns:1fr}.bookings-daily-grid .booking-count-stat article{min-height:140px}.bookings-overview-heading{align-items:flex-start;flex-direction:column}.bookings-overview-heading>p{max-width:none;text-align:left}}
 @media(max-width:1000px){.payment-ageing-cards{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:800px){.funds-global-filter{justify-content:stretch}.funds-global-filter label{width:100%}.funds-panel-head label{width:100%}.upcoming-blocks-date-filters{width:100%}.funds-month-chart,.funds-year-chart,.funds-cashflow-chart,.unavailability-reason-chart,.unavailability-trend-chart,.unavailability-studio-chart{min-height:280px}.unavailability-reason-chart>.analytics-empty{min-height:280px}}
+@media(max-width:800px){.bookings-summary-stats{grid-template-columns:1fr}}
 @media(max-width:520px){.upcoming-blocks-date-filters{grid-template-columns:1fr;display:grid}}
 @media(max-width:520px){.funds-donut-layout,.unavailability-pie-layout{flex-direction:column;gap:24px}.funds-donut,.unavailability-pie{flex-basis:170px;width:170px;height:170px}.funds-donut::after{width:114px;height:114px}.funds-chart-legend{grid-template-columns:1fr 1fr;width:100%}.unavailability-pie-legend{grid-template-columns:1fr;width:100%;max-width:none}.funds-year-key{justify-content:flex-start}}
 @media(max-width:520px){.payment-ageing-cards{grid-template-columns:1fr}.heatmap-table{min-width:690px}.heatmap-cell{min-width:72px}}

@@ -178,7 +178,8 @@ class BookingApplicationServiceTest(unittest.TestCase):
         payment = PaymentService(self.db).get(result.id)
         notification = self.db.query(AdminNotification).filter_by(booking_id=result.id).one_or_none()
         self.assertIsNotNone(payment)
-        self.assertIsNone(notification)
+        self.assertIsNotNone(notification)
+        self.assertEqual(notification.kind, "booking_request")
         self.assertEqual(payment.status.value, "pending")
         self.assertEqual(payment.amount, 2000)
         self.assertEqual(payment.razorpay_order_id, "order_stub_1")
@@ -190,6 +191,7 @@ class BookingApplicationServiceTest(unittest.TestCase):
         )
 
     def test_stale_unpaid_hold_becomes_expired_and_releases_its_slot(self) -> None:
+        self.service.email.send_booking_expired = MagicMock(return_value=True)
         result = self.service.create_booking(self.booking())
         booking = self.db.get(Booking, result.id)
         booking.updated_at = datetime.now(UTC).replace(tzinfo=None) - timedelta(hours=3)
@@ -202,6 +204,17 @@ class BookingApplicationServiceTest(unittest.TestCase):
         self.assertIsNone(booking.calendar_event_id)
         self.assertEqual(PaymentService(self.db).get(result.id).status.value, "void")
         self.assertEqual(states["11:00"], "available")
+        notification = self.db.query(AdminNotification).filter_by(booking_id=result.id).one()
+        self.assertEqual(notification.kind, "booking_expired")
+        self.service.email.send_booking_expired.assert_called_once_with(booking)
+
+        self.service.get_day_availability("standard_small", self.future_date)
+
+        self.assertEqual(
+            self.db.query(AdminNotification).filter_by(booking_id=result.id).count(),
+            1,
+        )
+        self.service.email.send_booking_expired.assert_called_once_with(booking)
 
     def test_checkout_order_failure_stays_pending_and_retryable(self) -> None:
         self.service.razorpay.create_order = MagicMock(side_effect=OSError("provider unavailable"))
@@ -216,6 +229,8 @@ class BookingApplicationServiceTest(unittest.TestCase):
         self.assertIsNotNone(payment)
         self.assertEqual(payment.mode.value, "pay_now")
         self.assertEqual(payment.status.value, "pending")
+        notification = self.db.query(AdminNotification).filter_by(booking_id=result.id).one()
+        self.assertEqual(notification.kind, "booking_request")
 
     def test_calendar_hold_failure_does_not_create_a_booking(self) -> None:
         self.service.calendar.create_hold_event = MagicMock(
@@ -231,6 +246,9 @@ class BookingApplicationServiceTest(unittest.TestCase):
         result = self.service.create_booking(self.booking())
         booking = self.db.get(Booking, result.id)
         hold_event_id = booking.calendar_event_id
+        notification = self.db.query(AdminNotification).filter_by(booking_id=result.id).one()
+        notification.read_at = datetime.now(UTC).replace(tzinfo=None)
+        self.db.commit()
 
         self.service.confirm_paid_booking(booking, "pay_test_001")
         self.db.commit()
@@ -239,7 +257,8 @@ class BookingApplicationServiceTest(unittest.TestCase):
         self.assertTrue((booking.calendar_event_id or "").startswith("gcal_stub_"))
         self.assertEqual(booking.calendar_event_id, hold_event_id)
         self.assertEqual(PaymentService(self.db).get(result.id).status.value, "paid")
-        self.assertIsNotNone(self.db.query(AdminNotification).filter_by(booking_id=result.id).one_or_none())
+        self.assertEqual(notification.kind, "new_booking")
+        self.assertIsNone(notification.read_at)
 
     def test_partial_initial_payment_does_not_confirm_until_the_balance_is_paid(self) -> None:
         result = self.service.create_booking(self.booking())
@@ -256,7 +275,8 @@ class BookingApplicationServiceTest(unittest.TestCase):
 
         self.assertEqual(booking.state, BookingState.PAYMENT_PENDING)
         self.assertEqual(payments.get(result.id).status.value, "partially_paid")
-        self.assertIsNone(self.db.query(AdminNotification).filter_by(booking_id=result.id).one_or_none())
+        notification = self.db.query(AdminNotification).filter_by(booking_id=result.id).one()
+        self.assertEqual(notification.kind, "booking_request")
 
         self.service.confirm_paid_booking(
             booking,
@@ -272,7 +292,7 @@ class BookingApplicationServiceTest(unittest.TestCase):
             [(entry.amount, entry.provider_reference) for entry in payments.transactions(result.id)],
             [(500, "UPI-PARTIAL-001"), (1500, "UPI-BALANCE-001")],
         )
-        self.assertIsNotNone(self.db.query(AdminNotification).filter_by(booking_id=result.id).one_or_none())
+        self.assertEqual(notification.kind, "new_booking")
 
     def test_same_space_cannot_be_double_booked(self) -> None:
         self.service.create_booking(self.booking())

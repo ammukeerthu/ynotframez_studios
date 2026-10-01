@@ -9,9 +9,9 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800&amp;display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/admin.css?v=20260927-2">
+  <link rel="stylesheet" href="/static/admin.css?v=20261001-2">
   <script src="/static/studio_cache.js?v=20260908-1" defer></script>
-  <script src="/static/admin.js?v=20260927-3" defer></script>
+  <script src="/static/admin.js?v=20261001-2" defer></script>
 </head>
 <body>
   <section id="login-view" class="login-view" hidden>
@@ -182,7 +182,20 @@
             <article class="dark"><p>TOTAL BOOKINGS</p><strong id="bookings-summary-total">&hellip;</strong><small>All saved booking records</small></article>
             <article><p>CONFIRMED BOOKINGS</p><strong id="bookings-summary-confirmed">&hellip;</strong><small>Bookings currently confirmed</small></article>
             <article><p>CANCELLED BOOKINGS</p><strong id="bookings-summary-cancelled">&hellip;</strong><small>Bookings cancelled by the studio or customer</small></article>
+            <article><p>EXPIRED BOOKINGS</p><strong id="bookings-summary-expired">&hellip;</strong><small>Unpaid booking holds that expired</small></article>
           </div>
+          <article class="analytics-panel expired-bookings-panel">
+            <div class="analytics-panel-head">
+              <div><p>EXPIRED BOOKINGS</p><h3>Released unpaid holds</h3></div>
+              <small id="expired-bookings-count">Loading expired bookings&hellip;</small>
+            </div>
+            <div class="table-wrap analytics-table-wrap expired-bookings-table-wrap">
+              <table id="expired-bookings-table">
+                <thead><tr><th>Reference</th><th>Studio</th><th>Date &amp; Time</th><th>Customer</th><th>Purpose</th><th>Payment Status</th><th>Actions</th></tr></thead>
+                <tbody id="expired-bookings-body"><tr><td colspan="7" class="empty">Loading expired bookings&hellip;</td></tr></tbody>
+              </table>
+            </div>
+          </article>
           <article class="analytics-panel upcoming-bookings-panel">
             <div class="analytics-panel-head funds-panel-head">
               <div><p>UPCOMING BOOKINGS</p><h3>Confirmed future sessions</h3></div>

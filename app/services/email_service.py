@@ -33,6 +33,7 @@ class EmailService:
         "cancellation": "Booking cancelled",
         "payment_hold": "Booking request received — payment pending",
         "payment_failure": "Payment action required",
+        "expiration": "Booking request expired - book again",
     }
 
     def __init__(self, db: Session | None = None) -> None:
@@ -52,6 +53,9 @@ class EmailService:
 
     def send_payment_failed(self, booking: Booking) -> bool:
         return self._send_booking_message(booking, "payment_failure")
+
+    def send_booking_expired(self, booking: Booking) -> bool:
+        return self._send_booking_message(booking, "expiration")
 
     def _send_booking_message(self, booking: Booking, message_type: str) -> bool:
         if not booking.customer_email:
@@ -108,6 +112,8 @@ class EmailService:
             if message_type == "cancellation"
             else f"Booking request received — payment pending ({details['reference']})"
             if message_type == "payment_hold"
+            else f"Booking request expired - please book again ({details['reference']})"
+            if message_type == "expiration"
             else f"Payment action required for {details['customer_name']}"
         )
         message = EmailMessage()
@@ -203,6 +209,7 @@ class EmailService:
             if callback_base
             else ""
         )
+        new_booking_url = f"{callback_base}/book" if callback_base else ""
         return {
             "reference": self._reference(booking),
             "customer_name": booking.customer_name or "Customer",
@@ -219,6 +226,7 @@ class EmailService:
             "amount": f"₹{amount:,.0f}",
             "payment_link": booking.payment_link or "",
             "booking_url": booking_url,
+            "new_booking_url": new_booking_url,
             "hold_expires_at": hold_expires_at.strftime("%d %B %Y at %I:%M %p %Z").lstrip("0"),
             "studio_email": settings.studio_email,
             "payment_failed": (
@@ -235,6 +243,7 @@ class EmailService:
             "cancellation": "Your booking has been cancelled.",
             "payment_hold": "We received your booking request.",
             "payment_failure": "Your payment could not be completed.",
+            "expiration": "Your booking request has expired.",
         }
         salutations = {
             "confirmation": "Dear",
@@ -242,13 +251,14 @@ class EmailService:
             "cancellation": "Dear",
             "payment_hold": "Dear",
             "payment_failure": "Dear",
+            "expiration": "Dear",
         }
         payment_line = ""
-        if message_type != "cancellation" and details["payment_link"]:
+        if message_type not in {"cancellation", "expiration"} and details["payment_link"]:
             payment_line = f"\nPayment link: {details['payment_link']}"
         payment_failure_line = ""
         if message_type == "payment_failure" or (
-            message_type != "cancellation" and details["payment_failed"]
+            message_type not in {"cancellation", "expiration"} and details["payment_failed"]
         ):
             payment_failure_line = (
                 f"\n\nImportant: Your payment of {details['amount']} has failed. "
@@ -267,8 +277,17 @@ class EmailService:
             )
             if details["booking_url"]:
                 payment_hold_line += f"\nFind My Booking: {details['booking_url']}"
+        expiration_line = ""
+        if message_type == "expiration":
+            expiration_line = (
+                "\n\nPayment was not completed within the temporary hold period, so your "
+                "booking was not confirmed and the studio slot has been released. Kindly "
+                "create a new booking to reserve an available slot."
+            )
+            if details["new_booking_url"]:
+                expiration_line += f"\nBook again: {details['new_booking_url']}"
         rules_section = ""
-        if message_type != "cancellation":
+        if message_type not in {"cancellation", "expiration"}:
             rules_section = f"\n\nStudio rules:\n{details['rules']}"
         return (
             f"YNotFramez Studios\n\n"
@@ -284,6 +303,7 @@ class EmailService:
             f"{payment_line}\n\n"
             f"{payment_failure_line}\n"
             f"{payment_hold_line}\n"
+            f"{expiration_line}\n"
             f"{rules_section}\n\n"
             f"Please keep your booking reference for future lookup.\n\n"
             f"YNotFramez Studios"
@@ -301,6 +321,7 @@ class EmailService:
             "cancellation": "Your booking has been cancelled.",
             "payment_hold": "We received your booking request.",
             "payment_failure": "Your payment could not be completed.",
+            "expiration": "Your booking request has expired.",
         }
         salutations = {
             "confirmation": "Dear",
@@ -308,6 +329,7 @@ class EmailService:
             "cancellation": "Dear",
             "payment_hold": "Dear",
             "payment_failure": "Dear",
+            "expiration": "Dear",
         }
         escaped = {key: html.escape(value) for key, value in details.items()}
         brand_header = (
@@ -329,7 +351,7 @@ class EmailService:
             )
         )
         rules_section = ""
-        if message_type != "cancellation":
+        if message_type not in {"cancellation", "expiration"}:
             rules_section = (
                 '<div style="margin-top:28px;padding:20px;background:#f5f3ed;border-left:3px solid #ff5b35">'
                 '<h2 style="margin:0 0 10px;font:22px Georgia">Studio rules</h2>'
@@ -337,7 +359,7 @@ class EmailService:
                 + escaped["rules"].replace("\n", "<br>") + "</p></div>"
             )
         payment_button = ""
-        if message_type != "cancellation" and details["payment_link"]:
+        if message_type not in {"cancellation", "expiration"} and details["payment_link"]:
             payment_button = (
                 '<p style="margin:28px 0"><a href="' + escaped["payment_link"] + '" '
                 'style="display:inline-block;padding:14px 22px;background:#ff5b35;color:#fff;'
@@ -350,9 +372,15 @@ class EmailService:
                 'text-decoration:none;font:700 12px Arial;letter-spacing:.08em">'
                 'VIEW BOOKING &amp; COMPLETE PAYMENT</a></p>'
             )
+        if message_type == "expiration" and details["new_booking_url"]:
+            payment_button = (
+                '<p style="margin:28px 0"><a href="' + escaped["new_booking_url"] + '" '
+                'style="display:inline-block;padding:14px 22px;background:#ff5b35;color:#fff;'
+                'text-decoration:none;font:700 12px Arial;letter-spacing:.08em">BOOK AGAIN</a></p>'
+            )
         payment_failure_notice = ""
         if message_type == "payment_failure" or (
-            message_type != "cancellation" and details["payment_failed"]
+            message_type not in {"cancellation", "expiration"} and details["payment_failed"]
         ):
             payment_failure_notice = (
                 '<div style="margin-top:28px;padding:18px 20px;background:#fdeaea;'
@@ -376,6 +404,16 @@ class EmailService:
                 'technical issue, retry from Find My Booking or contact the studio at '
                 '<a href="mailto:' + escaped["studio_email"] + '" style="color:#67430f">'
                 + escaped["studio_email"] + '</a> before the hold expires.</p></div>'
+            )
+        expiration_notice = ""
+        if message_type == "expiration":
+            expiration_notice = (
+                '<div style="margin-top:28px;padding:18px 20px;background:#fff4df;'
+                'border-left:4px solid #d78316;color:#67430f">'
+                '<p style="margin:0 0 8px;font:700 13px/1.7 Arial">This booking was not confirmed.</p>'
+                '<p style="margin:0;font:13px/1.7 Arial">Payment was not completed within the '
+                'temporary hold period, so the studio slot has been released. Kindly create a new '
+                'booking to reserve an available slot.</p></div>'
             )
         rows = "".join(
             f'<tr><td style="padding:9px 0;color:#777;font:11px Arial;text-transform:uppercase">{label}</td>'
@@ -408,6 +446,7 @@ class EmailService:
       <table style="width:100%;border-collapse:collapse;border-top:1px solid #ddd;border-bottom:1px solid #ddd">{rows}</table>
       {payment_button}
       {payment_hold_notice}
+      {expiration_notice}
       {payment_failure_notice}
       {rules_section}
       <p style="margin:25px 0 0;color:#777;font:12px/1.6 Arial">Keep your reference private. You can retrieve this booking from the Find My Booking page.</p>
