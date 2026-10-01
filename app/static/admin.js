@@ -1099,10 +1099,10 @@ async function loadUnavailabilityOverview() {
   const message = document.querySelector("#unavailability-overview-message");
   message.hidden = true;
   unavailabilityOverviewFilters.setAttribute("aria-busy", "true");
-  document.querySelector("#unavailability-total").textContent = "â€¦";
-  document.querySelector("#upcoming-blocks-body").innerHTML = '<tr><td colspan="4" class="empty">Loading blocked slotsâ€¦</td></tr>';
-  document.querySelector("#unavailability-month-chart").innerHTML = '<p class="analytics-empty">Loading blocked timeâ€¦</p>';
-  document.querySelector("#unavailability-year-chart").innerHTML = '<p class="analytics-empty">Loading blocked timeâ€¦</p>';
+  document.querySelector("#unavailability-total").textContent = "...";
+  document.querySelector("#upcoming-blocks-body").innerHTML = '<tr><td colspan="4" class="empty">Loading blocked slots...</td></tr>';
+  document.querySelector("#unavailability-month-chart").innerHTML = '<p class="analytics-empty">Loading blocked time...</p>';
+  document.querySelector("#unavailability-year-chart").innerHTML = '<p class="analytics-empty">Loading blocked time...</p>';
   document.querySelector("#unavailability-trend-chart").innerHTML = '<p class="analytics-empty">Loading blocked-hours trend...</p>';
   document.querySelector("#unavailability-studio-chart").innerHTML = '<p class="analytics-empty">Loading studio comparison...</p>';
   const query = new URLSearchParams({

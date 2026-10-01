@@ -95,7 +95,13 @@ class AdminAvailabilityViewTest(unittest.TestCase):
         self.assertNotIn('data-table-column="studio"', self.script)
         self.assertIn('value="actions" data-booking-column-toggle checked disabled', self.html)
         self.assertIn('/static/admin.css?v=20261001-2', self.html)
-        self.assertIn('/static/admin.js?v=20261001-2', self.html)
+        self.assertIn('/static/admin.js?v=20261001-3', self.html)
+
+    def test_admin_loading_copy_contains_no_encoding_corruption(self) -> None:
+        for corrupted_marker in ("â", "Â", "ï¿½", "�"):
+            self.assertNotIn(corrupted_marker, self.script)
+        self.assertIn('document.querySelector("#unavailability-total").textContent = "..."', self.script)
+        self.assertIn("Loading blocked slots...", self.script)
         self.assertIn('BOOKING_COLUMN_STORAGE_KEY = "ynf_admin_booking_columns_v2"', self.script)
         self.assertIn(
             'DEFAULT_BOOKING_COLUMNS = ["schedule", "customer", "purpose", "payment", "status", "actions"]',
