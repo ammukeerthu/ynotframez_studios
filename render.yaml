@@ -48,9 +48,9 @@ services:
       - key: ADMIN_COOKIE_SECURE
         value: true
 
-      # Keep stub mode until the deployed Test Mode checkout is intentionally enabled.
+      # Operational payment mode is managed in Render so Blueprint syncs preserve it.
       - key: RAZORPAY_MODE
-        value: stub
+        sync: false
       - key: RAZORPAY_KEY_ID
         sync: false
       - key: RAZORPAY_KEY_SECRET

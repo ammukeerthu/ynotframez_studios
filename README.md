@@ -546,7 +546,7 @@ The Blueprint already supplies `smtp-relay.brevo.com` and port `2525`. Brevo's F
    - `https://<service-name>.onrender.com/dashboard`
 7. The deployed database starts empty. Open `/dashboard` and create the deployment's admin account. This does not change the local admin account. Alternatively, after both accounts exist, use `scripts.sync_admin_password` to copy the local password hash safely.
 
-The Blueprint sets `ADMIN_COOKIE_SECURE=true`, generates a stable admin-session signing secret, and runs one Uvicorn worker. Its committed baseline deliberately keeps Razorpay in stub mode until Test or Live Mode is explicitly enabled in Render. In stub mode, a submitted booking stays payment-pending and holds its slot; use **Record payment** in the Studio Dashboard to complete the test booking, convert its Calendar hold into a confirmed event, and send its confirmation email.
+The Blueprint sets `ADMIN_COOKIE_SECURE=true`, generates a stable admin-session signing secret, and runs one Uvicorn worker. `RAZORPAY_MODE` uses `sync: false`, so the active `stub` or `api` value is owned by the Render service environment and preserved during future Blueprint syncs. Set it explicitly in Render before deploying: use `stub` only for offline UI testing and `api` for Razorpay Test or Live Mode. In stub mode, a submitted booking stays payment-pending and holds its slot; use **Record payment** in the Studio Dashboard to complete the test booking, convert its Calendar hold into a confirmed event, and send its confirmation email.
 
 ### Production domains
 

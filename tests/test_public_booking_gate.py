@@ -22,6 +22,14 @@ class PublicBookingGateTests(unittest.TestCase):
             r"- key: PUBLIC_BOOKING_ENABLED\s+sync: false",
         )
 
+    def test_render_preserves_dashboard_managed_razorpay_mode(self) -> None:
+        manifest = Path(__file__).resolve().parents[1] / "render.yaml"
+        content = manifest.read_text(encoding="utf-8")
+        self.assertRegex(
+            content,
+            r"- key: RAZORPAY_MODE\s+sync: false",
+        )
+
     def test_disabled_booking_uses_maintenance_page(self) -> None:
         with patch.object(settings, "public_booking_enabled", False):
             response = booking_page()
