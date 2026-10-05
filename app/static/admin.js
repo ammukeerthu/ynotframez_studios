@@ -30,7 +30,6 @@ const settingsMenuToggle = document.querySelector("#settings-menu-toggle");
 const settingsSubmenu = document.querySelector("#settings-submenu");
 const fundsOverviewFilters = document.querySelector("#funds-overview-filters");
 const bookingsOverviewFilters = document.querySelector("#bookings-overview-filters");
-const bookingsDayPicker = document.querySelector("#bookings-day-picker");
 const bookingsUpcomingFrom = document.querySelector("#bookings-upcoming-from");
 const bookingsUpcomingTo = document.querySelector("#bookings-upcoming-to");
 const bookingsUtilisationMonth = document.querySelector("#bookings-utilisation-month");
@@ -212,7 +211,17 @@ function isOwner() {
 
 function applyRolePermissions() {
   document.querySelectorAll("[data-owner-only]").forEach((element) => {
-    element.hidden = !isOwner();
+    if (!isOwner()) {
+      if (!element.hidden) {
+        element.dataset.hiddenByRole = "true";
+        element.hidden = true;
+      }
+      return;
+    }
+    if (element.dataset.hiddenByRole === "true") {
+      element.hidden = false;
+      delete element.dataset.hiddenByRole;
+    }
   });
 }
 
@@ -325,7 +334,6 @@ bookingsOverviewFilters.addEventListener("submit", (event) => {
 bookingsOverviewFilters.elements.space_id.addEventListener("change", () => loadBookingsOverview());
 bookingsUpcomingFrom.addEventListener("change", () => loadBookingsUpcomingOverview());
 bookingsUpcomingTo.addEventListener("change", () => loadBookingsUpcomingOverview());
-bookingsDayPicker.addEventListener("change", () => loadBookingsDayOverview());
 bookingsUtilisationMonth.addEventListener("change", () => loadBookingsUtilisationOverview());
 bookingsUtilisationYear.addEventListener("change", () => loadBookingsYearUtilisationOverview());
 bookingsPurposeMonth.addEventListener("change", () => loadBookingsPurposeMonthOverview());
@@ -354,7 +362,6 @@ function setupOverviewFilters() {
   fundsOverviewFilters.elements.year.value = currentMonth.slice(0, 4);
   fundsOverviewFilters.elements.cashflow_year.value = currentMonth.slice(0, 4);
   const currentWeek = currentWeekRange();
-  bookingsDayPicker.value = "0";
   bookingsUpcomingFrom.value = currentWeek.from;
   bookingsUpcomingTo.value = currentWeek.to;
   bookingsUtilisationMonth.value = currentMonth;
@@ -613,14 +620,6 @@ function renderOutstandingBookings(items) {
     : '<tr><td colspan="8" class="empty">No confirmed bookings have an outstanding balance.</td></tr>';
 }
 
-function overviewBookingRow(booking) {
-  return `<tr>
-    <td><b>${safe(booking.space_name)}</b><small>${safe(booking.reference)}</small></td>
-    <td>${safe(formatDate(booking.booking_date))}<small>${safe(displayTime(booking.start_time))} to ${safe(displayTime(booking.end_time))}</small></td>
-    <td><b>${safe(booking.customer_name)}</b><small>${safe(booking.phone_number)}</small></td>
-  </tr>`;
-}
-
 function renderUtilizationChart(selector, items) {
   const chart = document.querySelector(selector);
   if (!items.length) {
@@ -722,25 +721,59 @@ function renderUtilizationHeatmap(items) {
     return;
   }
   const weekdays = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+  const weekdayNames = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
   const studioIds = [...new Set(items.map((item) => item.space_id))];
-  target.innerHTML = studioIds.map((spaceId) => {
+  const guide = `<div class="heatmap-guide">
+    <div><b>HOW TO READ THIS MAP</b><span>Each square is one 30-minute time slot. Darker orange means that slot was booked more often on that weekday during the selected month.</span></div>
+    <div class="heatmap-scale" aria-label="Utilisation colour scale">
+      <span>Never booked</span><i class="heatmap-level-0"></i><i class="heatmap-level-1"></i><i class="heatmap-level-2"></i><i class="heatmap-level-3"></i><i class="heatmap-level-4"></i><span>Always booked</span>
+    </div>
+    <small>Hover, focus, or tap a square to see the exact usage.</small>
+  </div>`;
+  target.innerHTML = guide + studioIds.map((spaceId) => {
     const studioItems = items.filter((item) => item.space_id === spaceId);
     const times = [...new Set(studioItems.map((item) => item.time_slot))].sort();
     const cells = new Map(studioItems.map((item) => [`${item.time_slot}-${item.weekday}`, item]));
     return `<section class="heatmap-studio">
-      <h4>${safe(studioItems[0].space_name)}</h4>
+      <div class="heatmap-studio-head">
+        <h4>${safe(studioItems[0].space_name)}</h4>
+        <div class="heatmap-hover-details" aria-live="polite"><span>HOVER OR TAP A SLOT</span><strong>See exact usage</strong><small>The cell shows booked occurrences out of matching weekdays.</small></div>
+      </div>
       <div class="heatmap-scroll"><table class="heatmap-table">
         <thead><tr><th>Time</th>${weekdays.map((day) => `<th>${day}</th>`).join("")}</tr></thead>
-        <tbody>${times.map((timeSlot) => `<tr><th>${safe(displayTime(timeSlot))}</th>${weekdays.map((day, weekday) => {
+        <tbody>${times.map((timeSlot) => {
+          const endTime = minutesToTime(timeToMinutes(timeSlot) + 30);
+          return `<tr><th>${safe(displayTime(timeSlot))}<small>to ${safe(displayTime(endTime))}</small></th>${weekdays.map((day, weekday) => {
           const cell = cells.get(`${timeSlot}-${weekday}`);
           const percent = Number(cell?.utilization_percent || 0);
-          const alpha = percent ? Math.max(0.16, Math.min(0.9, percent / 100)) : 0;
-          const details = `${day} ${displayTime(timeSlot)}: ${percent}% occupied (${cell?.booked_occurrences || 0} of ${cell?.available_occurrences || 0} matching days booked)`;
-          return `<td class="heatmap-cell${percent ? " has-bookings" : ""}" style="--heat:${alpha}" title="${safeAttr(details)}" aria-label="${safeAttr(details)}">${percent ? `${percent}%` : "-"}</td>`;
-        }).join("")}</tr>`).join("")}</tbody>
+          const booked = Number(cell?.booked_occurrences || 0);
+          const available = Number(cell?.available_occurrences || 0);
+          const level = percent === 0 ? 0 : percent <= 25 ? 1 : percent <= 50 ? 2 : percent <= 75 ? 3 : 4;
+          const weekdayName = weekdayNames[weekday];
+          const schedule = `${weekdayName} · ${displayTime(timeSlot)} to ${displayTime(endTime)}`;
+          const usage = available
+            ? `Booked ${booked} of ${available} matching ${weekdayName}s · ${percent}% utilisation`
+            : `No ${weekdayName}s occur in this month`;
+          const details = `${schedule}. ${usage}.`;
+          return `<td class="heatmap-cell heatmap-level-${level}" tabindex="0" data-schedule="${safeAttr(schedule)}" data-usage="${safeAttr(usage)}" title="${safeAttr(details)}" aria-label="${safeAttr(details)}"><b>${booked}/${available}</b><small>${percent}%</small></td>`;
+        }).join("")}</tr>`;
+        }).join("")}</tbody>
       </table></div>
     </section>`;
   }).join("");
+  const showDetails = (cell) => {
+    const details = cell.closest(".heatmap-studio").querySelector(".heatmap-hover-details");
+    details.querySelector("span").textContent = cell.dataset.schedule;
+    details.querySelector("strong").textContent = cell.dataset.usage;
+    details.querySelector("small").textContent = "Darker colour indicates more frequent use of this same weekday and time.";
+    cell.closest(".heatmap-table").querySelectorAll(".heatmap-cell.is-active").forEach((item) => item.classList.remove("is-active"));
+    cell.classList.add("is-active");
+  };
+  target.querySelectorAll(".heatmap-cell").forEach((cell) => {
+    cell.addEventListener("mouseenter", () => showDetails(cell));
+    cell.addEventListener("focus", () => showDetails(cell));
+    cell.addEventListener("click", () => showDetails(cell));
+  });
 }
 
 async function loadBookingsUpcomingOverview() {
@@ -760,28 +793,6 @@ async function loadBookingsUpcomingOverview() {
   } catch (error) {
     showOverviewError("#bookings-overview-message", error);
     body.innerHTML = '<tr><td colspan="5" class="empty">Upcoming bookings could not be loaded.</td></tr>';
-  }
-}
-
-async function loadBookingsDayOverview() {
-  document.querySelector("#overview-booking-count").textContent = "...";
-  document.querySelector("#overview-bookings-body").innerHTML = '<tr><td colspan="3" class="empty">Loading bookings...</td></tr>';
-  const query = appendOverviewSpace(new URLSearchParams({
-    day_offset: bookingsDayPicker.value,
-  }), bookingsOverviewFilters);
-  try {
-    const overview = await overviewPanelApi("bookings-day", `/api/admin/overview/bookings/day?${query}`);
-    if (!overview) return;
-    const selectedDate = formatDate(overview.selected_date);
-    document.querySelector("#overview-booking-count").textContent = overview.total_bookings;
-    document.querySelector("#overview-booking-date").textContent = selectedDate;
-    document.querySelector("#overview-bookings-table-title").textContent = selectedDate;
-    document.querySelector("#overview-bookings-body").innerHTML = overview.bookings.length
-      ? overview.bookings.map(overviewBookingRow).join("")
-      : '<tr><td colspan="3" class="empty">No confirmed bookings for this day.</td></tr>';
-  } catch (error) {
-    showOverviewError("#bookings-overview-message", error);
-    document.querySelector("#overview-bookings-body").innerHTML = '<tr><td colspan="3" class="empty">Bookings could not be loaded.</td></tr>';
   }
 }
 
@@ -876,7 +887,6 @@ async function loadBookingsOverview() {
   bookingsOverviewRequestController = new AbortController();
   const panelLoads = Promise.all([
     loadBookingsUpcomingOverview(),
-    loadBookingsDayOverview(),
     loadBookingsUtilisationOverview(),
     loadBookingsYearUtilisationOverview(),
     loadBookingsPurposeMonthOverview(),
@@ -892,16 +902,11 @@ async function loadBookingsOverview() {
   document.querySelector("#bookings-summary-expired").textContent = "...";
   document.querySelector("#expired-bookings-count").textContent = "Loading expired bookings...";
   document.querySelector("#expired-bookings-body").innerHTML = '<tr><td colspan="7" class="empty">Loading expired bookings...</td></tr>';
-  document.querySelector("#overview-booking-count").textContent = "…";
   document.querySelector("#action-centre-count").textContent = "Loading actions...";
   document.querySelector("#action-centre-body").innerHTML = '<tr><td colspan="6" class="empty">Loading action centre...</td></tr>';
   document.querySelector("#utilisation-heatmap").innerHTML = '<p class="analytics-empty">Loading utilisation heatmap...</p>';
-  document.querySelector("#overview-bookings-body").innerHTML = '<tr><td colspan="3" class="empty">Loading bookings…</td></tr>';
   document.querySelector("#studio-utilisation-chart").innerHTML = '<p class="analytics-empty">Loading utilisation…</p>';
-  const query = new URLSearchParams({
-    day_offset: bookingsDayPicker.value,
-    month: bookingsUtilisationMonth.value,
-  });
+  const query = new URLSearchParams({ month: bookingsUtilisationMonth.value });
   if (bookingsOverviewFilters.elements.space_id.value) {
     query.set("space_id", bookingsOverviewFilters.elements.space_id.value);
   }

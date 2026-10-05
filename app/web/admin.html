@@ -9,9 +9,9 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800&amp;display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/admin.css?v=20261005-1">
+  <link rel="stylesheet" href="/static/admin.css?v=20261006-2">
   <script src="/static/studio_cache.js?v=20260908-1" defer></script>
-  <script src="/static/admin.js?v=20261005-1" defer></script>
+  <script src="/static/admin.js?v=20261006-2" defer></script>
 </head>
 <body>
   <section id="login-view" class="login-view" hidden>
@@ -249,19 +249,8 @@
           </div>
           <div class="analytics-panel utilisation-heatmap-panel">
             <div class="analytics-panel-head funds-panel-head"><div><p>UTILISATION HEATMAP</p><h3 id="utilisation-heatmap-title">Selected month</h3></div><label><span>MONTH &amp; YEAR</span><input id="bookings-heatmap-month" type="month" required></label></div>
-            <small class="analytics-panel-note">Confirmed half-hour occupancy by weekday and time</small>
+            <small class="analytics-panel-note">Booking frequency by weekday and 30-minute time slot</small>
             <div id="utilisation-heatmap" class="utilisation-heatmap"><p class="analytics-empty">Loading utilisation heatmap&hellip;</p></div>
-          </div>
-          <div class="bookings-daily-grid">
-            <div class="stats analytics-stats booking-count-stat">
-              <article><p>BOOKINGS ON SELECTED DAY</p><strong id="overview-booking-count">&hellip;</strong><small id="overview-booking-date">Selected day</small></article>
-            </div>
-            <div class="analytics-panel booking-details-panel">
-              <div class="analytics-panel-head funds-panel-head"><div><p>BOOKING DETAILS</p><h3 id="overview-bookings-table-title">Today</h3></div><label><span>BOOKING DAY</span><select id="bookings-day-picker"><option value="-1">Yesterday</option><option value="0" selected>Today</option><option value="1">Tomorrow</option></select></label></div>
-              <div class="table-wrap analytics-table-wrap">
-                <table id="overview-bookings-table"><thead><tr><th>Studio</th><th>Date &amp; time</th><th>Customer</th></tr></thead><tbody id="overview-bookings-body"><tr><td colspan="3" class="empty">Loading bookings&hellip;</td></tr></tbody></table>
-              </div>
-            </div>
           </div>
         </div>
       </section>
