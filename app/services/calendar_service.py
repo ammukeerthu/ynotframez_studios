@@ -454,13 +454,20 @@ class GoogleCalendarService:
         space = get_space_by_id(block.space_id, self.db, include_inactive=True)
         space_name = space.name if space else block.space_id
         reason = (block.reason or "Owner blocked").strip()
+        collaborator = (block.collaboration_name or "").strip()
+        summary = f"BLOCKED - {reason}"
+        description_lines = [f"Studio: {space_name}", f"Reason: {reason}"]
+        if reason.casefold() == "collaboration" and collaborator:
+            summary = f"{summary} - {collaborator}"
+            description_lines.append(f"Used by: {collaborator}")
+            if block.collaboration_contact:
+                description_lines.append(f"Contact: {block.collaboration_contact}")
+            if block.collaboration_details:
+                description_lines.append(f"Details: {block.collaboration_details}")
+        description_lines.append("Source: Studio Dashboard")
         return {
-            "summary": f"BLOCKED - {reason}",
-            "description": (
-                f"Studio: {space_name}\n"
-                f"Reason: {reason}\n"
-                "Source: Studio Dashboard"
-            ),
+            "summary": summary,
+            "description": "\n".join(description_lines),
             "start": {"dateTime": start.isoformat(), "timeZone": settings.studio_timezone},
             "end": {"dateTime": end.isoformat(), "timeZone": settings.studio_timezone},
             "transparency": "opaque",

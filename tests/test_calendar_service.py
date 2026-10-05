@@ -155,6 +155,9 @@ class GoogleCalendarServiceTest(unittest.TestCase):
             start_time="14:30",
             duration_hours=1.5,
             reason="Collaboration",
+            collaboration_name="North Star Collective",
+            collaboration_contact="team@example.com",
+            collaboration_details="Editorial test shoot",
         )
 
         event_id = service.create_availability_block_event(block)
@@ -162,7 +165,7 @@ class GoogleCalendarServiceTest(unittest.TestCase):
         body = events.insert.call_args.kwargs["body"]
         self.assertEqual(event_id, "block-event")
         self.assertEqual(events.insert.call_args.kwargs["calendarId"], "standard-calendar")
-        self.assertEqual(body["summary"], "BLOCKED - Collaboration")
+        self.assertEqual(body["summary"], "BLOCKED - Collaboration - North Star Collective")
         self.assertEqual(body["transparency"], "opaque")
         self.assertEqual(body["colorId"], "8")
         self.assertEqual(
@@ -172,6 +175,9 @@ class GoogleCalendarServiceTest(unittest.TestCase):
         self.assertEqual(body["extendedProperties"]["private"]["space_id"], "standard_small")
         self.assertIn("Studio: Cube", body["description"])
         self.assertIn("Reason: Collaboration", body["description"])
+        self.assertIn("Used by: North Star Collective", body["description"])
+        self.assertIn("Contact: team@example.com", body["description"])
+        self.assertIn("Details: Editorial test shoot", body["description"])
 
     def test_availability_block_update_reuses_its_linked_event(self) -> None:
         service = self.service()

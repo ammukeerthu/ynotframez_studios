@@ -9,9 +9,9 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800&amp;display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/admin.css?v=20261001-2">
+  <link rel="stylesheet" href="/static/admin.css?v=20261005-1">
   <script src="/static/studio_cache.js?v=20260908-1" defer></script>
-  <script src="/static/admin.js?v=20261001-3" defer></script>
+  <script src="/static/admin.js?v=20261005-1" defer></script>
 </head>
 <body>
   <section id="login-view" class="login-view" hidden>
@@ -286,9 +286,33 @@
             </div>
             <div class="table-wrap analytics-table-wrap upcoming-blocks-table-wrap">
               <table id="upcoming-blocks-table">
-                <thead><tr><th>Date &amp; Time</th><th>Studio</th><th>Reason</th><th>Duration</th></tr></thead>
-                <tbody id="upcoming-blocks-body"><tr><td colspan="4" class="empty">Loading blocked slots&hellip;</td></tr></tbody>
+                <thead><tr><th>Date &amp; Time</th><th>Studio</th><th>Reason</th><th>Used By</th><th>Duration</th></tr></thead>
+                <tbody id="upcoming-blocks-body"><tr><td colspan="5" class="empty">Loading blocked slots&hellip;</td></tr></tbody>
               </table>
+            </div>
+          </article>
+          <article class="analytics-panel collaboration-usage-panel">
+            <div class="analytics-panel-head funds-panel-head">
+              <div><p>COLLABORATION USAGE</p><h3 id="collaboration-usage-title">Selected month</h3></div>
+              <div class="collaboration-period-filters">
+                <label><span>VIEW</span><select name="collaboration_period"><option value="month">Month-wise</option><option value="year">Year-wise</option></select></label>
+                <label data-collaboration-month><span>MONTH &amp; YEAR</span><input name="collaboration_month" type="month" required></label>
+                <label data-collaboration-year hidden><span>YEAR</span><input name="collaboration_year" type="number" min="2000" max="2100" step="1" inputmode="numeric" required></label>
+              </div>
+            </div>
+            <div class="collaboration-summary">
+              <div><span>TOTAL HOURS</span><strong id="collaboration-total-hours">&hellip;</strong></div>
+              <div><span>SESSIONS</span><strong id="collaboration-total-sessions">&hellip;</strong></div>
+              <div><span>COLLABORATORS</span><strong id="collaboration-unique-count">&hellip;</strong></div>
+            </div>
+            <div class="collaboration-usage-grid">
+              <div><p class="analytics-subheading">USAGE BY COLLABORATOR</p><div id="collaboration-usage-chart" class="analytics-bars"><p class="analytics-empty">Loading collaboration usage&hellip;</p></div></div>
+              <div class="table-wrap analytics-table-wrap">
+                <table id="collaboration-usage-table">
+                  <thead><tr><th>Date &amp; Time</th><th>Studio</th><th>Used By</th><th>Contact</th><th>Details</th><th>Hours</th><th>Entered By</th><th>Actions</th></tr></thead>
+                  <tbody id="collaboration-usage-body"><tr><td colspan="8" class="empty">Loading collaboration records&hellip;</td></tr></tbody>
+                </table>
+              </div>
             </div>
           </article>
           <div class="funds-chart-grid">
@@ -381,6 +405,11 @@
             <label><span>START TIME</span><select name="start_time" required></select></label>
             <label><span>DURATION</span><select name="duration_hours" required></select></label>
             <label><span>REASON</span><select name="reason" required><option value="Maintenance">Maintenance</option><option value="Power Shutdown">Power Shutdown</option><option value="Technical Issue">Technical Issue</option><option value="Mandatory Holiday">Mandatory Holiday</option><option value="Collaboration">Collaboration</option></select></label>
+            <div class="collaboration-block-fields" data-collaboration-fields hidden>
+              <label><span>USED BY / TEAM</span><input name="collaboration_name" maxlength="160" placeholder="Person, team, or organisation"></label>
+              <label><span>CONTACT (OPTIONAL)</span><input name="collaboration_contact" maxlength="64" placeholder="Phone, email, or handle"></label>
+              <label><span>DETAILS (OPTIONAL)</span><textarea name="collaboration_details" maxlength="1000" rows="3" placeholder="Project or collaboration notes"></textarea></label>
+            </div>
             <button id="block-time-button" type="submit">Block selected time <span>→</span></button>
           </form>
         </div>
@@ -477,6 +506,24 @@
       </div>
       <div id="offline-booking-message" class="form-message" role="alert" hidden></div>
       <div class="booking-modal-actions offline-booking-actions"><button id="create-offline-booking-button" class="save-password" type="submit">Create booking <span>→</span></button></div>
+    </form>
+  </div>
+
+  <div id="collaboration-modal" class="password-modal booking-modal" hidden data-owner-only>
+    <form id="collaboration-details-form">
+      <button class="collaboration-modal-close" type="button" aria-label="Close">&times;</button>
+      <p class="eyebrow">COLLABORATION RECORD</p><h2>Add usage details</h2>
+      <input name="block_id" type="hidden">
+      <div class="edit-grid">
+        <label><span>DATE &amp; TIME</span><input name="schedule" readonly></label>
+        <label><span>STUDIO</span><input name="studio" readonly></label>
+        <label><span>DURATION</span><input name="duration" readonly></label>
+        <label><span>USED BY / TEAM</span><input name="collaboration_name" maxlength="160" required></label>
+        <label><span>CONTACT (OPTIONAL)</span><input name="collaboration_contact" maxlength="64"></label>
+        <label class="full"><span>DETAILS (OPTIONAL)</span><textarea name="collaboration_details" maxlength="1000" rows="4"></textarea></label>
+      </div>
+      <div id="collaboration-modal-message" class="form-message" role="alert" hidden></div>
+      <div class="booking-modal-actions"><button id="save-collaboration-button" class="save-password" type="submit">Save details <span>&rarr;</span></button></div>
     </form>
   </div>
 

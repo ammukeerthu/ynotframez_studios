@@ -156,12 +156,22 @@ def apply_schema_compatibility_updates(target_engine: Engine | None = None) -> N
         block_columns = {
             column["name"] for column in inspector.get_columns("availability_blocks")
         }
-        if "calendar_event_id" not in block_columns:
-            with migration_engine.begin() as connection:
+        block_additions = {
+            "calendar_event_id": "VARCHAR(120)",
+            "collaboration_name": "VARCHAR(160)",
+            "collaboration_contact": "VARCHAR(64)",
+            "collaboration_details": "TEXT",
+            "collaboration_recorded_by": "VARCHAR(120)",
+            "collaboration_recorded_at": "TIMESTAMP",
+        }
+        with migration_engine.begin() as connection:
+            for name, sql_type in block_additions.items():
+                if name in block_columns:
+                    continue
                 connection.execute(
                     text(
                         "ALTER TABLE availability_blocks "
-                        "ADD COLUMN calendar_event_id VARCHAR(120)"
+                        f"ADD COLUMN {name} {sql_type}"
                     )
                 )
     if "payment_records" not in table_names:

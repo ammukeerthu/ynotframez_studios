@@ -141,6 +141,11 @@ class DatabaseConfigurationTests(unittest.TestCase):
                 for column in inspect(engine).get_columns("availability_blocks")
             }
             self.assertIn("calendar_event_id", columns)
+            self.assertIn("collaboration_name", columns)
+            self.assertIn("collaboration_contact", columns)
+            self.assertIn("collaboration_details", columns)
+            self.assertIn("collaboration_recorded_by", columns)
+            self.assertIn("collaboration_recorded_at", columns)
         finally:
             engine.dispose()
 

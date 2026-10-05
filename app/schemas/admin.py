@@ -287,6 +287,40 @@ class AdminUpcomingBlockItem(BaseModel):
     end_time: str
     duration_hours: float
     reason: str
+    collaboration_name: str | None = None
+
+
+class AdminCollaborationSummaryItem(BaseModel):
+    collaborator_name: str
+    sessions: int
+    blocked_hours: float
+
+
+class AdminCollaborationUsageItem(BaseModel):
+    id: int
+    space_id: str
+    space_name: str
+    booking_date: str
+    start_time: str
+    end_time: str
+    duration_hours: float
+    collaborator_name: str | None = None
+    collaborator_contact: str | None = None
+    collaboration_details: str | None = None
+    recorded_by: str | None = None
+    recorded_at: str | None = None
+    details_missing: bool
+
+
+class AdminCollaborationUsageResponse(BaseModel):
+    period: str
+    month: str | None = None
+    year: int
+    total_hours: float
+    total_sessions: int
+    unique_collaborators: int
+    collaborators: list[AdminCollaborationSummaryItem]
+    records: list[AdminCollaborationUsageItem]
 
 
 class AdminUnavailabilityOverviewResponse(BaseModel):
@@ -564,6 +598,9 @@ class AdminAvailabilityBlockCreate(BaseModel):
         multiple_of=BOOKING_DURATION_INCREMENT_HOURS,
     )
     reason: str = Field(default="Owner blocked", max_length=240)
+    collaboration_name: str | None = Field(default=None, max_length=160)
+    collaboration_contact: str | None = Field(default=None, max_length=64)
+    collaboration_details: str | None = Field(default=None, max_length=1000)
 
     @field_validator("start_time")
     @classmethod
@@ -571,6 +608,36 @@ class AdminAvailabilityBlockCreate(BaseModel):
         if value.minute not in {0, 30} or value.second or value.microsecond:
             raise ValueError("Start time must be on the hour or half hour.")
         return value
+
+    @model_validator(mode="after")
+    def validate_collaboration_details(self) -> "AdminAvailabilityBlockCreate":
+        self.reason = self.reason.strip() or "Owner blocked"
+        self.collaboration_name = (self.collaboration_name or "").strip() or None
+        self.collaboration_contact = (self.collaboration_contact or "").strip() or None
+        self.collaboration_details = (self.collaboration_details or "").strip() or None
+        if self.reason.casefold() == "collaboration":
+            if not self.collaboration_name:
+                raise ValueError("Enter who is using the studio for the collaboration.")
+        else:
+            self.collaboration_name = None
+            self.collaboration_contact = None
+            self.collaboration_details = None
+        return self
+
+
+class AdminCollaborationDetailsUpdate(BaseModel):
+    collaboration_name: str = Field(min_length=1, max_length=160)
+    collaboration_contact: str | None = Field(default=None, max_length=64)
+    collaboration_details: str | None = Field(default=None, max_length=1000)
+
+    @model_validator(mode="after")
+    def clean_values(self) -> "AdminCollaborationDetailsUpdate":
+        self.collaboration_name = self.collaboration_name.strip()
+        if not self.collaboration_name:
+            raise ValueError("Enter who used the studio for the collaboration.")
+        self.collaboration_contact = (self.collaboration_contact or "").strip() or None
+        self.collaboration_details = (self.collaboration_details or "").strip() or None
+        return self
 
 
 class AdminAvailabilityBlockResponse(BaseModel):
@@ -581,6 +648,11 @@ class AdminAvailabilityBlockResponse(BaseModel):
     end_time: str
     duration_hours: float
     reason: str
+    collaboration_name: str | None = None
+    collaboration_contact: str | None = None
+    collaboration_details: str | None = None
+    collaboration_recorded_by: str | None = None
+    collaboration_recorded_at: str | None = None
 
 
 class AdminAvailabilitySlotResponse(BaseModel):
@@ -592,6 +664,7 @@ class AdminAvailabilitySlotResponse(BaseModel):
     customer_name: str | None = None
     block_id: int | None = None
     reason: str | None = None
+    collaboration_name: str | None = None
 
 
 class AdminDayAvailabilityResponse(BaseModel):

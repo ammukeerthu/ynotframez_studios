@@ -31,6 +31,8 @@ from app.schemas.admin import (
     AdminAvailabilityBlockCreate,
     AdminAvailabilityBlockResponse,
     AdminAvailabilitySlotResponse,
+    AdminCollaborationDetailsUpdate,
+    AdminCollaborationUsageResponse,
     AdminDayAvailabilityResponse,
     AdminChangePasswordRequest,
     AdminLoginRequest,
@@ -1521,6 +1523,7 @@ def admin_unavailability_overview(
                 "end_time": block_end.strftime("%H:%M"),
                 "duration_hours": block.duration_hours,
                 "reason": block.reason or "Other",
+                "collaboration_name": block.collaboration_name,
             }
         )
     upcoming_blocks.sort(key=lambda item: (item["booking_date"], item["start_time"], item["id"]))
@@ -1711,6 +1714,102 @@ def admin_unavailability_studios(
     return AdminUnavailabilityStudioResponse(
         month=overview.month,
         studios=overview.month_studio_hours,
+    )
+
+
+@router.get(
+    "/overview/unavailability/collaborations",
+    response_model=AdminCollaborationUsageResponse,
+    dependencies=[Depends(require_admin)],
+)
+def admin_unavailability_collaborations(
+    period: str = Query(default="month", pattern=r"^(month|year)$"),
+    month: str | None = Query(default=None, pattern=r"^\d{4}-\d{2}$"),
+    year: int | None = None,
+    db: Session = Depends(get_db),
+    space_id: str | None = None,
+) -> AdminCollaborationUsageResponse:
+    _validate_overview_space(space_id, db)
+    first_day, next_month, selected_month = _month_bounds(month)
+    selected_year = first_day.year if period == "month" else (year or first_day.year)
+    if not 2000 <= selected_year <= 2100:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Year must be between 2000 and 2100.")
+    range_start = first_day if period == "month" else date(selected_year, 1, 1)
+    range_end = next_month if period == "month" else date(selected_year + 1, 1, 1)
+
+    statement = select(AvailabilityBlock).where(
+        func.lower(func.trim(AvailabilityBlock.reason)) == "collaboration",
+        AvailabilityBlock.booking_date >= range_start.isoformat(),
+        AvailabilityBlock.booking_date < range_end.isoformat(),
+    )
+    if space_id:
+        statement = statement.where(AvailabilityBlock.space_id == space_id)
+    blocks = list(
+        db.scalars(
+            statement.order_by(
+                AvailabilityBlock.booking_date.desc(),
+                AvailabilityBlock.start_time.desc(),
+                AvailabilityBlock.id.desc(),
+            )
+        )
+    )
+
+    grouped: dict[str, dict[str, int | float | str]] = {}
+    unique_names: set[str] = set()
+    records = []
+    spaces_by_id = {
+        space.id: space for space in list_spaces(db, include_inactive=True)
+    }
+    for block in blocks:
+        name = (block.collaboration_name or "").strip()
+        display_name = name or "Details missing"
+        group_key = name.casefold() if name else "__missing__"
+        if name:
+            unique_names.add(group_key)
+        entry = grouped.setdefault(
+            group_key,
+            {"collaborator_name": display_name, "sessions": 0, "blocked_hours": 0.0},
+        )
+        entry["sessions"] = int(entry["sessions"]) + 1
+        entry["blocked_hours"] = float(entry["blocked_hours"]) + block.duration_hours
+        block_start = datetime.strptime(f"{block.booking_date} {block.start_time}", "%Y-%m-%d %H:%M")
+        space = spaces_by_id.get(block.space_id)
+        records.append(
+            {
+                "id": block.id,
+                "space_id": block.space_id,
+                "space_name": space.name if space else block.space_id,
+                "booking_date": block.booking_date,
+                "start_time": block.start_time,
+                "end_time": (block_start + timedelta(hours=block.duration_hours)).strftime("%H:%M"),
+                "duration_hours": block.duration_hours,
+                "collaborator_name": name or None,
+                "collaborator_contact": block.collaboration_contact,
+                "collaboration_details": block.collaboration_details,
+                "recorded_by": block.collaboration_recorded_by,
+                "recorded_at": block.collaboration_recorded_at.isoformat() if block.collaboration_recorded_at else None,
+                "details_missing": not bool(name),
+            }
+        )
+    collaborators = [
+        {
+            **entry,
+            "blocked_hours": round(float(entry["blocked_hours"]), 1),
+        }
+        for entry in sorted(
+            grouped.values(),
+            key=lambda item: (-float(item["blocked_hours"]), str(item["collaborator_name"]).casefold()),
+        )
+    ]
+    return AdminCollaborationUsageResponse(
+        period=period,
+        month=selected_month if period == "month" else None,
+        year=selected_year,
+        total_hours=round(sum(block.duration_hours for block in blocks), 1),
+        total_sessions=len(blocks),
+        unique_collaborators=len(unique_names),
+        collaborators=collaborators,
+        records=records,
     )
 
 
@@ -2430,6 +2529,7 @@ def admin_availability(
                 customer_name=booking.customer_name if booking else None,
                 block_id=block.id if block else None,
                 reason=block.reason if block else None,
+                collaboration_name=block.collaboration_name if block else None,
             )
         )
 
@@ -2503,6 +2603,11 @@ def admin_create_availability_block(
             start_time=payload.start_time.strftime("%H:%M"),
             duration_hours=payload.duration_hours,
             reason=payload.reason.strip() or "Owner blocked",
+            collaboration_name=payload.collaboration_name,
+            collaboration_contact=payload.collaboration_contact,
+            collaboration_details=payload.collaboration_details,
+            collaboration_recorded_by=user.username if payload.collaboration_name else None,
+            collaboration_recorded_at=utc_now() if payload.collaboration_name else None,
         )
         created_event_id: str | None = None
         try:
@@ -2600,6 +2705,11 @@ def admin_delete_availability_block_slot(
                     start_time=slot_end.strftime("%H:%M"),
                     duration_hours=right_hours,
                     reason=block.reason,
+                    collaboration_name=block.collaboration_name,
+                    collaboration_contact=block.collaboration_contact,
+                    collaboration_details=block.collaboration_details,
+                    collaboration_recorded_by=block.collaboration_recorded_by,
+                    collaboration_recorded_at=block.collaboration_recorded_at,
                 )
                 db.add(right_block)
                 db.flush()
@@ -2689,6 +2799,44 @@ def admin_delete_availability_block(
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
+@router.patch(
+    "/availability/blocks/{block_id}/collaboration",
+    response_model=AdminAvailabilityBlockResponse,
+)
+def admin_update_collaboration_details(
+    block_id: int,
+    payload: AdminCollaborationDetailsUpdate,
+    db: Session = Depends(get_db),
+    owner: AdminUser = Depends(require_owner),
+) -> AdminAvailabilityBlockResponse:
+    block = db.get(AvailabilityBlock, block_id)
+    if block is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Availability block not found.")
+    if (block.reason or "").strip().casefold() != "collaboration":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Collaboration details can only be added to Collaboration blocks.",
+        )
+
+    block.collaboration_name = payload.collaboration_name
+    block.collaboration_contact = payload.collaboration_contact
+    block.collaboration_details = payload.collaboration_details
+    block.collaboration_recorded_by = owner.username
+    block.collaboration_recorded_at = utc_now()
+    try:
+        event_id = BookingApplicationService(db).calendar.update_availability_block_event(block)
+        block.calendar_event_id = event_id
+        db.commit()
+    except Exception as error:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="The collaboration details could not be updated in Google Calendar, so they were not saved.",
+        ) from error
+    db.refresh(block)
+    return _serialize_availability_block(block)
+
+
 def _serialize_booking(booking: Booking, db: Session) -> AdminBookingResponse:
     end_time = None
     if booking.booking_date and booking.start_time and booking.duration_hours:
@@ -2759,6 +2907,13 @@ def _serialize_availability_block(block: AvailabilityBlock) -> AdminAvailability
         end_time=(start + timedelta(hours=block.duration_hours)).strftime("%H:%M"),
         duration_hours=block.duration_hours,
         reason=block.reason,
+        collaboration_name=block.collaboration_name,
+        collaboration_contact=block.collaboration_contact,
+        collaboration_details=block.collaboration_details,
+        collaboration_recorded_by=block.collaboration_recorded_by,
+        collaboration_recorded_at=(
+            block.collaboration_recorded_at.isoformat() if block.collaboration_recorded_at else None
+        ),
     )
 
 

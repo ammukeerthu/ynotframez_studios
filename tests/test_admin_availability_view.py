@@ -94,8 +94,8 @@ class AdminAvailabilityViewTest(unittest.TestCase):
         self.assertNotIn('data-table-column="studio"', self.html)
         self.assertNotIn('data-table-column="studio"', self.script)
         self.assertIn('value="actions" data-booking-column-toggle checked disabled', self.html)
-        self.assertIn('/static/admin.css?v=20261001-2', self.html)
-        self.assertIn('/static/admin.js?v=20261001-3', self.html)
+        self.assertIn('/static/admin.css?v=20261005-1', self.html)
+        self.assertIn('/static/admin.js?v=20261005-1', self.html)
 
     def test_admin_loading_copy_contains_no_encoding_corruption(self) -> None:
         for corrupted_marker in ("â", "Â", "ï¿½", "�"):
@@ -304,7 +304,12 @@ class AdminAvailabilityViewTest(unittest.TestCase):
         self.assertIn('id="upcoming-blocks-body"', self.html)
         self.assertNotIn('id="upcoming-blocks-table-title"', self.html)
         self.assertNotIn('upcoming-blocks-table-title', self.script)
-        self.assertIn('<th>Date &amp; Time</th><th>Studio</th><th>Reason</th><th>Duration</th>', self.html)
+        self.assertIn('<th>Date &amp; Time</th><th>Studio</th><th>Reason</th><th>Used By</th><th>Duration</th>', self.html)
+        self.assertIn('id="collaboration-usage-table"', self.html)
+        self.assertIn('name="collaboration_period"', self.html)
+        self.assertIn('id="collaboration-modal"', self.html)
+        self.assertIn('/api/admin/overview/unavailability/collaborations?${query}', self.script)
+        self.assertIn('/availability/blocks/${data.get("block_id")}/collaboration', self.script)
         self.assertIn('<span>FROM</span><input name="date_from" type="date" required>', self.html)
         self.assertIn('<span>TO</span><input name="date_to" type="date" required>', self.html)
         self.assertIn('id="unavailability-month-chart"', self.html)

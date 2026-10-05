@@ -13,6 +13,8 @@ const bookingColumnsButton = document.querySelector("#booking-columns-button");
 const bookingColumnsPanel = document.querySelector("#booking-columns-panel");
 const availabilityFilters = document.querySelector("#availability-filters");
 const availabilityBlockForm = document.querySelector("#availability-block-form");
+const collaborationModal = document.querySelector("#collaboration-modal");
+const collaborationDetailsForm = document.querySelector("#collaboration-details-form");
 const slotContextMenu = document.querySelector("#slot-context-menu");
 const unblockSlotAction = document.querySelector("#unblock-slot-action");
 const alertCenter = document.querySelector("#alert-center");
@@ -49,6 +51,7 @@ let alertFilter = "all";
 let availabilityRequestToken = 0;
 let availabilityRequestController = null;
 let currentAvailabilityDay = null;
+let collaborationRecords = new Map();
 let contextSlot = null;
 let bookingEditAvailabilityRequestToken = 0;
 let bookingEditAvailabilityRequestController = null;
@@ -338,6 +341,12 @@ unavailabilityOverviewFilters.elements.trend_year.addEventListener("change", () 
 unavailabilityOverviewFilters.elements.studio_month.addEventListener("change", () => loadUnavailabilityStudioOverview());
 unavailabilityOverviewFilters.elements.date_from.addEventListener("change", () => loadUpcomingBlocksOverview());
 unavailabilityOverviewFilters.elements.date_to.addEventListener("change", () => loadUpcomingBlocksOverview());
+unavailabilityOverviewFilters.elements.collaboration_period.addEventListener("change", () => {
+  syncCollaborationPeriodFilters();
+  loadCollaborationUsageOverview();
+});
+unavailabilityOverviewFilters.elements.collaboration_month.addEventListener("change", () => loadCollaborationUsageOverview());
+unavailabilityOverviewFilters.elements.collaboration_year.addEventListener("change", () => loadCollaborationUsageOverview());
 
 function setupOverviewFilters() {
   const currentMonth = localDate().slice(0, 7);
@@ -357,6 +366,10 @@ function setupOverviewFilters() {
   unavailabilityOverviewFilters.elements.year.value = currentMonth.slice(0, 4);
   unavailabilityOverviewFilters.elements.trend_year.value = currentMonth.slice(0, 4);
   unavailabilityOverviewFilters.elements.studio_month.value = currentMonth;
+  unavailabilityOverviewFilters.elements.collaboration_period.value = "month";
+  unavailabilityOverviewFilters.elements.collaboration_month.value = currentMonth;
+  unavailabilityOverviewFilters.elements.collaboration_year.value = currentMonth.slice(0, 4);
+  syncCollaborationPeriodFilters();
   unavailabilityOverviewFilters.elements.date_from.value = currentWeek.from;
   unavailabilityOverviewFilters.elements.date_to.value = currentWeek.to;
 }
@@ -992,9 +1005,85 @@ function renderUpcomingBlocks(items) {
       <td>${safe(formatDate(item.booking_date))}<small>${safe(displayTime(item.start_time))} to ${safe(displayTime(item.end_time))}</small></td>
       <td>${safe(item.space_name)}</td>
       <td>${safe(item.reason)}</td>
+      <td>${safe(item.collaboration_name || "—")}</td>
       <td>${safe(hoursLabel(item.duration_hours))}</td>
     </tr>`).join("")
-    : '<tr><td colspan="4" class="empty">No upcoming blocked slots in this date range.</td></tr>';
+    : '<tr><td colspan="5" class="empty">No upcoming blocked slots in this date range.</td></tr>';
+}
+
+function syncCollaborationPeriodFilters() {
+  const isYear = unavailabilityOverviewFilters.elements.collaboration_period.value === "year";
+  document.querySelector("[data-collaboration-month]").hidden = isYear;
+  document.querySelector("[data-collaboration-year]").hidden = !isYear;
+}
+
+function renderCollaborationUsage(overview) {
+  collaborationRecords = new Map(overview.records.map((item) => [String(item.id), item]));
+  document.querySelector("#collaboration-total-hours").textContent = hoursLabel(overview.total_hours);
+  document.querySelector("#collaboration-total-sessions").textContent = overview.total_sessions;
+  document.querySelector("#collaboration-unique-count").textContent = overview.unique_collaborators;
+  document.querySelector("#collaboration-usage-title").textContent = overview.period === "year"
+    ? String(overview.year)
+    : monthLabel(overview.month);
+
+  const chart = document.querySelector("#collaboration-usage-chart");
+  const maximum = Math.max(...overview.collaborators.map((item) => Number(item.blocked_hours || 0)), 0);
+  chart.innerHTML = maximum
+    ? overview.collaborators.map((item) => {
+      const width = Number(item.blocked_hours || 0) / maximum * 100;
+      return `<article class="analytics-bar collaboration-usage-bar">
+        <div><b>${safe(item.collaborator_name)}</b><span>${safe(hoursLabel(item.blocked_hours))} · ${item.sessions} session${item.sessions === 1 ? "" : "s"}</span></div>
+        <div class="analytics-bar-track" role="img" aria-label="${safeAttr(`${item.collaborator_name}: ${hoursLabel(item.blocked_hours)}`)}"><i style="width:${width}%"></i></div>
+      </article>`;
+    }).join("")
+    : '<p class="analytics-empty">No collaboration blocks for this period.</p>';
+
+  const body = document.querySelector("#collaboration-usage-body");
+  body.innerHTML = overview.records.length
+    ? overview.records.map((item) => {
+      const name = item.collaborator_name
+        ? safe(item.collaborator_name)
+        : '<span class="collaboration-missing">Details missing</span>';
+      const recordedBy = item.recorded_by
+        ? `${safe(item.recorded_by)}${item.recorded_at ? `<small>${safe(formatDateTime(item.recorded_at))}</small>` : ""}`
+        : "—";
+      const action = isOwner()
+        ? `<button type="button" class="manage-booking collaboration-details-action" data-collaboration-block-id="${item.id}">${item.details_missing ? "Add Details" : "Edit Details"}</button>`
+        : "—";
+      return `<tr>
+        <td>${safe(formatDate(item.booking_date))}<small>${safe(displayTime(item.start_time))} to ${safe(displayTime(item.end_time))}</small></td>
+        <td>${safe(item.space_name)}</td>
+        <td>${name}</td>
+        <td>${safe(item.collaborator_contact || "—")}</td>
+        <td>${safe(item.collaboration_details || "—")}</td>
+        <td>${safe(hoursLabel(item.duration_hours))}</td>
+        <td>${recordedBy}</td>
+        <td>${action}</td>
+      </tr>`;
+    }).join("")
+    : '<tr><td colspan="8" class="empty">No collaboration blocks for this period.</td></tr>';
+}
+
+async function loadCollaborationUsageOverview() {
+  const chart = document.querySelector("#collaboration-usage-chart");
+  const body = document.querySelector("#collaboration-usage-body");
+  chart.innerHTML = '<p class="analytics-empty">Loading collaboration usage...</p>';
+  body.innerHTML = '<tr><td colspan="8" class="empty">Loading collaboration records...</td></tr>';
+  const period = unavailabilityOverviewFilters.elements.collaboration_period.value;
+  const query = appendOverviewSpace(new URLSearchParams({
+    period,
+    month: unavailabilityOverviewFilters.elements.collaboration_month.value,
+    year: unavailabilityOverviewFilters.elements.collaboration_year.value,
+  }), unavailabilityOverviewFilters);
+  try {
+    const overview = await overviewPanelApi("unavailability-collaborations", `/api/admin/overview/unavailability/collaborations?${query}`);
+    if (!overview) return;
+    renderCollaborationUsage(overview);
+  } catch (error) {
+    showOverviewError("#unavailability-overview-message", error);
+    chart.innerHTML = '<p class="analytics-empty">Collaboration usage could not be loaded.</p>';
+    body.innerHTML = '<tr><td colspan="8" class="empty">Collaboration records could not be loaded.</td></tr>';
+  }
 }
 
 async function loadUpcomingBlocksOverview() {
@@ -1002,7 +1091,7 @@ async function loadUpcomingBlocksOverview() {
   const dateFrom = unavailabilityOverviewFilters.elements.date_from.value;
   const dateTo = unavailabilityOverviewFilters.elements.date_to.value;
   if (!dateFrom || !dateTo || dateFrom > dateTo) return;
-  body.innerHTML = '<tr><td colspan="4" class="empty">Loading blocked slots...</td></tr>';
+  body.innerHTML = '<tr><td colspan="5" class="empty">Loading blocked slots...</td></tr>';
   const query = appendOverviewSpace(new URLSearchParams({
     date_from: dateFrom,
     date_to: dateTo,
@@ -1013,7 +1102,7 @@ async function loadUpcomingBlocksOverview() {
     renderUpcomingBlocks(overview.blocks);
   } catch (error) {
     showOverviewError("#unavailability-overview-message", error);
-    body.innerHTML = '<tr><td colspan="4" class="empty">Blocked slots could not be loaded.</td></tr>';
+    body.innerHTML = '<tr><td colspan="5" class="empty">Blocked slots could not be loaded.</td></tr>';
   }
 }
 
@@ -1095,12 +1184,13 @@ async function loadUnavailabilityOverview() {
     loadUnavailabilityYearOverview(),
     loadUnavailabilityTrendOverview(),
     loadUnavailabilityStudioOverview(),
+    loadCollaborationUsageOverview(),
   ]);
   const message = document.querySelector("#unavailability-overview-message");
   message.hidden = true;
   unavailabilityOverviewFilters.setAttribute("aria-busy", "true");
   document.querySelector("#unavailability-total").textContent = "...";
-  document.querySelector("#upcoming-blocks-body").innerHTML = '<tr><td colspan="4" class="empty">Loading blocked slots...</td></tr>';
+  document.querySelector("#upcoming-blocks-body").innerHTML = '<tr><td colspan="5" class="empty">Loading blocked slots...</td></tr>';
   document.querySelector("#unavailability-month-chart").innerHTML = '<p class="analytics-empty">Loading blocked time...</p>';
   document.querySelector("#unavailability-year-chart").innerHTML = '<p class="analytics-empty">Loading blocked time...</p>';
   document.querySelector("#unavailability-trend-chart").innerHTML = '<p class="analytics-empty">Loading blocked-hours trend...</p>';
@@ -1391,6 +1481,12 @@ function bookingRow(booking) {
 function formatDate(value) {
   return new Intl.DateTimeFormat("en-IN", { day: "2-digit", month: "short", year: "numeric" })
     .format(new Date(`${value}T12:00:00`));
+}
+
+function formatDateTime(value) {
+  return new Intl.DateTimeFormat("en-IN", {
+    day: "2-digit", month: "short", year: "numeric", hour: "numeric", minute: "2-digit",
+  }).format(new Date(value));
 }
 
 function displayTime(value) {
@@ -1735,6 +1831,18 @@ function syncBlockDurationOptions() {
   button.disabled = !startValue || !maximumDuration;
 }
 
+function syncCollaborationBlockFields() {
+  const fields = availabilityBlockForm.querySelector("[data-collaboration-fields]");
+  const isCollaboration = availabilityBlockForm.elements.reason.value === "Collaboration";
+  fields.hidden = !isCollaboration;
+  availabilityBlockForm.elements.collaboration_name.required = isCollaboration;
+  if (!isCollaboration) {
+    availabilityBlockForm.elements.collaboration_name.value = "";
+    availabilityBlockForm.elements.collaboration_contact.value = "";
+    availabilityBlockForm.elements.collaboration_details.value = "";
+  }
+}
+
 function availableEditHalfHoursFrom(startTime) {
   if (!currentBookingEditDay) return 0;
   const startIndex = currentBookingEditDay.slots.findIndex((slot) => slot.start_time === startTime);
@@ -2065,12 +2173,16 @@ function availabilitySlot(slot) {
   const reasonLabel = slot.status === "blocked" && slot.reason
     ? `<strong class="admin-slot-reason">${safe(slot.reason)}</strong>`
     : "";
+  const collaborationLabel = slot.status === "blocked" && slot.collaboration_name
+    ? `<small class="admin-slot-collaborator">${safe(slot.collaboration_name)}</small>`
+    : "";
   const slotLabel = `${displayTime(slot.start_time)} - ${displayTime(slot.end_time)}`;
   const title = `${slotLabel} · ${detail}`;
   return `<button type="button" class="admin-slot-button ${safeAttr(slot.status)}" ${action} ${disabled} title="${safeAttr(title)}">
     <span>${safe(slotLabel)}</span>
     <small>${safe(statusLabel)}</small>
     ${reasonLabel}
+    ${collaborationLabel}
     <em>${safe(actionLabel)}</em>
   </button>`;
 }
@@ -2503,6 +2615,60 @@ document.querySelector("#payment-action-button").addEventListener("click", async
     button.disabled = false;
   }
 });
+function openCollaborationDetailsModal(record) {
+  if (!record || !isOwner()) return;
+  collaborationDetailsForm.elements.block_id.value = record.id;
+  collaborationDetailsForm.elements.schedule.value = `${formatDate(record.booking_date)} · ${displayTime(record.start_time)} to ${displayTime(record.end_time)}`;
+  collaborationDetailsForm.elements.studio.value = record.space_name;
+  collaborationDetailsForm.elements.duration.value = hoursLabel(record.duration_hours);
+  collaborationDetailsForm.elements.collaboration_name.value = record.collaborator_name || "";
+  collaborationDetailsForm.elements.collaboration_contact.value = record.collaborator_contact || "";
+  collaborationDetailsForm.elements.collaboration_details.value = record.collaboration_details || "";
+  document.querySelector("#collaboration-modal-message").hidden = true;
+  collaborationModal.hidden = false;
+  collaborationDetailsForm.elements.collaboration_name.focus();
+}
+
+document.querySelector("#collaboration-usage-body").addEventListener("click", (event) => {
+  const button = event.target.closest("[data-collaboration-block-id]");
+  if (!button) return;
+  openCollaborationDetailsModal(collaborationRecords.get(button.dataset.collaborationBlockId));
+});
+
+collaborationDetailsForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const data = new FormData(collaborationDetailsForm);
+  const button = document.querySelector("#save-collaboration-button");
+  const message = document.querySelector("#collaboration-modal-message");
+  button.disabled = true;
+  message.hidden = true;
+  try {
+    await api(`/api/admin/availability/blocks/${data.get("block_id")}/collaboration`, {
+      method: "PATCH",
+      body: JSON.stringify({
+        collaboration_name: data.get("collaboration_name"),
+        collaboration_contact: data.get("collaboration_contact") || null,
+        collaboration_details: data.get("collaboration_details") || null,
+      }),
+    });
+    collaborationModal.hidden = true;
+    showDashboardMessage("#unavailability-overview-message", "Collaboration details saved and synced to Google Calendar.");
+    await Promise.all([loadCollaborationUsageOverview(), loadUpcomingBlocksOverview(), loadAvailability()]);
+  } catch (error) {
+    message.textContent = error.message;
+    message.hidden = false;
+  } finally {
+    button.disabled = false;
+  }
+});
+
+document.querySelector(".collaboration-modal-close").addEventListener("click", () => {
+  collaborationModal.hidden = true;
+});
+collaborationModal.addEventListener("click", (event) => {
+  if (event.target === collaborationModal) collaborationModal.hidden = true;
+});
+
 availabilityFilters.addEventListener("submit", (event) => {
   event.preventDefault();
   loadAvailability();
@@ -2513,6 +2679,7 @@ availabilityFilters.querySelector('select[name="space_id"]').addEventListener("c
 });
 availabilityFilters.querySelector('input[name="booking_date"]').addEventListener("change", loadAvailability);
 availabilityBlockForm.elements.start_time.addEventListener("change", syncBlockDurationOptions);
+availabilityBlockForm.elements.reason.addEventListener("change", syncCollaborationBlockFields);
 bookingEditForm.elements.space_id.addEventListener("change", () => {
   syncBookingEditPaymentEstimate();
   loadBookingEditAvailability();
@@ -2534,6 +2701,9 @@ availabilityBlockForm.addEventListener("submit", async (event) => {
         start_time: block.get("start_time"),
         duration_hours: Number(block.get("duration_hours")),
         reason: block.get("reason") || "Maintenance",
+        collaboration_name: block.get("collaboration_name") || null,
+        collaboration_contact: block.get("collaboration_contact") || null,
+        collaboration_details: block.get("collaboration_details") || null,
       }),
     });
     showDashboardMessage(
@@ -2541,6 +2711,7 @@ availabilityBlockForm.addEventListener("submit", async (event) => {
       "Studio time blocked. Customer availability has been updated.",
     );
     availabilityBlockForm.elements.reason.value = "Maintenance";
+    syncCollaborationBlockFields();
     await loadAvailability();
   } catch (error) {
     showDashboardMessage("#availability-message", error.message, { autoHide: false, kind: "error" });
@@ -2777,6 +2948,7 @@ bookingFilters.elements.date_from.value = bookingWeek.from;
 bookingFilters.elements.date_to.value = bookingWeek.to;
 applyBookingColumnVisibility();
 setupHalfHourBlockOptions();
+syncCollaborationBlockFields();
 setupBookingEditOptions();
 document.addEventListener("visibilitychange", () => {
   if (!document.hidden && !dashboardView.hidden) loadAlerts();

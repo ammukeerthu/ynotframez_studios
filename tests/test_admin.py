@@ -57,6 +57,8 @@ from app.api.routes.admin import (
     admin_unavailability_trend,
     admin_unavailability_upcoming,
     admin_unavailability_year,
+    admin_unavailability_collaborations,
+    admin_update_collaboration_details,
     require_owner,
     require_admin,
     _operational_alerts,
@@ -76,6 +78,7 @@ from app.models.payment import (
 from app.schemas.admin import (
     AdminChangePasswordRequest,
     AdminAvailabilityBlockCreate,
+    AdminCollaborationDetailsUpdate,
     AdminOfflineBookingCreate,
     AdminBookingUpdate,
     AdminLoginRequest,
@@ -1025,6 +1028,7 @@ class AdminAuthenticationTest(unittest.TestCase):
                     start_time=time(14, 30),
                     duration_hours=1,
                     reason="Collaboration",
+                    collaboration_name="Legacy Creative Team",
                 ),
                 db,
                 user=owner,
@@ -1065,6 +1069,72 @@ class AdminAuthenticationTest(unittest.TestCase):
                 user=staff,
             )
             self.assertEqual(staff_future_block.reason, "Maintenance")
+
+    def test_collaboration_usage_report_and_owner_backfill(self) -> None:
+        engine = create_engine(
+            "sqlite://",
+            connect_args={"check_same_thread": False},
+            poolclass=StaticPool,
+        )
+        self.addCleanup(engine.dispose)
+        Base.metadata.create_all(engine)
+        owner = AdminUser(
+            username="owner",
+            password_salt="salt",
+            password_hash="hash",
+            role="owner",
+            session_version=1,
+        )
+        with Session(engine) as db:
+            block = AvailabilityBlock(
+                space_id="premium_large",
+                booking_date="2026-10-01",
+                start_time="09:00",
+                duration_hours=3,
+                reason="Collaboration",
+                calendar_event_id="gcal_stub_block_legacy",
+            )
+            db.add(block)
+            db.commit()
+            db.refresh(block)
+
+            before = admin_unavailability_collaborations(
+                period="month", month="2026-10", year=None, db=db, space_id=None
+            )
+            self.assertEqual(before.total_hours, 3)
+            self.assertEqual(before.total_sessions, 1)
+            self.assertEqual(before.unique_collaborators, 0)
+            self.assertTrue(before.records[0].details_missing)
+
+            updated = admin_update_collaboration_details(
+                block.id,
+                AdminCollaborationDetailsUpdate(
+                    collaboration_name="North Star Collective",
+                    collaboration_contact="team@example.com",
+                    collaboration_details="Editorial test shoot",
+                ),
+                db,
+                owner,
+            )
+            self.assertEqual(updated.collaboration_name, "North Star Collective")
+            self.assertEqual(updated.collaboration_recorded_by, "owner")
+
+            after = admin_unavailability_collaborations(
+                period="year", month=None, year=2026, db=db, space_id="premium_large"
+            )
+            self.assertEqual(after.unique_collaborators, 1)
+            self.assertEqual(after.collaborators[0].collaborator_name, "North Star Collective")
+            self.assertEqual(after.collaborators[0].sessions, 1)
+            self.assertFalse(after.records[0].details_missing)
+
+            with self.assertRaises(ValueError):
+                AdminAvailabilityBlockCreate(
+                    space_id="premium_large",
+                    booking_date=date(2026, 10, 2),
+                    start_time=time(9),
+                    duration_hours=1,
+                    reason="Collaboration",
+                )
 
     def test_alerts_include_new_booking_start_and_end_handover_reminders(self) -> None:
         engine = create_engine(
