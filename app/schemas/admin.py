@@ -262,6 +262,64 @@ class AdminBookingsPurposeYearResponse(BaseModel):
     purposes: list[AdminPurposeUtilizationItem]
 
 
+class AdminBookingConversionResponse(BaseModel):
+    month: str
+    total_requests: int
+    confirmed: int
+    payment_pending: int
+    expired: int
+    cancelled: int
+    conversion_percent: float
+
+
+class AdminStudioCapacityItem(BaseModel):
+    space_id: str
+    space_name: str
+    operating_hours: float
+    booked_hours: float
+    blocked_hours: float
+    idle_hours: float
+    booked_percent: float
+    blocked_percent: float
+    idle_percent: float
+
+
+class AdminBookingsCapacityResponse(BaseModel):
+    month: str
+    studios: list[AdminStudioCapacityItem]
+
+
+class AdminCustomerInsightItem(BaseModel):
+    customer_name: str
+    phone_number: str
+    customer_email: str | None = None
+    booking_count: int
+    booked_hours: float
+    booking_amount: int
+    last_booking_date: str
+    last_booking_start_time: str
+    last_space_name: str
+
+
+class AdminCustomersOverviewResponse(BaseModel):
+    space_id: str | None
+    total_customers: int
+    repeat_customers: int
+    repeat_rate: float
+    confirmed_bookings: int
+    top_by_hours: list[AdminCustomerInsightItem]
+    top_by_amount: list[AdminCustomerInsightItem]
+    recent_customers: list[AdminCustomerInsightItem]
+
+
+class AdminCustomersMonthResponse(BaseModel):
+    month: str
+    active_customers: int
+    new_customers: int
+    returning_customers: int
+    returning_rate: float
+
+
 class AdminUnavailabilityReasonItem(BaseModel):
     reason: str
     blocked_hours: float

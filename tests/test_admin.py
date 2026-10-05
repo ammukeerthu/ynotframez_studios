@@ -21,6 +21,8 @@ from app.api.routes.admin import (
     admin_booking_detail,
     admin_bookings,
     admin_bookings_day,
+    admin_bookings_capacity,
+    admin_bookings_conversion,
     admin_bookings_heatmap,
     admin_bookings_overview,
     admin_bookings_purpose_month,
@@ -28,6 +30,8 @@ from app.api.routes.admin import (
     admin_bookings_upcoming,
     admin_bookings_utilization,
     admin_bookings_year_utilization,
+    admin_customers_month,
+    admin_customers_overview,
     admin_cancel_booking,
     admin_change_password,
     admin_create_availability_block,
@@ -322,6 +326,10 @@ class AdminAuthenticationTest(unittest.TestCase):
             ("/api/admin/overview/bookings/purposes/month", "GET"),
             ("/api/admin/overview/bookings/purposes/year", "GET"),
             ("/api/admin/overview/bookings/heatmap", "GET"),
+            ("/api/admin/overview/bookings/conversion", "GET"),
+            ("/api/admin/overview/bookings/capacity", "GET"),
+            ("/api/admin/overview/customers", "GET"),
+            ("/api/admin/overview/customers/month", "GET"),
             ("/api/admin/overview/unavailability", "GET"),
             ("/api/admin/overview/unavailability/upcoming", "GET"),
             ("/api/admin/overview/unavailability/month", "GET"),
@@ -542,6 +550,10 @@ class AdminAuthenticationTest(unittest.TestCase):
             bookings_purpose_month_panel = admin_bookings_purpose_month(selected_month, db)
             bookings_purpose_year_panel = admin_bookings_purpose_year(studio_today.year, db)
             bookings_heatmap_panel = admin_bookings_heatmap(selected_month, db)
+            bookings_conversion_panel = admin_bookings_conversion(selected_month, db)
+            bookings_capacity_panel = admin_bookings_capacity(selected_month, db)
+            customers_overview = admin_customers_overview(db)
+            customers_month = admin_customers_month(selected_month, db)
             unavailability_month_panel = admin_unavailability_month(selected_month, db)
             unavailability_year_panel = admin_unavailability_year(studio_today.year, db)
             unavailability_trend_panel = admin_unavailability_trend(studio_today.year, db)
@@ -620,6 +632,19 @@ class AdminAuthenticationTest(unittest.TestCase):
                 3,
             )
             self.assertEqual(bookings_heatmap_panel.month, selected_month)
+            self.assertEqual(bookings_conversion_panel.total_requests, 5)
+            self.assertEqual(bookings_conversion_panel.confirmed, 3)
+            self.assertEqual(bookings_conversion_panel.expired, 1)
+            self.assertEqual(bookings_conversion_panel.cancelled, 1)
+            capacity = {item.space_id: item for item in bookings_capacity_panel.studios}
+            self.assertEqual(capacity["standard_small"].booked_hours, 2)
+            self.assertEqual(capacity["standard_small"].blocked_hours, 2)
+            self.assertGreater(capacity["standard_small"].idle_hours, 0)
+            self.assertEqual(customers_overview.total_customers, 3)
+            self.assertEqual(customers_overview.confirmed_bookings, 3)
+            self.assertEqual(customers_overview.repeat_customers, 0)
+            self.assertEqual(customers_month.active_customers, 2)
+            self.assertEqual(customers_month.new_customers, 2)
             self.assertEqual([item.space_name for item in bookings.bookings], ["Cube", "Arena"])
             cube_heatmap_cell = next(
                 item
@@ -705,6 +730,77 @@ class AdminAuthenticationTest(unittest.TestCase):
                     space_id="missing-space",
                 )
             self.assertEqual(invalid_booking_space.exception.status_code, 404)
+
+    def test_customer_overview_normalizes_phone_and_identifies_returning_customers(self) -> None:
+        engine = create_engine(
+            "sqlite://",
+            connect_args={"check_same_thread": False},
+            poolclass=StaticPool,
+        )
+        self.addCleanup(engine.dispose)
+        Base.metadata.create_all(engine)
+        studio_today = datetime.now(ZoneInfo(settings.studio_timezone)).date()
+        current_month = studio_today.strftime("%Y-%m")
+        previous_month_date = studio_today.replace(day=1) - timedelta(days=1)
+
+        with Session(engine) as db:
+            earlier = Booking(
+                phone_number="+91 98765 43210",
+                customer_email="first@example.com",
+                customer_name="Earlier Name",
+                state=BookingState.CONFIRMED,
+                space_id="standard_small",
+                booking_date=previous_month_date.isoformat(),
+                start_time="10:00",
+                duration_hours=1,
+                payment_mode=PaymentMode.PAY_AT_STUDIO,
+            )
+            latest = Booking(
+                phone_number="09876543210",
+                customer_email="updated@example.com",
+                customer_name="Latest Name",
+                state=BookingState.CONFIRMED,
+                space_id="premium_large",
+                booking_date=studio_today.isoformat(),
+                start_time="11:00",
+                duration_hours=2,
+                payment_mode=PaymentMode.PAY_AT_STUDIO,
+            )
+            db.add_all([earlier, latest])
+            db.flush()
+            db.add_all(
+                [
+                    PaymentRecord(
+                        booking_id=earlier.id,
+                        mode=PaymentMode.PAY_AT_STUDIO,
+                        amount=1000,
+                        status=PaymentStatus.PAID,
+                    ),
+                    PaymentRecord(
+                        booking_id=latest.id,
+                        mode=PaymentMode.PAY_AT_STUDIO,
+                        amount=3000,
+                        status=PaymentStatus.PAID,
+                    ),
+                ]
+            )
+            db.commit()
+
+            overview = admin_customers_overview(db)
+            month = admin_customers_month(current_month, db)
+
+            self.assertEqual(overview.total_customers, 1)
+            self.assertEqual(overview.repeat_customers, 1)
+            self.assertEqual(overview.repeat_rate, 100)
+            self.assertEqual(overview.confirmed_bookings, 2)
+            self.assertEqual(overview.top_by_hours[0].customer_name, "Latest Name")
+            self.assertEqual(overview.top_by_hours[0].booking_count, 2)
+            self.assertEqual(overview.top_by_hours[0].booked_hours, 3)
+            self.assertEqual(overview.top_by_hours[0].booking_amount, 4000)
+            self.assertEqual(month.active_customers, 1)
+            self.assertEqual(month.new_customers, 0)
+            self.assertEqual(month.returning_customers, 1)
+            self.assertEqual(month.returning_rate, 100)
 
     def test_funds_age_outstanding_balances_from_the_session_end(self) -> None:
         engine = create_engine(

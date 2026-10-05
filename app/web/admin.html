@@ -9,9 +9,9 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800&amp;display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/admin.css?v=20261006-2">
+  <link rel="stylesheet" href="/static/admin.css?v=20261006-3">
   <script src="/static/studio_cache.js?v=20260908-1" defer></script>
-  <script src="/static/admin.js?v=20261006-2" defer></script>
+  <script src="/static/admin.js?v=20261006-3" defer></script>
 </head>
 <body>
   <section id="login-view" class="login-view" hidden>
@@ -57,6 +57,7 @@
           <div id="overview-submenu" class="section-submenu" aria-label="Overview submenu" hidden>
             <a href="#funds">Funds</a>
             <a href="#overview-bookings">Bookings</a>
+            <a href="#customers">Customers</a>
             <a href="#unavailability">Unavailability</a>
           </div>
         </div>
@@ -224,6 +225,18 @@
             </div>
           </article>
           <div class="bookings-utilisation-grid bookings-balanced-grid">
+            <article class="analytics-panel booking-conversion-panel">
+              <div class="analytics-panel-head funds-panel-head"><div><p>BOOKING CONVERSION</p><h3 id="booking-conversion-title">Selected month</h3></div><label><span>MONTH &amp; YEAR</span><input id="bookings-conversion-month" type="month" required></label></div>
+              <small class="analytics-panel-note">Scheduled requests grouped by the month they were created</small>
+              <div id="booking-conversion-chart" class="booking-conversion-chart"><p class="analytics-empty">Loading booking conversion&hellip;</p></div>
+            </article>
+            <article class="analytics-panel studio-capacity-panel">
+              <div class="analytics-panel-head funds-panel-head"><div><p>STUDIO CAPACITY</p><h3 id="studio-capacity-title">Selected month</h3></div><label><span>MONTH &amp; YEAR</span><input id="bookings-capacity-month" type="month" required></label></div>
+              <small class="analytics-panel-note">Operating hours split into booked, blocked, and idle time</small>
+              <div id="studio-capacity-chart" class="studio-capacity-chart"><p class="analytics-empty">Loading studio capacity&hellip;</p></div>
+            </article>
+          </div>
+          <div class="bookings-utilisation-grid bookings-balanced-grid">
             <div class="analytics-panel utilisation-summary-panel">
               <div class="analytics-panel-head funds-panel-head"><div><p>MONTH-WISE STUDIO UTILISATION</p><h3 id="utilisation-chart-title">Selected month</h3></div><label><span>MONTH &amp; YEAR</span><input id="bookings-utilisation-month" type="month" required></label></div>
               <small class="analytics-panel-note">Confirmed booked hours / configured operating hours</small>
@@ -252,6 +265,44 @@
             <small class="analytics-panel-note">Booking frequency by weekday and 30-minute time slot</small>
             <div id="utilisation-heatmap" class="utilisation-heatmap"><p class="analytics-empty">Loading utilisation heatmap&hellip;</p></div>
           </div>
+        </div>
+      </section>
+
+      <section id="customers" class="overview-section analytics-section" aria-label="Customers overview">
+        <div class="section-heading bookings-overview-heading">
+          <div><p class="eyebrow">CUSTOMERS</p><h2>Customer overview</h2></div>
+        </div>
+        <div class="customers-overview-content">
+          <form id="customers-overview-filters" class="analytics-filters bookings-analytics-filters">
+            <div class="funds-global-filter"><label><span>STUDIO SPACE</span><select name="space_id"><option value="">All Spaces</option></select></label></div>
+          </form>
+          <div id="customers-overview-message" class="dashboard-message" hidden></div>
+          <p class="funds-summary-label">OVERALL SUMMARY</p>
+          <div class="stats analytics-stats funds-summary-stats bookings-summary-stats customer-summary-stats">
+            <article class="dark"><p>TOTAL CUSTOMERS</p><strong id="customers-summary-total">&hellip;</strong><small>Customers with confirmed bookings</small></article>
+            <article><p>REPEAT CUSTOMERS</p><strong id="customers-summary-repeat">&hellip;</strong><small>Customers with two or more confirmed bookings</small></article>
+            <article><p>REPEAT RATE</p><strong id="customers-summary-rate">&hellip;</strong><small>Repeat customers as a share of all customers</small></article>
+            <article><p>CONFIRMED BOOKINGS</p><strong id="customers-summary-bookings">&hellip;</strong><small>All confirmed sessions represented here</small></article>
+          </div>
+          <article class="analytics-panel customer-mix-panel">
+            <div class="analytics-panel-head funds-panel-head"><div><p>NEW VS RETURNING CUSTOMERS</p><h3 id="customers-month-title">Selected month</h3></div><label><span>MONTH &amp; YEAR</span><input id="customers-month" type="month" required></label></div>
+            <small class="analytics-panel-note">Based on confirmed studio-session dates</small>
+            <div id="customers-month-stats" class="customer-month-stats"><p class="analytics-empty">Loading customer mix&hellip;</p></div>
+          </article>
+          <div class="customer-ranking-grid">
+            <article class="analytics-panel customer-ranking-panel">
+              <div class="analytics-panel-head"><div><p>TOP CUSTOMERS</p><h3>By booked hours</h3></div><small>All confirmed history</small></div>
+              <div class="table-wrap analytics-table-wrap customer-ranking-table-wrap"><table><thead><tr><th>Customer</th><th>Bookings</th><th>Hours</th><th>Amount</th></tr></thead><tbody id="customers-hours-body"><tr><td colspan="4" class="empty">Loading customers&hellip;</td></tr></tbody></table></div>
+            </article>
+            <article class="analytics-panel customer-ranking-panel">
+              <div class="analytics-panel-head"><div><p>TOP CUSTOMERS</p><h3>By booking amount</h3></div><small>All confirmed history</small></div>
+              <div class="table-wrap analytics-table-wrap customer-ranking-table-wrap"><table><thead><tr><th>Customer</th><th>Bookings</th><th>Hours</th><th>Amount</th></tr></thead><tbody id="customers-amount-body"><tr><td colspan="4" class="empty">Loading customers&hellip;</td></tr></tbody></table></div>
+            </article>
+          </div>
+          <article class="analytics-panel recent-customers-panel">
+            <div class="analytics-panel-head"><div><p>RECENTLY ACTIVE CUSTOMERS</p><h3>Latest confirmed sessions</h3></div><small>Most recent customer activity</small></div>
+            <div class="table-wrap analytics-table-wrap recent-customers-table-wrap"><table><thead><tr><th>Customer</th><th>Latest Session</th><th>Studio</th><th>Total Bookings</th><th>Booked Hours</th><th>Booking Amount</th></tr></thead><tbody id="recent-customers-body"><tr><td colspan="6" class="empty">Loading customers&hellip;</td></tr></tbody></table></div>
+          </article>
         </div>
       </section>
 

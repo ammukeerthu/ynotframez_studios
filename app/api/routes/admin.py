@@ -39,6 +39,8 @@ from app.schemas.admin import (
     AdminAlertItem,
     AdminAlertsResponse,
     AdminBookingsDayResponse,
+    AdminBookingsCapacityResponse,
+    AdminBookingConversionResponse,
     AdminBookingsHeatmapResponse,
     AdminBookingsOverviewResponse,
     AdminBookingsPurposeMonthResponse,
@@ -46,6 +48,8 @@ from app.schemas.admin import (
     AdminBookingsUpcomingResponse,
     AdminBookingsUtilizationResponse,
     AdminBookingsYearUtilizationResponse,
+    AdminCustomersMonthResponse,
+    AdminCustomersOverviewResponse,
     AdminFundsCashflowResponse,
     AdminFundsMonthResponse,
     AdminFundsOverviewResponse,
@@ -1454,6 +1458,250 @@ def admin_bookings_purpose_year(
         year=selected_year,
         purposes=_purpose_utilization_between(
             date(selected_year, 1, 1), date(selected_year + 1, 1, 1), db, space_id
+        ),
+    )
+
+
+@router.get(
+    "/overview/bookings/conversion",
+    response_model=AdminBookingConversionResponse,
+    dependencies=[Depends(require_admin)],
+)
+def admin_bookings_conversion(
+    month: str | None = Query(default=None, pattern=r"^\d{4}-\d{2}$"),
+    db: Session = Depends(get_db),
+    space_id: str | None = None,
+) -> AdminBookingConversionResponse:
+    _validate_overview_space(space_id, db)
+    first_day, next_month, selected_month = _month_bounds(month)
+    statement = select(Booking).where(
+        Booking.booking_date.is_not(None),
+        Booking.space_id.is_not(None),
+    )
+    if space_id:
+        statement = statement.where(Booking.space_id == space_id)
+    timezone = ZoneInfo(settings.studio_timezone)
+    bookings = []
+    for booking in db.scalars(statement):
+        created_at = booking.created_at
+        if created_at.tzinfo is None:
+            created_at = created_at.replace(tzinfo=UTC)
+        created_date = created_at.astimezone(timezone).date()
+        if first_day <= created_date < next_month:
+            bookings.append(booking)
+    total_requests = len(bookings)
+    confirmed = sum(booking.state == BookingState.CONFIRMED for booking in bookings)
+    return AdminBookingConversionResponse(
+        month=selected_month,
+        total_requests=total_requests,
+        confirmed=confirmed,
+        payment_pending=sum(booking.state == BookingState.PAYMENT_PENDING for booking in bookings),
+        expired=sum(booking.state == BookingState.EXPIRED for booking in bookings),
+        cancelled=sum(booking.state == BookingState.CANCELLED for booking in bookings),
+        conversion_percent=round(confirmed / total_requests * 100 if total_requests else 0, 1),
+    )
+
+
+@router.get(
+    "/overview/bookings/capacity",
+    response_model=AdminBookingsCapacityResponse,
+    dependencies=[Depends(require_admin)],
+)
+def admin_bookings_capacity(
+    month: str | None = Query(default=None, pattern=r"^\d{4}-\d{2}$"),
+    db: Session = Depends(get_db),
+    space_id: str | None = None,
+) -> AdminBookingsCapacityResponse:
+    _validate_overview_space(space_id, db)
+    first_day, next_month, selected_month = _month_bounds(month)
+    booking_statement = select(Booking).where(
+        Booking.state == BookingState.CONFIRMED,
+        Booking.booking_date >= first_day.isoformat(),
+        Booking.booking_date < next_month.isoformat(),
+    )
+    block_statement = select(AvailabilityBlock).where(
+        AvailabilityBlock.booking_date >= first_day.isoformat(),
+        AvailabilityBlock.booking_date < next_month.isoformat(),
+    )
+    if space_id:
+        booking_statement = booking_statement.where(Booking.space_id == space_id)
+        block_statement = block_statement.where(AvailabilityBlock.space_id == space_id)
+    booked_hours: dict[str, float] = {}
+    for booking in db.scalars(booking_statement):
+        if booking.space_id:
+            booked_hours[booking.space_id] = booked_hours.get(booking.space_id, 0) + float(
+                booking.duration_hours or 0
+            )
+    blocked_hours: dict[str, float] = {}
+    for block in db.scalars(block_statement):
+        blocked_hours[block.space_id] = blocked_hours.get(block.space_id, 0) + float(
+            block.duration_hours or 0
+        )
+    day_count = (next_month - first_day).days
+    studios = []
+    for space in list_spaces(db, include_inactive=True):
+        if space_id and space.id != space_id:
+            continue
+        opening = datetime.combine(first_day, time.fromisoformat(space.opening_time))
+        closing = datetime.combine(first_day, time.fromisoformat(space.closing_time))
+        operating = max(0.0, (closing - opening).total_seconds() / 3600) * day_count
+        booked = booked_hours.get(space.id, 0.0)
+        blocked = blocked_hours.get(space.id, 0.0)
+        idle = max(0.0, operating - booked - blocked)
+        studios.append(
+            {
+                "space_id": space.id,
+                "space_name": space.name,
+                "operating_hours": round(operating, 1),
+                "booked_hours": round(booked, 1),
+                "blocked_hours": round(blocked, 1),
+                "idle_hours": round(idle, 1),
+                "booked_percent": round(booked / operating * 100 if operating else 0, 1),
+                "blocked_percent": round(blocked / operating * 100 if operating else 0, 1),
+                "idle_percent": round(idle / operating * 100 if operating else 0, 1),
+            }
+        )
+    return AdminBookingsCapacityResponse(month=selected_month, studios=studios)
+
+
+def _customer_identity(booking: Booking) -> str:
+    phone = _normalized_phone(booking.phone_number)
+    if phone:
+        return f"phone:{phone}"
+    email = (booking.customer_email or "").strip().casefold()
+    return f"email:{email}" if email else f"booking:{booking.id}"
+
+
+def _confirmed_customer_groups(
+    db: Session,
+    space_id: str | None,
+) -> tuple[list[Booking], dict[str, list[Booking]]]:
+    statement = select(Booking).where(
+        Booking.state == BookingState.CONFIRMED,
+        Booking.booking_date.is_not(None),
+        Booking.space_id.is_not(None),
+    )
+    if space_id:
+        statement = statement.where(Booking.space_id == space_id)
+    bookings = list(db.scalars(statement))
+    grouped: dict[str, list[Booking]] = {}
+    for booking in bookings:
+        grouped.setdefault(_customer_identity(booking), []).append(booking)
+    return bookings, grouped
+
+
+def _customer_insight_items(
+    groups: dict[str, list[Booking]],
+    db: Session,
+) -> list[dict[str, object]]:
+    payment_amounts = {
+        record.booking_id: record.amount for record in db.scalars(select(PaymentRecord))
+    }
+    items = []
+    for bookings in groups.values():
+        latest = max(
+            bookings,
+            key=lambda booking: (
+                booking.booking_date or "",
+                booking.start_time or "",
+                booking.id,
+            ),
+        )
+        space = get_space_by_id(latest.space_id, db, include_inactive=True)
+        items.append(
+            {
+                "customer_name": latest.customer_name or "Customer",
+                "phone_number": latest.phone_number,
+                "customer_email": latest.customer_email,
+                "booking_count": len(bookings),
+                "booked_hours": round(sum(float(item.duration_hours or 0) for item in bookings), 1),
+                "booking_amount": sum(
+                    payment_amounts[item.id]
+                    if item.id in payment_amounts
+                    else _booking_amount(item, db)
+                    for item in bookings
+                ),
+                "last_booking_date": latest.booking_date or "",
+                "last_booking_start_time": latest.start_time or "00:00",
+                "last_space_name": space.name if space else latest.space_id or "Not selected",
+            }
+        )
+    return items
+
+
+@router.get(
+    "/overview/customers",
+    response_model=AdminCustomersOverviewResponse,
+    dependencies=[Depends(require_admin)],
+)
+def admin_customers_overview(
+    db: Session = Depends(get_db),
+    space_id: str | None = None,
+) -> AdminCustomersOverviewResponse:
+    _validate_overview_space(space_id, db)
+    bookings, groups = _confirmed_customer_groups(db, space_id)
+    items = _customer_insight_items(groups, db)
+    repeat_customers = sum(item["booking_count"] >= 2 for item in items)
+    total_customers = len(items)
+    return AdminCustomersOverviewResponse(
+        space_id=space_id,
+        total_customers=total_customers,
+        repeat_customers=repeat_customers,
+        repeat_rate=round(repeat_customers / total_customers * 100 if total_customers else 0, 1),
+        confirmed_bookings=len(bookings),
+        top_by_hours=sorted(
+            items,
+            key=lambda item: (-float(item["booked_hours"]), -int(item["booking_count"]), str(item["customer_name"]).casefold()),
+        )[:10],
+        top_by_amount=sorted(
+            items,
+            key=lambda item: (-int(item["booking_amount"]), -int(item["booking_count"]), str(item["customer_name"]).casefold()),
+        )[:10],
+        recent_customers=sorted(
+            items,
+            key=lambda item: (str(item["last_booking_date"]), str(item["last_booking_start_time"])),
+            reverse=True,
+        )[:10],
+    )
+
+
+@router.get(
+    "/overview/customers/month",
+    response_model=AdminCustomersMonthResponse,
+    dependencies=[Depends(require_admin)],
+)
+def admin_customers_month(
+    month: str | None = Query(default=None, pattern=r"^\d{4}-\d{2}$"),
+    db: Session = Depends(get_db),
+    space_id: str | None = None,
+) -> AdminCustomersMonthResponse:
+    _validate_overview_space(space_id, db)
+    first_day, next_month, selected_month = _month_bounds(month)
+    _, groups = _confirmed_customer_groups(db, space_id)
+    active_customers = 0
+    new_customers = 0
+    returning_customers = 0
+    for bookings in groups.values():
+        booking_dates = [
+            date.fromisoformat(booking.booking_date)
+            for booking in bookings
+            if booking.booking_date
+        ]
+        if not any(first_day <= booking_date < next_month for booking_date in booking_dates):
+            continue
+        active_customers += 1
+        if min(booking_dates) >= first_day:
+            new_customers += 1
+        else:
+            returning_customers += 1
+    return AdminCustomersMonthResponse(
+        month=selected_month,
+        active_customers=active_customers,
+        new_customers=new_customers,
+        returning_customers=returning_customers,
+        returning_rate=round(
+            returning_customers / active_customers * 100 if active_customers else 0,
+            1,
         ),
     )
 

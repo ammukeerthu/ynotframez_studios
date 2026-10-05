@@ -268,6 +268,47 @@ button,input,select,textarea { font:inherit; }
 .heatmap-level-2 { background:#fcb9a5; color:#5f2e22; }
 .heatmap-level-3 { background:#fb876a; color:#321a14; }
 .heatmap-level-4 { background:var(--orange); color:var(--white); }
+.booking-conversion-chart,.studio-capacity-chart { min-height:300px; margin-top:22px; }
+.booking-conversion-chart > .analytics-empty,.studio-capacity-chart > .analytics-empty { display:grid; min-height:300px; place-items:center; }
+.conversion-summary { display:flex; align-items:end; gap:12px; padding-bottom:18px; border-bottom:1px solid var(--line); }
+.conversion-summary strong { font:600 34px/1 var(--admin-font); }
+.conversion-summary span { padding-bottom:3px; color:var(--muted); font-size:var(--admin-caption); }
+.conversion-funnel,.capacity-list { display:grid; gap:15px; margin-top:18px; }
+.conversion-row > div:first-child,.capacity-row > div:first-child { display:flex; justify-content:space-between; gap:15px; }
+.conversion-row b,.capacity-row b { font-size:var(--admin-body); }
+.conversion-row span,.capacity-row span,.capacity-row small { color:var(--muted); font-size:var(--admin-caption); }
+.conversion-track { height:12px; margin-top:7px; overflow:hidden; background:#eeeae2; }
+.conversion-track i { display:block; height:100%; background:#8e8980; }
+.conversion-confirmed .conversion-track i { background:var(--green); }
+.conversion-pending .conversion-track i { background:#d8a034; }
+.conversion-expired .conversion-track i { background:var(--orange); }
+.conversion-cancelled .conversion-track i { background:#9d3528; }
+.capacity-key { display:flex; justify-content:flex-end; gap:16px; color:var(--muted); font-size:var(--admin-caption); }
+.capacity-key span { display:flex; align-items:center; gap:6px; }
+.capacity-key i { width:10px; height:10px; }
+.capacity-key i.booked,.capacity-track i.booked { background:var(--green); }
+.capacity-key i.blocked,.capacity-track i.blocked { background:var(--orange); }
+.capacity-key i.idle,.capacity-track i.idle { background:#dfdbd2; }
+.capacity-row { padding-bottom:16px; border-bottom:1px solid var(--line); }
+.capacity-row:last-child { padding-bottom:0; border-bottom:0; }
+.capacity-track { display:flex; height:18px; margin-top:10px; overflow:hidden; background:#eeeae2; }
+.capacity-track i { display:block; height:100%; }
+.capacity-row small { display:block; margin-top:7px; }
+.customers-overview-content { display:grid; gap:18px; margin-top:24px; }
+.customers-overview-content > .analytics-panel,.customers-overview-content .analytics-panel { margin-top:0; }
+.customer-mix-panel { min-width:0; }
+.customer-month-stats { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:12px; margin-top:22px; }
+.customer-month-stats > article { min-height:130px; padding:18px; border:1px solid var(--line); background:#fbfaf6; }
+.customer-month-stats > article.dark { color:var(--white); border-color:var(--ink); background:var(--ink); }
+.customer-month-stats p { margin:0; color:var(--muted); font-size:var(--admin-caption); font-weight:800; letter-spacing:.06em; }
+.customer-month-stats strong { display:block; margin-top:19px; font:600 27px/1 var(--admin-font); }
+.customer-month-stats small { display:block; margin-top:9px; color:var(--muted); font-size:var(--admin-caption); line-height:1.45; }
+.customer-month-stats > .analytics-empty { grid-column:1/-1; }
+.customer-ranking-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:18px; }
+.customer-ranking-panel { min-width:0; }
+.customer-ranking-table-wrap table { min-width:610px; }
+.customer-ranking-table-wrap td:nth-child(n+2),.recent-customers-table-wrap td:nth-child(n+4) { white-space:nowrap; }
+.recent-customers-table-wrap table { min-width:1000px; }
 .blocked-trend-track { position:relative; overflow:hidden; border-bottom:1px solid var(--line); background:linear-gradient(to top,transparent 49%,#eeeae2 50%,transparent 51%); }
 .blocked-trend-track i { position:absolute; right:12px; bottom:0; left:12px; display:block; background:var(--orange); transition:height .2s ease; }
 .unavailability-insight-grid { margin-top:0; }
@@ -279,6 +320,7 @@ button,input,select,textarea { font:inherit; }
 @media(max-width:1350px){.bookings-utilisation-grid{grid-template-columns:1fr}}
 @media(max-width:1350px){.bookings-balanced-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:1000px){.bookings-balanced-grid{grid-template-columns:1fr}}
+@media(max-width:1100px){.customer-ranking-grid{grid-template-columns:1fr}.customer-month-stats{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:1100px){.bookings-summary-stats{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:900px){.bookings-overview-heading{align-items:flex-start;flex-direction:column}.bookings-overview-heading>p{max-width:none;text-align:left}}
 @media(max-width:1000px){.payment-ageing-cards{grid-template-columns:repeat(2,minmax(0,1fr))}}
@@ -288,6 +330,7 @@ button,input,select,textarea { font:inherit; }
 @media(max-width:520px){.funds-donut-layout,.unavailability-pie-layout{flex-direction:column;gap:24px}.funds-donut,.unavailability-pie{flex-basis:170px;width:170px;height:170px}.funds-donut::after{width:114px;height:114px}.funds-chart-legend{grid-template-columns:1fr 1fr;width:100%}.unavailability-pie-legend{grid-template-columns:1fr;width:100%;max-width:none}.funds-year-key{justify-content:flex-start}}
 @media(max-width:520px){.payment-ageing-cards{grid-template-columns:1fr}.heatmap-table{min-width:690px}.heatmap-cell{min-width:72px}}
 @media(max-width:700px){.heatmap-guide{grid-template-columns:1fr}.heatmap-guide>small{grid-column:auto}.heatmap-scale{white-space:normal}.heatmap-studio-head{align-items:flex-start;flex-direction:column;gap:10px}.heatmap-hover-details{justify-items:start;text-align:left}}
+@media(max-width:620px){.customer-month-stats{grid-template-columns:1fr}.capacity-key{justify-content:flex-start;flex-wrap:wrap}}
 @media(max-width:520px){.bookings-overview-content{gap:14px;margin-top:18px}.bookings-overview-heading{padding-bottom:16px}.bookings-analytics-filters{padding:0}.bookings-utilisation-grid{gap:14px}}
 .alert-center { position:absolute; z-index:40; top:58px; right:0; width:min(540px,calc(100vw - 40px)); max-height:min(720px,75vh); overflow:auto; padding:21px; border:1px solid var(--line); background:var(--white); box-shadow:0 22px 60px rgba(25,23,18,.2); }
 .alert-center-head { display:flex; align-items:center; justify-content:space-between; gap:20px; }

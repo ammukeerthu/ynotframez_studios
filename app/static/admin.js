@@ -37,6 +37,10 @@ const bookingsUtilisationYear = document.querySelector("#bookings-utilisation-ye
 const bookingsPurposeMonth = document.querySelector("#bookings-purpose-month");
 const bookingsPurposeYear = document.querySelector("#bookings-purpose-year");
 const bookingsHeatmapMonth = document.querySelector("#bookings-heatmap-month");
+const bookingsConversionMonth = document.querySelector("#bookings-conversion-month");
+const bookingsCapacityMonth = document.querySelector("#bookings-capacity-month");
+const customersOverviewFilters = document.querySelector("#customers-overview-filters");
+const customersMonth = document.querySelector("#customers-month");
 const unavailabilityOverviewFilters = document.querySelector("#unavailability-overview-filters");
 const staffUserForm = document.querySelector("#staff-user-form");
 const staffUsersList = document.querySelector("#staff-users-list");
@@ -59,6 +63,8 @@ let fundsRequestToken = 0;
 let fundsRequestController = null;
 let bookingsOverviewRequestToken = 0;
 let bookingsOverviewRequestController = null;
+let customersOverviewRequestToken = 0;
+let customersOverviewRequestController = null;
 let unavailabilityRequestToken = 0;
 let unavailabilityRequestController = null;
 const overviewPanelControllers = new Map();
@@ -85,7 +91,7 @@ let visibleBookingColumns = loadBookingColumnPreferences();
 const currency = new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 });
 const adminNavLinks = Array.from(document.querySelectorAll(".admin-shell aside nav a[href^='#']"));
 const adminSections = Array.from(document.querySelectorAll(".admin-shell > main > section[id]"));
-const OVERVIEW_SUBSECTION_IDS = new Set(["funds", "overview-bookings", "unavailability"]);
+const OVERVIEW_SUBSECTION_IDS = new Set(["funds", "overview-bookings", "customers", "unavailability"]);
 const SETTINGS_SUBSECTION_IDS = new Set(["staff-access", "studio-catalogue"]);
 
 function safe(value) {
@@ -276,6 +282,7 @@ function showAdminSection(sectionId, scrollToTop = false) {
 function refreshAdminSection(sectionId, { studioSettingsLoaded = false } = {}) {
   if (sectionId === "funds") return loadFundsOverview();
   if (sectionId === "overview-bookings") return loadBookingsOverview();
+  if (sectionId === "customers") return loadCustomersOverview();
   if (sectionId === "unavailability") return loadUnavailabilityOverview();
   if (sectionId === "bookings") return loadBookings();
   if (sectionId === "availability") return loadAvailability();
@@ -339,6 +346,13 @@ bookingsUtilisationYear.addEventListener("change", () => loadBookingsYearUtilisa
 bookingsPurposeMonth.addEventListener("change", () => loadBookingsPurposeMonthOverview());
 bookingsPurposeYear.addEventListener("change", () => loadBookingsPurposeYearOverview());
 bookingsHeatmapMonth.addEventListener("change", () => loadBookingsHeatmapOverview());
+bookingsConversionMonth.addEventListener("change", () => loadBookingsConversionOverview());
+bookingsCapacityMonth.addEventListener("change", () => loadBookingsCapacityOverview());
+customersOverviewFilters.addEventListener("submit", (event) => {
+  event.preventDefault();
+});
+customersOverviewFilters.elements.space_id.addEventListener("change", () => loadCustomersOverview());
+customersMonth.addEventListener("change", () => loadCustomersMonthOverview());
 unavailabilityOverviewFilters.addEventListener("submit", (event) => {
   event.preventDefault();
 });
@@ -369,6 +383,9 @@ function setupOverviewFilters() {
   bookingsPurposeMonth.value = currentMonth;
   bookingsPurposeYear.value = currentMonth.slice(0, 4);
   bookingsHeatmapMonth.value = currentMonth;
+  bookingsConversionMonth.value = currentMonth;
+  bookingsCapacityMonth.value = currentMonth;
+  customersMonth.value = currentMonth;
   unavailabilityOverviewFilters.elements.month.value = currentMonth;
   unavailabilityOverviewFilters.elements.year.value = currentMonth.slice(0, 4);
   unavailabilityOverviewFilters.elements.trend_year.value = currentMonth.slice(0, 4);
@@ -881,6 +898,81 @@ async function loadBookingsHeatmapOverview() {
   }
 }
 
+function renderBookingConversion(overview) {
+  const chart = document.querySelector("#booking-conversion-chart");
+  const total = Number(overview.total_requests || 0);
+  const items = [
+    ["Requests created", total, "requests"],
+    ["Confirmed", Number(overview.confirmed || 0), "confirmed"],
+    ["Payment pending", Number(overview.payment_pending || 0), "pending"],
+    ["Expired", Number(overview.expired || 0), "expired"],
+    ["Cancelled", Number(overview.cancelled || 0), "cancelled"],
+  ];
+  if (!total) {
+    chart.innerHTML = '<p class="analytics-empty">No scheduled booking requests were created this month.</p>';
+    return;
+  }
+  chart.innerHTML = `<div class="conversion-summary"><strong>${overview.conversion_percent}%</strong><span>request-to-confirmed conversion</span></div>
+    <div class="conversion-funnel">${items.map(([label, count, kind]) => {
+      const width = percentage(count, total);
+      return `<article class="conversion-row conversion-${kind}">
+        <div><b>${safe(label)}</b><span>${count} · ${width}%</span></div>
+        <div class="conversion-track" role="img" aria-label="${safeAttr(`${label}: ${count} of ${total}, ${width}%`)}"><i style="width:${width}%"></i></div>
+      </article>`;
+    }).join("")}</div>`;
+}
+
+async function loadBookingsConversionOverview() {
+  const chart = document.querySelector("#booking-conversion-chart");
+  chart.innerHTML = '<p class="analytics-empty">Loading booking conversion...</p>';
+  const query = appendOverviewSpace(new URLSearchParams({
+    month: bookingsConversionMonth.value,
+  }), bookingsOverviewFilters);
+  try {
+    const overview = await overviewPanelApi("bookings-conversion", `/api/admin/overview/bookings/conversion?${query}`);
+    if (!overview) return;
+    document.querySelector("#booking-conversion-title").textContent = monthLabel(overview.month);
+    renderBookingConversion(overview);
+  } catch (error) {
+    showOverviewError("#bookings-overview-message", error);
+    chart.innerHTML = '<p class="analytics-empty">Booking conversion could not be loaded.</p>';
+  }
+}
+
+function renderStudioCapacity(items) {
+  const chart = document.querySelector("#studio-capacity-chart");
+  if (!items.length) {
+    chart.innerHTML = '<p class="analytics-empty">No studio capacity data is available.</p>';
+    return;
+  }
+  chart.innerHTML = `<div class="capacity-key"><span><i class="booked"></i>Booked</span><span><i class="blocked"></i>Blocked</span><span><i class="idle"></i>Idle</span></div>
+    <div class="capacity-list">${items.map((item) => {
+      const details = `${item.space_name}: ${hoursLabel(item.booked_hours)} booked, ${hoursLabel(item.blocked_hours)} blocked, ${hoursLabel(item.idle_hours)} idle`;
+      return `<article class="capacity-row">
+        <div><b>${safe(item.space_name)}</b><span>${safe(hoursLabel(item.operating_hours))} operating capacity</span></div>
+        <div class="capacity-track" role="img" aria-label="${safeAttr(details)}" title="${safeAttr(details)}"><i class="booked" style="width:${item.booked_percent}%"></i><i class="blocked" style="width:${item.blocked_percent}%"></i><i class="idle" style="width:${item.idle_percent}%"></i></div>
+        <small>${safe(hoursLabel(item.booked_hours))} booked · ${safe(hoursLabel(item.blocked_hours))} blocked · ${safe(hoursLabel(item.idle_hours))} idle</small>
+      </article>`;
+    }).join("")}</div>`;
+}
+
+async function loadBookingsCapacityOverview() {
+  const chart = document.querySelector("#studio-capacity-chart");
+  chart.innerHTML = '<p class="analytics-empty">Loading studio capacity...</p>';
+  const query = appendOverviewSpace(new URLSearchParams({
+    month: bookingsCapacityMonth.value,
+  }), bookingsOverviewFilters);
+  try {
+    const overview = await overviewPanelApi("bookings-capacity", `/api/admin/overview/bookings/capacity?${query}`);
+    if (!overview) return;
+    document.querySelector("#studio-capacity-title").textContent = monthLabel(overview.month);
+    renderStudioCapacity(overview.studios);
+  } catch (error) {
+    showOverviewError("#bookings-overview-message", error);
+    chart.innerHTML = '<p class="analytics-empty">Studio capacity could not be loaded.</p>';
+  }
+}
+
 async function loadBookingsOverview() {
   const requestToken = ++bookingsOverviewRequestToken;
   if (bookingsOverviewRequestController) bookingsOverviewRequestController.abort();
@@ -892,6 +984,8 @@ async function loadBookingsOverview() {
     loadBookingsPurposeMonthOverview(),
     loadBookingsPurposeYearOverview(),
     loadBookingsHeatmapOverview(),
+    loadBookingsConversionOverview(),
+    loadBookingsCapacityOverview(),
   ]);
   const message = document.querySelector("#bookings-overview-message");
   message.hidden = true;
@@ -929,6 +1023,92 @@ async function loadBookingsOverview() {
   } finally {
     if (requestToken === bookingsOverviewRequestToken) bookingsOverviewFilters.setAttribute("aria-busy", "false");
     await panelLoads;
+  }
+}
+
+function customerIdentityCell(item) {
+  const contact = item.phone_number || item.customer_email || "Contact unavailable";
+  return `<b>${safe(item.customer_name)}</b><small>${safe(contact)}</small>`;
+}
+
+function customerRankingRows(items) {
+  return items.length
+    ? items.map((item) => `<tr>
+      <td>${customerIdentityCell(item)}</td>
+      <td>${item.booking_count}</td>
+      <td>${safe(hoursLabel(item.booked_hours))}</td>
+      <td>${safe(currency.format(item.booking_amount))}</td>
+    </tr>`).join("")
+    : '<tr><td colspan="4" class="empty">No confirmed customer history is available.</td></tr>';
+}
+
+function renderCustomersOverview(overview) {
+  document.querySelector("#customers-summary-total").textContent = overview.total_customers;
+  document.querySelector("#customers-summary-repeat").textContent = overview.repeat_customers;
+  document.querySelector("#customers-summary-rate").textContent = `${overview.repeat_rate}%`;
+  document.querySelector("#customers-summary-bookings").textContent = overview.confirmed_bookings;
+  document.querySelector("#customers-hours-body").innerHTML = customerRankingRows(overview.top_by_hours);
+  document.querySelector("#customers-amount-body").innerHTML = customerRankingRows(overview.top_by_amount);
+  document.querySelector("#recent-customers-body").innerHTML = overview.recent_customers.length
+    ? overview.recent_customers.map((item) => `<tr>
+      <td>${customerIdentityCell(item)}</td>
+      <td>${safe(formatDate(item.last_booking_date))}<small>${safe(displayTime(item.last_booking_start_time))}</small></td>
+      <td>${safe(item.last_space_name)}</td>
+      <td>${item.booking_count}</td>
+      <td>${safe(hoursLabel(item.booked_hours))}</td>
+      <td>${safe(currency.format(item.booking_amount))}</td>
+    </tr>`).join("")
+    : '<tr><td colspan="6" class="empty">No confirmed customer history is available.</td></tr>';
+}
+
+function renderCustomersMonth(overview) {
+  const target = document.querySelector("#customers-month-stats");
+  target.innerHTML = `<article class="dark"><p>ACTIVE CUSTOMERS</p><strong>${overview.active_customers}</strong><small>Customers with a confirmed session this month</small></article>
+    <article><p>NEW CUSTOMERS</p><strong>${overview.new_customers}</strong><small>First confirmed session in this period</small></article>
+    <article><p>RETURNING CUSTOMERS</p><strong>${overview.returning_customers}</strong><small>Previously confirmed customers who returned</small></article>
+    <article><p>RETURNING RATE</p><strong>${overview.returning_rate}%</strong><small>Returning share of active customers</small></article>`;
+}
+
+async function loadCustomersMonthOverview() {
+  const target = document.querySelector("#customers-month-stats");
+  target.innerHTML = '<p class="analytics-empty">Loading customer mix...</p>';
+  const query = appendOverviewSpace(new URLSearchParams({ month: customersMonth.value }), customersOverviewFilters);
+  try {
+    const overview = await overviewPanelApi("customers-month", `/api/admin/overview/customers/month?${query}`);
+    if (!overview) return;
+    document.querySelector("#customers-month-title").textContent = monthLabel(overview.month);
+    renderCustomersMonth(overview);
+  } catch (error) {
+    showOverviewError("#customers-overview-message", error);
+    target.innerHTML = '<p class="analytics-empty">Customer mix could not be loaded.</p>';
+  }
+}
+
+async function loadCustomersOverview() {
+  const requestToken = ++customersOverviewRequestToken;
+  if (customersOverviewRequestController) customersOverviewRequestController.abort();
+  customersOverviewRequestController = new AbortController();
+  const monthLoad = loadCustomersMonthOverview();
+  const message = document.querySelector("#customers-overview-message");
+  message.hidden = true;
+  customersOverviewFilters.setAttribute("aria-busy", "true");
+  ["#customers-summary-total", "#customers-summary-repeat", "#customers-summary-rate", "#customers-summary-bookings"].forEach((selector) => {
+    document.querySelector(selector).textContent = "...";
+  });
+  document.querySelector("#customers-hours-body").innerHTML = '<tr><td colspan="4" class="empty">Loading customers...</td></tr>';
+  document.querySelector("#customers-amount-body").innerHTML = '<tr><td colspan="4" class="empty">Loading customers...</td></tr>';
+  document.querySelector("#recent-customers-body").innerHTML = '<tr><td colspan="6" class="empty">Loading customers...</td></tr>';
+  const query = appendOverviewSpace(new URLSearchParams(), customersOverviewFilters);
+  try {
+    const overview = await api(`/api/admin/overview/customers?${query}`, { signal: customersOverviewRequestController.signal });
+    if (requestToken !== customersOverviewRequestToken) return;
+    renderCustomersOverview(overview);
+  } catch (error) {
+    if (error.name === "AbortError") return;
+    showOverviewError("#customers-overview-message", error);
+  } finally {
+    if (requestToken === customersOverviewRequestToken) customersOverviewFilters.setAttribute("aria-busy", "false");
+    await monthLoad;
   }
 }
 
@@ -1226,6 +1406,7 @@ function loadDashboardAnalytics() {
   return Promise.all([
     loadFundsOverview(),
     loadBookingsOverview(),
+    loadCustomersOverview(),
     loadUnavailabilityOverview(),
   ]);
 }
@@ -1604,6 +1785,17 @@ function syncStudioSelects() {
   ].join("");
   if (studioSettings.some((studio) => studio.id === previousBookingsOverviewSpace)) {
     bookingsOverviewSpaceSelect.value = previousBookingsOverviewSpace;
+  }
+  const customersOverviewSpaceSelect = customersOverviewFilters.elements.space_id;
+  const previousCustomersOverviewSpace = customersOverviewSpaceSelect.value;
+  customersOverviewSpaceSelect.innerHTML = [
+    '<option value="">All Spaces</option>',
+    ...studioSettings.map((studio) =>
+      `<option value="${safeAttr(studio.id)}">${safe(studio.name)}</option>`
+    ),
+  ].join("");
+  if (studioSettings.some((studio) => studio.id === previousCustomersOverviewSpace)) {
+    customersOverviewSpaceSelect.value = previousCustomersOverviewSpace;
   }
   const fundsSpaceSelect = fundsOverviewFilters.elements.space_id;
   const previousFundsSpace = fundsSpaceSelect.value;
