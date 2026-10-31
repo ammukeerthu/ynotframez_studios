@@ -94,7 +94,7 @@ class AdminAvailabilityViewTest(unittest.TestCase):
         self.assertNotIn('data-table-column="studio"', self.html)
         self.assertNotIn('data-table-column="studio"', self.script)
         self.assertIn('value="actions" data-booking-column-toggle checked disabled', self.html)
-        self.assertIn('/static/admin.css?v=20261031-3', self.html)
+        self.assertIn('/static/admin.css?v=20261031-4', self.html)
         self.assertIn('/static/admin.js?v=20261031-3', self.html)
 
     def test_admin_loading_copy_contains_no_encoding_corruption(self) -> None:
@@ -475,6 +475,21 @@ class AdminAvailabilityViewTest(unittest.TestCase):
         self.assertGreaterEqual(self.script.count("refreshAdminSection(activeSection)"), 2)
         self.assertIn('body.innerHTML = bookingEmptyRow("Loading bookings…")', self.script)
         self.assertIn('Loading utilisation…', self.script)
+
+    def test_booking_and_customer_overviews_stack_cleanly_on_mobile(self) -> None:
+        mobile = self.styles.split(
+            "/* Mobile overview pages use stacked records instead of desktop-width tables. */",
+            1,
+        )[1]
+        self.assertIn("@media(max-width:700px)", mobile)
+        self.assertIn(".bookings-summary-stats,\n  .customer-summary-stats { grid-template-columns:minmax(0,1fr); }", mobile)
+        self.assertIn(".customers-overview-content .analytics-table-wrap thead { display:none; }", mobile)
+        self.assertIn(".customers-overview-content .analytics-table-wrap tbody { display:grid; gap:12px; }", mobile)
+        self.assertIn('content:"Payment Status"', mobile)
+        self.assertIn('content:"Booking Amount"', mobile)
+        self.assertIn(".customer-month-stats { grid-template-columns:minmax(0,1fr); }", mobile)
+        self.assertIn(".booking-demand-grid { grid-template-columns:minmax(0,1fr); }", mobile)
+        self.assertIn("white-space:normal", mobile)
 
     def test_dashboard_mutations_block_page_navigation(self) -> None:
         self.assertIn('id="dashboard-operation-loader"', self.html)

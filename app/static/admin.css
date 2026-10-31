@@ -840,3 +840,127 @@ textarea:focus-visible {
   .announcement-settings-actions { align-items:stretch; flex-direction:column; padding:0 18px 18px; }
   .announcement-settings-actions button { width:100%; }
 }
+
+/* Mobile overview pages use stacked records instead of desktop-width tables. */
+@media(max-width:700px) {
+  .bookings-overview-content,
+  .customers-overview-content { gap:14px; margin-top:18px; }
+
+  .bookings-summary-stats,
+  .customer-summary-stats { grid-template-columns:minmax(0,1fr); }
+
+  .bookings-summary-stats article,
+  .customer-summary-stats article { min-height:128px; }
+
+  .bookings-overview-content .analytics-panel,
+  .customers-overview-content .analytics-panel { min-width:0; padding:16px; }
+
+  .bookings-overview-content .analytics-panel-head,
+  .customers-overview-content .analytics-panel-head { align-items:flex-start; flex-direction:column; gap:12px; }
+
+  .bookings-overview-content .analytics-panel-head h3,
+  .customers-overview-content .analytics-panel-head h3 { white-space:normal; font-size:20px; }
+
+  .bookings-overview-content .funds-global-filter,
+  .customers-overview-content .funds-global-filter { justify-content:stretch; }
+
+  .bookings-overview-content .funds-global-filter label,
+  .customers-overview-content .funds-global-filter label,
+  .bookings-overview-content .funds-panel-head label,
+  .customers-overview-content .funds-panel-head label { width:100%; }
+
+  .bookings-overview-content select,
+  .bookings-overview-content input,
+  .customers-overview-content select,
+  .customers-overview-content input { font-size:16px; }
+
+  .bookings-overview-content .upcoming-blocks-date-filters { display:grid; grid-template-columns:1fr; width:100%; }
+  .bookings-overview-content .upcoming-blocks-date-filters label { width:100%; }
+
+  .bookings-overview-content .analytics-table-wrap,
+  .customers-overview-content .analytics-table-wrap { overflow:visible; border:0; background:transparent; }
+
+  .bookings-overview-content .analytics-table-wrap table,
+  .customers-overview-content .analytics-table-wrap table { min-width:0; border-collapse:separate; }
+
+  .bookings-overview-content .analytics-table-wrap thead,
+  .customers-overview-content .analytics-table-wrap thead { display:none; }
+
+  .bookings-overview-content .analytics-table-wrap tbody,
+  .customers-overview-content .analytics-table-wrap tbody { display:grid; gap:12px; }
+
+  .bookings-overview-content .analytics-table-wrap tr,
+  .customers-overview-content .analytics-table-wrap tr { display:block; overflow:hidden; border:1px solid var(--line); background:#fbfaf6; }
+
+  .bookings-overview-content .analytics-table-wrap td,
+  .customers-overview-content .analytics-table-wrap td {
+    display:grid;
+    grid-template-columns:minmax(92px,.42fr) minmax(0,1fr);
+    gap:12px;
+    width:100%;
+    min-width:0;
+    padding:11px 12px;
+    border-top:1px solid var(--line);
+    overflow-wrap:anywhere;
+    white-space:normal;
+  }
+
+  .bookings-overview-content .analytics-table-wrap td:first-child,
+  .customers-overview-content .analytics-table-wrap td:first-child { min-width:0; border-top:0; }
+
+  .bookings-overview-content .analytics-table-wrap td::before,
+  .customers-overview-content .analytics-table-wrap td::before {
+    color:var(--muted);
+    font-size:var(--admin-caption);
+    font-weight:800;
+    letter-spacing:.06em;
+    text-transform:uppercase;
+  }
+
+  .bookings-overview-content .analytics-table-wrap td.empty,
+  .customers-overview-content .analytics-table-wrap td.empty { display:block; padding:26px 16px; text-align:center; }
+
+  .bookings-overview-content .analytics-table-wrap td.empty::before,
+  .customers-overview-content .analytics-table-wrap td.empty::before { display:none; }
+
+  .bookings-overview-content .analytics-table-wrap button { justify-self:start; }
+
+  .expired-bookings-table-wrap td:nth-child(1)::before { content:"Reference"; }
+  .expired-bookings-table-wrap td:nth-child(2)::before { content:"Studio"; }
+  .expired-bookings-table-wrap td:nth-child(3)::before { content:"Date & Time"; }
+  .expired-bookings-table-wrap td:nth-child(4)::before { content:"Customer"; }
+  .expired-bookings-table-wrap td:nth-child(5)::before { content:"Purpose"; }
+  .expired-bookings-table-wrap td:nth-child(6)::before { content:"Payment Status"; }
+  .expired-bookings-table-wrap td:nth-child(7)::before { content:"Actions"; }
+
+  .upcoming-bookings-table-wrap td:nth-child(1)::before { content:"Reference"; }
+  .upcoming-bookings-table-wrap td:nth-child(2)::before { content:"Studio"; }
+  .upcoming-bookings-table-wrap td:nth-child(3)::before { content:"Date & Time"; }
+  .upcoming-bookings-table-wrap td:nth-child(4)::before { content:"Customer"; }
+  .upcoming-bookings-table-wrap td:nth-child(5)::before { content:"Purpose"; }
+
+  .action-centre-table-wrap td:nth-child(1)::before { content:"Attention"; }
+  .action-centre-table-wrap td:nth-child(2)::before { content:"Booking"; }
+  .action-centre-table-wrap td:nth-child(3)::before { content:"Customer"; }
+  .action-centre-table-wrap td:nth-child(4)::before { content:"Date & Time"; }
+  .action-centre-table-wrap td:nth-child(5)::before { content:"Balance"; }
+  .action-centre-table-wrap td:nth-child(6)::before { content:"Action"; }
+
+  .customer-ranking-table-wrap td:nth-child(1)::before { content:"Customer"; }
+  .customer-ranking-table-wrap td:nth-child(2)::before { content:"Bookings"; }
+  .customer-ranking-table-wrap td:nth-child(3)::before { content:"Hours"; }
+  .customer-ranking-table-wrap td:nth-child(4)::before { content:"Amount"; }
+
+  .recent-customers-table-wrap td:nth-child(1)::before { content:"Customer"; }
+  .recent-customers-table-wrap td:nth-child(2)::before { content:"Latest Session"; }
+  .recent-customers-table-wrap td:nth-child(3)::before { content:"Studio"; }
+  .recent-customers-table-wrap td:nth-child(4)::before { content:"Total Bookings"; }
+  .recent-customers-table-wrap td:nth-child(5)::before { content:"Booked Hours"; }
+  .recent-customers-table-wrap td:nth-child(6)::before { content:"Booking Amount"; }
+
+  .customer-month-stats { grid-template-columns:minmax(0,1fr); }
+  .customer-month-stats > article { min-height:118px; }
+
+  .booking-demand-grid { grid-template-columns:minmax(0,1fr); }
+  .popular-slots-card { grid-column:auto; }
+}
