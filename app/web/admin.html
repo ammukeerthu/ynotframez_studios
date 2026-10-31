@@ -9,9 +9,9 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800&amp;display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/admin.css?v=20261031-2">
+  <link rel="stylesheet" href="/static/admin.css?v=20261031-3">
   <script src="/static/studio_cache.js?v=20260908-1" defer></script>
-  <script src="/static/admin.js?v=20261031-2" defer></script>
+  <script src="/static/admin.js?v=20261031-3" defer></script>
 </head>
 <body>
   <section id="login-view" class="login-view" hidden>
@@ -68,6 +68,7 @@
           <div id="settings-submenu" class="section-submenu" aria-label="Settings submenu" hidden>
             <a href="#staff-access">Staff Access</a>
             <a href="#studio-catalogue">Studio Catalogue</a>
+            <a href="#announcement-bar-settings">Announcement Bar</a>
           </div>
         </div>
       </nav>
@@ -472,6 +473,22 @@
         <div class="section-heading"><div><p class="eyebrow">STUDIO CATALOGUE</p></div><p>Changes will be immediately applied.</p></div>
         <div id="studio-settings-message" class="dashboard-message" hidden></div>
         <div id="studio-settings-list" class="studio-settings-list"><p class="settings-empty">Loading studio settings…</p></div>
+      </section>
+
+      <section id="announcement-bar-settings" class="settings-section" data-owner-only>
+        <div class="section-heading"><div><p class="eyebrow">ANNOUNCEMENT BAR</p></div><p>Publish a short news item, alert, offer, or event across the top of every public page.</p></div>
+        <div id="announcement-settings-message" class="dashboard-message" hidden></div>
+        <form id="announcement-settings-form" class="announcement-settings-form">
+          <div id="announcement-settings-preview" class="announcement-settings-preview" data-category="news">
+            <span>PREVIEW</span><p>The announcement bar is currently hidden.</p>
+          </div>
+          <div class="announcement-settings-fields">
+            <label class="announcement-enabled"><input name="enabled" type="checkbox"><span>Show announcement on public pages</span></label>
+            <label><span>CATEGORY</span><select name="category"><option value="news">News</option><option value="alert">Alert</option><option value="offer">Offer</option><option value="event">Event</option></select></label>
+            <label class="announcement-message-field"><span>MESSAGE</span><textarea name="message" maxlength="300" rows="4" placeholder="Enter the announcement shown to visitors"></textarea><small><b id="announcement-character-count">0</b>/300 characters</small></label>
+          </div>
+          <div class="announcement-settings-actions"><p>Disabling the bar keeps the message saved for later.</p><button type="submit">Save announcement</button></div>
+        </form>
       </section>
     </main>
   </div>

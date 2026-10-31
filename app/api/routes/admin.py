@@ -13,6 +13,7 @@ from app.core.booking_rules import CURRENT_TERMS_VERSION
 from app.core.config import settings
 from app.core.database import get_db
 from app.models.availability import AvailabilityBlock
+from app.models.announcement import AnnouncementSetting
 from app.models.admin import AdminUser
 from app.models.booking import Booking, BookingState, PaymentMode, utc_now
 from app.models.notification import AdminNotification
@@ -72,6 +73,7 @@ from app.schemas.admin import (
     AdminStudioUpdate,
 )
 from app.schemas.booking import AvailabilityRequest
+from app.schemas.announcement import AnnouncementResponse, AnnouncementUpdate
 from app.services.admin_auth import (
     create_admin_session,
     hash_admin_password,
@@ -107,6 +109,47 @@ def require_owner(user: AdminUser = Depends(require_admin)) -> AdminUser:
             detail="Owner access is required for this action.",
         )
     return user
+
+
+@router.get(
+    "/announcement",
+    response_model=AnnouncementResponse,
+    dependencies=[Depends(require_owner)],
+)
+def admin_announcement(db: Session = Depends(get_db)) -> AnnouncementResponse:
+    announcement = db.get(AnnouncementSetting, 1)
+    if announcement is None:
+        return AnnouncementResponse(enabled=False, category="news", message="")
+    return AnnouncementResponse(
+        enabled=announcement.is_enabled,
+        category=announcement.category,
+        message=announcement.message,
+    )
+
+
+@router.put(
+    "/announcement",
+    response_model=AnnouncementResponse,
+    dependencies=[Depends(require_owner)],
+)
+def admin_update_announcement(
+    payload: AnnouncementUpdate,
+    db: Session = Depends(get_db),
+) -> AnnouncementResponse:
+    announcement = db.get(AnnouncementSetting, 1)
+    if announcement is None:
+        announcement = AnnouncementSetting(id=1)
+        db.add(announcement)
+    announcement.is_enabled = payload.enabled
+    announcement.category = payload.category
+    announcement.message = payload.message
+    db.commit()
+    db.refresh(announcement)
+    return AnnouncementResponse(
+        enabled=announcement.is_enabled,
+        category=announcement.category,
+        message=announcement.message,
+    )
 
 
 @router.post("/setup", response_model=AdminSessionResponse, status_code=status.HTTP_201_CREATED)

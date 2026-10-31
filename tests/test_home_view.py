@@ -10,12 +10,31 @@ class HomeViewTests(unittest.TestCase):
         cls.booking_html = (project_root / "app" / "web" / "index.html").read_text(encoding="utf-8")
         cls.studio_html = (project_root / "app" / "web" / "studio.html").read_text(encoding="utf-8")
         cls.my_booking_html = (project_root / "app" / "web" / "my_booking.html").read_text(encoding="utf-8")
+        cls.maintenance_html = (project_root / "app" / "web" / "maintenance.html").read_text(encoding="utf-8")
         cls.home_script = (project_root / "app" / "static" / "home.js").read_text(encoding="utf-8")
         cls.booking_script = (project_root / "app" / "static" / "app.js").read_text(encoding="utf-8")
         cls.studio_script = (project_root / "app" / "static" / "studio.js").read_text(encoding="utf-8")
         cls.my_booking_script = (project_root / "app" / "static" / "my_booking.js").read_text(encoding="utf-8")
         cls.cache_script = (project_root / "app" / "static" / "studio_cache.js").read_text(encoding="utf-8")
         cls.marketing_styles = (project_root / "app" / "static" / "marketing.css").read_text(encoding="utf-8")
+        cls.announcement_script = (project_root / "app" / "static" / "announcement.js").read_text(encoding="utf-8")
+        cls.announcement_styles = (project_root / "app" / "static" / "announcement.css").read_text(encoding="utf-8")
+
+    def test_all_public_pages_load_the_owner_managed_announcement_bar(self) -> None:
+        for page in (
+            self.home_html,
+            self.booking_html,
+            self.studio_html,
+            self.my_booking_html,
+            self.maintenance_html,
+        ):
+            self.assertIn('id="public-announcement-bar"', page)
+            self.assertIn('/static/announcement.css?v=20261031-1', page)
+            self.assertIn('/static/announcement.js?v=20261031-1', page)
+        self.assertIn('fetch("/api/announcement", { cache: "no-store"', self.announcement_script)
+        self.assertIn('.textContent = message', self.announcement_script)
+        self.assertIn('if (!announcement.enabled || !message) return;', self.announcement_script)
+        self.assertIn('@media(max-width:620px)', self.announcement_styles)
 
     def test_studio_cards_show_all_amenities_in_an_accessible_slider(self) -> None:
         self.assertIn("space.amenities.map", self.home_script)

@@ -44,6 +44,8 @@ const customersMonth = document.querySelector("#customers-month");
 const unavailabilityOverviewFilters = document.querySelector("#unavailability-overview-filters");
 const staffUserForm = document.querySelector("#staff-user-form");
 const staffUsersList = document.querySelector("#staff-users-list");
+const announcementSettingsForm = document.querySelector("#announcement-settings-form");
+const announcementSettingsPreview = document.querySelector("#announcement-settings-preview");
 const dashboardOperationLoader = document.querySelector("#dashboard-operation-loader");
 let adminBookings = [];
 let studioSettings = [];
@@ -92,7 +94,7 @@ const currency = new Intl.NumberFormat("en-IN", { style: "currency", currency: "
 const adminNavLinks = Array.from(document.querySelectorAll(".admin-shell aside nav a[href^='#']"));
 const adminSections = Array.from(document.querySelectorAll(".admin-shell > main > section[id]"));
 const OVERVIEW_SUBSECTION_IDS = new Set(["funds", "overview-bookings", "customers", "unavailability"]);
-const SETTINGS_SUBSECTION_IDS = new Set(["staff-access", "studio-catalogue"]);
+const SETTINGS_SUBSECTION_IDS = new Set(["staff-access", "studio-catalogue", "announcement-bar-settings"]);
 
 function safe(value) {
   const element = document.createElement("span");
@@ -289,6 +291,9 @@ function refreshAdminSection(sectionId, { studioSettingsLoaded = false } = {}) {
   if (sectionId === "staff-access") return isOwner() ? loadStaffUsers() : Promise.resolve();
   if (sectionId === "studio-catalogue") {
     return studioSettingsLoaded ? Promise.resolve() : loadStudioSettings();
+  }
+  if (sectionId === "announcement-bar-settings") {
+    return isOwner() ? loadAnnouncementSettings() : Promise.resolve();
   }
   return Promise.resolve();
 }
@@ -1818,6 +1823,36 @@ async function loadStudioSettings() {
   }
 }
 
+function renderAnnouncementPreview() {
+  const enabled = announcementSettingsForm.elements.enabled.checked;
+  const category = announcementSettingsForm.elements.category.value;
+  const message = announcementSettingsForm.elements.message.value.trim();
+  const labels = { news: "News", alert: "Alert", offer: "Offer", event: "Event" };
+  document.querySelector("#announcement-character-count").textContent = announcementSettingsForm.elements.message.value.length;
+  announcementSettingsPreview.dataset.category = category;
+  announcementSettingsPreview.querySelector("span").textContent = enabled && message
+    ? labels[category]
+    : "PREVIEW";
+  announcementSettingsPreview.querySelector("p").textContent = enabled && message
+    ? message
+    : "The announcement bar is currently hidden.";
+  announcementSettingsPreview.classList.toggle("is-hidden-preview", !enabled || !message);
+}
+
+async function loadAnnouncementSettings() {
+  if (!isOwner()) return;
+  try {
+    const announcement = await api("/api/admin/announcement");
+    announcementSettingsForm.elements.enabled.checked = announcement.enabled;
+    announcementSettingsForm.elements.category.value = announcement.category;
+    announcementSettingsForm.elements.message.value = announcement.message;
+    renderAnnouncementPreview();
+  } catch (error) {
+    showDashboardMessage("#announcement-settings-message", error.message, { autoHide: false, kind: "error" });
+    if (error.status === 401) handleDashboardError(error);
+  }
+}
+
 function renderStudioSettings() {
   const root = document.querySelector("#studio-settings-list");
   root.innerHTML = studioSettings.map((studio) => `
@@ -2969,6 +3004,33 @@ staffUserForm.addEventListener("submit", async (event) => {
     await loadStaffUsers();
   } catch (error) {
     showDashboardMessage("#staff-users-message", error.message, { autoHide: false, kind: "error" });
+    button.disabled = false;
+  }
+});
+announcementSettingsForm.addEventListener("input", renderAnnouncementPreview);
+announcementSettingsForm.addEventListener("change", renderAnnouncementPreview);
+announcementSettingsForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const button = announcementSettingsForm.querySelector('button[type="submit"]');
+  button.disabled = true;
+  try {
+    const announcement = await api("/api/admin/announcement", {
+      method: "PUT",
+      body: JSON.stringify({
+        enabled: announcementSettingsForm.elements.enabled.checked,
+        category: announcementSettingsForm.elements.category.value,
+        message: announcementSettingsForm.elements.message.value,
+      }),
+    });
+    announcementSettingsForm.elements.enabled.checked = announcement.enabled;
+    announcementSettingsForm.elements.category.value = announcement.category;
+    announcementSettingsForm.elements.message.value = announcement.message;
+    renderAnnouncementPreview();
+    showDashboardMessage("#announcement-settings-message", "Announcement bar settings saved.");
+  } catch (error) {
+    showDashboardMessage("#announcement-settings-message", error.message, { autoHide: false, kind: "error" });
+    if (error.status === 401) handleDashboardError(error);
+  } finally {
     button.disabled = false;
   }
 });

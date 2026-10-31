@@ -2,7 +2,7 @@ from datetime import date, datetime, timedelta
 
 import json
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, Response, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -21,7 +21,9 @@ from app.schemas.booking import (
     WebBookingCreate,
 )
 from app.models.booking import Booking, BookingState, PaymentMode
+from app.models.announcement import AnnouncementSetting
 from app.models.payment import PaymentRecord, PaymentStatus
+from app.schemas.announcement import AnnouncementResponse
 from app.services.payment_service import PaymentService
 from app.services.booking_service import BookingApplicationService, BookingUnavailableError
 from app.services.razorpay_service import RazorpayError, RazorpayService
@@ -32,6 +34,22 @@ from app.services.spaces import (
 )
 
 router = APIRouter(prefix="/api", tags=["Web bookings"])
+
+
+@router.get("/announcement", response_model=AnnouncementResponse)
+def public_announcement(
+    response: Response,
+    db: Session = Depends(get_db),
+) -> AnnouncementResponse:
+    response.headers["Cache-Control"] = "no-store"
+    announcement = db.get(AnnouncementSetting, 1)
+    if announcement is None or not announcement.is_enabled or not announcement.message.strip():
+        return AnnouncementResponse(enabled=False, category="news", message="")
+    return AnnouncementResponse(
+        enabled=True,
+        category=announcement.category,
+        message=announcement.message.strip(),
+    )
 
 
 def _require_public_booking_enabled() -> None:

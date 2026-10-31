@@ -302,6 +302,8 @@ class AdminAuthenticationTest(unittest.TestCase):
 
     def test_owner_only_mutations_and_staff_block_permissions_are_declared(self) -> None:
         owner_only = {
+            ("/api/admin/announcement", "GET"),
+            ("/api/admin/announcement", "PUT"),
             ("/api/admin/staff-users", "GET"),
             ("/api/admin/staff-users", "POST"),
             ("/api/admin/staff-users/{user_id}/reset-password", "POST"),

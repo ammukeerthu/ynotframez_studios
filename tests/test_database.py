@@ -7,7 +7,7 @@ from sqlalchemy.pool import StaticPool
 from sqlalchemy.schema import CreateTable
 
 from app.core.database import Base, apply_schema_compatibility_updates, normalize_database_url
-from app.models import admin, availability, booking, notification, payment, studio  # noqa: F401
+from app.models import admin, announcement, availability, booking, notification, payment, studio  # noqa: F401
 from app.models.studio import StudioPurposeOption, StudioSetting
 from app.services.spaces import seed_studio_settings
 

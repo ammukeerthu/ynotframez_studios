@@ -94,8 +94,8 @@ class AdminAvailabilityViewTest(unittest.TestCase):
         self.assertNotIn('data-table-column="studio"', self.html)
         self.assertNotIn('data-table-column="studio"', self.script)
         self.assertIn('value="actions" data-booking-column-toggle checked disabled', self.html)
-        self.assertIn('/static/admin.css?v=20261031-2', self.html)
-        self.assertIn('/static/admin.js?v=20261031-2', self.html)
+        self.assertIn('/static/admin.css?v=20261031-3', self.html)
+        self.assertIn('/static/admin.js?v=20261031-3', self.html)
 
     def test_admin_loading_copy_contains_no_encoding_corruption(self) -> None:
         for corrupted_marker in ("â", "Â", "ï¿½", "�"):
@@ -218,10 +218,13 @@ class AdminAvailabilityViewTest(unittest.TestCase):
         self.assertIn('id="settings-submenu" class="section-submenu" aria-label="Settings submenu" hidden', self.html)
         self.assertIn('href="#staff-access">Staff Access</a>', self.html)
         self.assertIn('href="#studio-catalogue">Studio Catalogue</a>', self.html)
+        self.assertIn('href="#announcement-bar-settings">Announcement Bar</a>', self.html)
         self.assertNotIn('>i. Staff Access</a>', self.html)
         self.assertNotIn('>ii. Studio Catalogue</a>', self.html)
         self.assertIn('id="staff-access" class="settings-section" data-owner-only', self.html)
         self.assertIn('id="studio-catalogue" class="settings-section" data-owner-only', self.html)
+        self.assertIn('id="announcement-bar-settings" class="settings-section" data-owner-only', self.html)
+        self.assertIn('id="announcement-settings-form"', self.html)
         self.assertNotIn('id="settings" class="settings-section"', self.html)
         self.assertNotIn('href="#settings">Studio settings</a>', self.html)
         self.assertIn('id="add-offline-booking-button" data-owner-only', self.html)
@@ -232,7 +235,9 @@ class AdminAvailabilityViewTest(unittest.TestCase):
         self.assertIn('element.dataset.hiddenByRole = "true"', self.script)
         self.assertIn('if (element.dataset.hiddenByRole === "true")', self.script)
         self.assertNotIn('element.hidden = !isOwner()', self.script)
-        self.assertIn('SETTINGS_SUBSECTION_IDS = new Set(["staff-access", "studio-catalogue"])', self.script)
+        self.assertIn('SETTINGS_SUBSECTION_IDS = new Set(["staff-access", "studio-catalogue", "announcement-bar-settings"])', self.script)
+        self.assertIn('api("/api/admin/announcement")', self.script)
+        self.assertIn('method: "PUT"', self.script)
         self.assertIn('allowedSections.find((section) => section.id === sectionId)', self.script)
         self.assertIn('settingsMenuToggle.addEventListener("click"', self.script)
         self.assertIn('submenu.hidden = expanded', self.script)
@@ -462,6 +467,7 @@ class AdminAvailabilityViewTest(unittest.TestCase):
             "availability": "loadAvailability()",
             "staff-access": "loadStaffUsers()",
             "studio-catalogue": "loadStudioSettings()",
+            "announcement-bar-settings": "loadAnnouncementSettings()",
         }
         for section_id, loader in expected_loaders.items():
             self.assertIn(f'sectionId === "{section_id}"', self.script)
