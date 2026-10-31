@@ -6,6 +6,7 @@
   z-index:100;
   display:flex;
   align-items:center;
+  justify-content:center;
   gap:12px;
   min-height:34px;
   padding:7px 24px;
@@ -25,7 +26,7 @@
   text-transform:uppercase;
   animation:announcement-label-blink 1.4s steps(2,end) infinite;
 }
-.announcement-bar__viewport { min-width:0; flex:1 1 auto; overflow:hidden; }
+.announcement-bar__viewport { width:min(68vw,760px); min-width:0; flex:0 1 760px; overflow:hidden; }
 .announcement-bar__track {
   display:flex;
   width:max-content;
@@ -47,6 +48,7 @@
 @media(max-width:620px) {
   .announcement-bar { gap:9px; padding:7px 14px; }
   .announcement-bar__label { font-size:9px; }
+  .announcement-bar__viewport { width:min(72vw,520px); flex-basis:520px; }
   .announcement-bar__track { font-size:11px; }
   .announcement-bar__message { padding-right:42px; }
 }
