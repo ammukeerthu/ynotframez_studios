@@ -425,8 +425,17 @@ button,input,select,textarea { font:inherit; }
   .admin-shell aside nav { align-items:flex-start; flex-wrap:wrap; overflow:visible; }
   .settings-nav-group,.overview-nav-group { position:relative; display:block; flex:0 0 auto; }
   .section-submenu { position:absolute; z-index:45; top:calc(100% + 8px); right:0; display:grid; width:210px; margin:0; padding:6px; border:1px solid var(--line); background:var(--white); box-shadow:0 15px 35px rgba(25,23,18,.18); animation:account-menu-in-mobile .16s ease-out; }
+  .overview-nav-group .section-submenu { right:auto; left:0; }
   .admin-shell aside nav .section-menu-toggle { width:auto; white-space:nowrap; }
   .admin-shell aside nav .section-submenu a { min-height:40px; padding:0 11px; white-space:normal; }
+}
+@media(max-width:620px){
+  .admin-shell aside nav { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); align-items:start; gap:5px; overflow:visible; }
+  .admin-shell aside nav > a,.settings-nav-group,.overview-nav-group { width:100%; min-width:0; }
+  .settings-nav-group,.overview-nav-group { position:static; display:grid; }
+  .section-submenu,.overview-nav-group .section-submenu { position:static; width:100%; margin:3px 0 0; padding:5px; border:1px solid var(--line); box-shadow:none; animation:none; }
+  .admin-shell aside nav .section-menu-toggle { width:100%; min-width:0; white-space:normal; }
+  .admin-shell aside nav .section-submenu a { min-height:38px; padding:7px 9px; }
 }
 @media(max-width:620px){.staff-user-card-actions{grid-template-columns:1fr}.staff-user-card-actions button{width:100%}.studio-settings-fields{grid-template-columns:1fr;padding:18px}.studio-settings-fields label.span-2,.studio-settings-fields label.full{grid-column:auto}.studio-settings-head{align-items:flex-start;flex-direction:column}.studio-settings-actions{align-items:stretch;flex-direction:column}.studio-settings-actions button{width:100%}}
 

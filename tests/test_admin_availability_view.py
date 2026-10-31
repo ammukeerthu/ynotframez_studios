@@ -94,8 +94,8 @@ class AdminAvailabilityViewTest(unittest.TestCase):
         self.assertNotIn('data-table-column="studio"', self.html)
         self.assertNotIn('data-table-column="studio"', self.script)
         self.assertIn('value="actions" data-booking-column-toggle checked disabled', self.html)
-        self.assertIn('/static/admin.css?v=20261006-3', self.html)
-        self.assertIn('/static/admin.js?v=20261006-3', self.html)
+        self.assertIn('/static/admin.css?v=20261031-1', self.html)
+        self.assertIn('/static/admin.js?v=20261031-1', self.html)
 
     def test_admin_loading_copy_contains_no_encoding_corruption(self) -> None:
         for corrupted_marker in ("â", "Â", "ï¿½", "�"):
@@ -244,6 +244,11 @@ class AdminAvailabilityViewTest(unittest.TestCase):
         self.assertIn(".section-submenu { position:absolute", mobile_settings)
         self.assertIn("display:grid", mobile_settings)
         self.assertNotIn(".section-submenu{display:flex", mobile_settings)
+        phone_settings = self.styles.split('@media(max-width:620px){\n  .admin-shell aside nav {', 1)[1].split("\n}", 1)[0]
+        self.assertIn("grid-template-columns:repeat(2,minmax(0,1fr))", phone_settings)
+        self.assertIn(".section-submenu,.overview-nav-group .section-submenu { position:static", phone_settings)
+        self.assertIn("width:100%", phone_settings)
+        self.assertIn("box-shadow:none", phone_settings)
         self.assertIn('const editable = isOwner() && booking.status === "confirmed";', self.script)
 
     def test_overview_has_separate_funds_bookings_and_unavailability_pages(self) -> None:
