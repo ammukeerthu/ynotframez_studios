@@ -29,12 +29,18 @@ class HomeViewTests(unittest.TestCase):
             self.maintenance_html,
         ):
             self.assertIn('id="public-announcement-bar"', page)
-            self.assertIn('/static/announcement.css?v=20261031-1', page)
-            self.assertIn('/static/announcement.js?v=20261031-1', page)
+            self.assertIn('/static/announcement.css?v=20261031-2', page)
+            self.assertIn('/static/announcement.js?v=20261031-2', page)
+            self.assertIn('class="announcement-bar__track"', page)
+            self.assertIn('class="announcement-bar__message announcement-bar__message-repeat" aria-hidden="true"', page)
         self.assertIn('fetch("/api/announcement", { cache: "no-store"', self.announcement_script)
         self.assertIn('.textContent = message', self.announcement_script)
+        self.assertIn('"--announcement-duration"', self.announcement_script)
         self.assertIn('if (!announcement.enabled || !message) return;', self.announcement_script)
         self.assertIn('@media(max-width:620px)', self.announcement_styles)
+        self.assertIn('@keyframes announcement-ticker', self.announcement_styles)
+        self.assertIn('@keyframes announcement-label-blink', self.announcement_styles)
+        self.assertIn('@media(prefers-reduced-motion:reduce)', self.announcement_styles)
 
     def test_studio_cards_show_all_amenities_in_an_accessible_slider(self) -> None:
         self.assertIn("space.amenities.map", self.home_script)

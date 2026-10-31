@@ -13,8 +13,10 @@
       const message = String(announcement.message || "").trim();
       if (!announcement.enabled || !message) return;
       bar.dataset.category = category;
+      bar.style.setProperty("--announcement-duration", `${Math.max(14, Math.min(45, message.length * 0.18))}s`);
       bar.querySelector(".announcement-bar__label").textContent = labels[category];
-      bar.querySelector(".announcement-bar__message").textContent = message;
+      bar.querySelector(".announcement-bar__message-text").textContent = message;
+      bar.querySelector(".announcement-bar__message-repeat").textContent = message;
       bar.hidden = false;
     })
     .catch(() => {
