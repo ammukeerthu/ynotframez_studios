@@ -41,7 +41,7 @@ from app.schemas.admin import (
     AdminBookingsDayResponse,
     AdminBookingsCapacityResponse,
     AdminBookingConversionResponse,
-    AdminBookingsHeatmapResponse,
+    AdminBookingsDemandResponse,
     AdminBookingsOverviewResponse,
     AdminBookingsPurposeMonthResponse,
     AdminBookingsPurposeYearResponse,
@@ -835,50 +835,6 @@ def admin_bookings_overview(
             }
         )
 
-    dates_in_month = [first_day + timedelta(days=offset) for offset in range(days_in_month)]
-    weekday_occurrences = {
-        weekday: sum(current.weekday() == weekday for current in dates_in_month)
-        for weekday in range(7)
-    }
-    heatmap_counts: dict[tuple[str, int, str], int] = {}
-    for booking in month_bookings:
-        if not booking.space_id or not booking.booking_date or not booking.start_time:
-            continue
-        booking_day = date.fromisoformat(booking.booking_date)
-        start_minutes = time.fromisoformat(booking.start_time).hour * 60 + time.fromisoformat(booking.start_time).minute
-        end_minutes = start_minutes + round((booking.duration_hours or 0) * 60)
-        for slot_minutes in range((start_minutes // 30) * 30, end_minutes, 30):
-            slot = f"{slot_minutes // 60:02d}:{slot_minutes % 60:02d}"
-            key = (booking.space_id, booking_day.weekday(), slot)
-            heatmap_counts[key] = heatmap_counts.get(key, 0) + 1
-
-    utilization_heatmap = []
-    for space in spaces:
-        opening_time = time.fromisoformat(space.opening_time)
-        closing_time = time.fromisoformat(space.closing_time)
-        opening_minutes = opening_time.hour * 60 + opening_time.minute
-        closing_minutes = closing_time.hour * 60 + closing_time.minute
-        for slot_minutes in range(opening_minutes, closing_minutes, 30):
-            slot = f"{slot_minutes // 60:02d}:{slot_minutes % 60:02d}"
-            for weekday in range(7):
-                available_occurrences = weekday_occurrences[weekday]
-                booked_occurrences = heatmap_counts.get((space.id, weekday, slot), 0)
-                utilization_heatmap.append(
-                    {
-                        "space_id": space.id,
-                        "space_name": space.name,
-                        "weekday": weekday,
-                        "time_slot": slot,
-                        "booked_occurrences": booked_occurrences,
-                        "available_occurrences": available_occurrences,
-                        "utilization_percent": round(
-                            booked_occurrences / available_occurrences * 100
-                            if available_occurrences else 0,
-                            1,
-                        ),
-                    }
-                )
-
     booking_items = []
     for booking in day_bookings:
         start = time.fromisoformat(booking.start_time or "00:00")
@@ -1064,7 +1020,6 @@ def admin_bookings_overview(
         bookings=booking_items,
         utilization_month=selected_month,
         studio_utilization=utilization,
-        utilization_heatmap=utilization_heatmap,
         action_items=action_items,
     )
 
@@ -1185,20 +1140,23 @@ def admin_bookings_utilization(
 
 
 @router.get(
-    "/overview/bookings/heatmap",
-    response_model=AdminBookingsHeatmapResponse,
+    "/overview/bookings/demand",
+    response_model=AdminBookingsDemandResponse,
     dependencies=[Depends(require_admin)],
 )
-def admin_bookings_heatmap(
+def admin_bookings_demand(
     month: str | None = Query(default=None, pattern=r"^\d{4}-\d{2}$"),
     db: Session = Depends(get_db),
     space_id: str | None = None,
-) -> AdminBookingsHeatmapResponse:
+) -> AdminBookingsDemandResponse:
     _validate_overview_space(space_id, db)
     first_day, next_month, selected_month = _month_bounds(month)
-    return AdminBookingsHeatmapResponse(
+    demand = _booking_demand_between(first_day, next_month, db, space_id)
+    return AdminBookingsDemandResponse(
         month=selected_month,
-        cells=_utilization_heatmap_between(first_day, next_month, db, space_id),
+        weekdays=demand["weekdays"],
+        time_bands=demand["time_bands"],
+        popular_slots=demand["popular_slots"],
     )
 
 
@@ -1264,12 +1222,12 @@ def _studio_utilization_between(
     return results
 
 
-def _utilization_heatmap_between(
+def _booking_demand_between(
     date_from: date,
     date_to_exclusive: date,
     db: Session,
     space_id: str | None,
-) -> list[dict[str, object]]:
+) -> dict[str, list[dict[str, object]]]:
     statement = select(Booking).where(
         Booking.state == BookingState.CONFIRMED,
         Booking.booking_date >= date_from.isoformat(),
@@ -1278,53 +1236,110 @@ def _utilization_heatmap_between(
     if space_id:
         statement = statement.where(Booking.space_id == space_id)
     bookings = list(db.scalars(statement))
-    dates = [date_from + timedelta(days=offset) for offset in range((date_to_exclusive - date_from).days)]
-    weekday_occurrences = {
-        weekday: sum(current.weekday() == weekday for current in dates)
+
+    weekday_names = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+    weekday_values = {
+        weekday: {"booking_count": 0, "booked_hours": 0.0}
         for weekday in range(7)
     }
-    counts: dict[tuple[str, int, str], int] = {}
+    band_definitions = [
+        ("morning", "Morning", "9 AM to 12 PM", 9 * 60, 12 * 60),
+        ("afternoon", "Afternoon", "12 PM to 5 PM", 12 * 60, 17 * 60),
+        ("evening", "Evening", "5 PM to closing", 17 * 60, 24 * 60),
+    ]
+    band_values = {
+        key: {"booking_count": 0, "booked_hours": 0.0}
+        for key, _, _, _, _ in band_definitions
+    }
+    popular_values: dict[tuple[int, str], dict[str, float | int]] = {}
+
     for booking in bookings:
-        if not booking.space_id or not booking.booking_date or not booking.start_time:
+        if not booking.booking_date or not booking.start_time:
             continue
         booking_day = date.fromisoformat(booking.booking_date)
         start = time.fromisoformat(booking.start_time)
         start_minutes = start.hour * 60 + start.minute
-        end_minutes = start_minutes + round((booking.duration_hours or 0) * 60)
-        for slot_minutes in range((start_minutes // 30) * 30, end_minutes, 30):
-            slot = f"{slot_minutes // 60:02d}:{slot_minutes % 60:02d}"
-            key = (booking.space_id, booking_day.weekday(), slot)
-            counts[key] = counts.get(key, 0) + 1
-
-    cells = []
-    for space in list_spaces(db, include_inactive=True):
-        if space_id and space.id != space_id:
+        duration_minutes = max(0, round(float(booking.duration_hours or 0) * 60))
+        end_minutes = min(24 * 60, start_minutes + duration_minutes)
+        if end_minutes <= start_minutes:
             continue
-        opening = time.fromisoformat(space.opening_time)
-        closing = time.fromisoformat(space.closing_time)
-        opening_minutes = opening.hour * 60 + opening.minute
-        closing_minutes = closing.hour * 60 + closing.minute
-        for slot_minutes in range(opening_minutes, closing_minutes, 30):
-            slot = f"{slot_minutes // 60:02d}:{slot_minutes % 60:02d}"
-            for weekday in range(7):
-                available_occurrences = weekday_occurrences[weekday]
-                booked_occurrences = counts.get((space.id, weekday, slot), 0)
-                cells.append(
-                    {
-                        "space_id": space.id,
-                        "space_name": space.name,
-                        "weekday": weekday,
-                        "time_slot": slot,
-                        "booked_occurrences": booked_occurrences,
-                        "available_occurrences": available_occurrences,
-                        "utilization_percent": round(
-                            booked_occurrences / available_occurrences * 100
-                            if available_occurrences else 0,
-                            1,
-                        ),
-                    }
-                )
-    return cells
+
+        weekday = booking_day.weekday()
+        weekday_values[weekday]["booking_count"] += 1
+        weekday_values[weekday]["booked_hours"] += duration_minutes / 60
+
+        for key, _, _, band_start, band_end in band_definitions:
+            overlap_minutes = max(0, min(end_minutes, band_end) - max(start_minutes, band_start))
+            if overlap_minutes:
+                band_values[key]["booking_count"] += 1
+                band_values[key]["booked_hours"] += overlap_minutes / 60
+
+        slot_key = (weekday, booking.start_time)
+        slot = popular_values.setdefault(slot_key, {"booking_count": 0, "booked_hours": 0.0})
+        slot["booking_count"] += 1
+        slot["booked_hours"] += duration_minutes / 60
+
+    total_weekday_hours = sum(float(item["booked_hours"]) for item in weekday_values.values())
+    weekdays = [
+        {
+            "weekday": weekday,
+            "weekday_name": weekday_names[weekday],
+            "booking_count": int(values["booking_count"]),
+            "booked_hours": round(float(values["booked_hours"]), 1),
+            "share_percent": round(
+                float(values["booked_hours"]) / total_weekday_hours * 100
+                if total_weekday_hours
+                else 0,
+                1,
+            ),
+        }
+        for weekday, values in sorted(
+            weekday_values.items(),
+            key=lambda item: (-float(item[1]["booked_hours"]), item[0]),
+        )
+    ]
+
+    total_band_hours = sum(float(item["booked_hours"]) for item in band_values.values())
+    time_bands = [
+        {
+            "key": key,
+            "label": label,
+            "time_range": time_range,
+            "booking_count": int(band_values[key]["booking_count"]),
+            "booked_hours": round(float(band_values[key]["booked_hours"]), 1),
+            "share_percent": round(
+                float(band_values[key]["booked_hours"]) / total_band_hours * 100
+                if total_band_hours
+                else 0,
+                1,
+            ),
+        }
+        for key, label, time_range, _, _ in band_definitions
+    ]
+
+    popular_slots = [
+        {
+            "weekday": weekday,
+            "weekday_name": weekday_names[weekday],
+            "start_time": start_time,
+            "booking_count": int(values["booking_count"]),
+            "booked_hours": round(float(values["booked_hours"]), 1),
+        }
+        for (weekday, start_time), values in sorted(
+            popular_values.items(),
+            key=lambda item: (
+                -int(item[1]["booking_count"]),
+                -float(item[1]["booked_hours"]),
+                item[0][0],
+                item[0][1],
+            ),
+        )[:5]
+    ]
+    return {
+        "weekdays": weekdays,
+        "time_bands": time_bands,
+        "popular_slots": popular_slots,
+    }
 
 
 def _purpose_utilization_between(

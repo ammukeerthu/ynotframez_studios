@@ -36,7 +36,7 @@ const bookingsUtilisationMonth = document.querySelector("#bookings-utilisation-m
 const bookingsUtilisationYear = document.querySelector("#bookings-utilisation-year");
 const bookingsPurposeMonth = document.querySelector("#bookings-purpose-month");
 const bookingsPurposeYear = document.querySelector("#bookings-purpose-year");
-const bookingsHeatmapMonth = document.querySelector("#bookings-heatmap-month");
+const bookingsDemandMonth = document.querySelector("#bookings-demand-month");
 const bookingsConversionMonth = document.querySelector("#bookings-conversion-month");
 const bookingsCapacityMonth = document.querySelector("#bookings-capacity-month");
 const customersOverviewFilters = document.querySelector("#customers-overview-filters");
@@ -345,7 +345,7 @@ bookingsUtilisationMonth.addEventListener("change", () => loadBookingsUtilisatio
 bookingsUtilisationYear.addEventListener("change", () => loadBookingsYearUtilisationOverview());
 bookingsPurposeMonth.addEventListener("change", () => loadBookingsPurposeMonthOverview());
 bookingsPurposeYear.addEventListener("change", () => loadBookingsPurposeYearOverview());
-bookingsHeatmapMonth.addEventListener("change", () => loadBookingsHeatmapOverview());
+bookingsDemandMonth.addEventListener("change", () => loadBookingsDemandOverview());
 bookingsConversionMonth.addEventListener("change", () => loadBookingsConversionOverview());
 bookingsCapacityMonth.addEventListener("change", () => loadBookingsCapacityOverview());
 customersOverviewFilters.addEventListener("submit", (event) => {
@@ -382,7 +382,7 @@ function setupOverviewFilters() {
   bookingsUtilisationYear.value = currentMonth.slice(0, 4);
   bookingsPurposeMonth.value = currentMonth;
   bookingsPurposeYear.value = currentMonth.slice(0, 4);
-  bookingsHeatmapMonth.value = currentMonth;
+  bookingsDemandMonth.value = currentMonth;
   bookingsConversionMonth.value = currentMonth;
   bookingsCapacityMonth.value = currentMonth;
   customersMonth.value = currentMonth;
@@ -731,66 +731,47 @@ function renderActionCentre(items) {
     : '<tr><td colspan="6" class="empty">Everything is up to date. No operational action is required.</td></tr>';
 }
 
-function renderUtilizationHeatmap(items) {
-  const target = document.querySelector("#utilisation-heatmap");
-  if (!items.length) {
-    target.innerHTML = '<p class="analytics-empty">No studio utilisation data is available.</p>';
+function renderBookingDemand(overview) {
+  const target = document.querySelector("#booking-demand");
+  if (!overview.popular_slots.length) {
+    target.innerHTML = '<p class="analytics-empty">No confirmed bookings are available for this month.</p>';
     return;
   }
-  const weekdays = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
-  const weekdayNames = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
-  const studioIds = [...new Set(items.map((item) => item.space_id))];
-  const guide = `<div class="heatmap-guide">
-    <div><b>HOW TO READ THIS MAP</b><span>Each square is one 30-minute time slot. Darker orange means that slot was booked more often on that weekday during the selected month.</span></div>
-    <div class="heatmap-scale" aria-label="Utilisation colour scale">
-      <span>Never booked</span><i class="heatmap-level-0"></i><i class="heatmap-level-1"></i><i class="heatmap-level-2"></i><i class="heatmap-level-3"></i><i class="heatmap-level-4"></i><span>Always booked</span>
-    </div>
-    <small>Hover, focus, or tap a square to see the exact usage.</small>
-  </div>`;
-  target.innerHTML = guide + studioIds.map((spaceId) => {
-    const studioItems = items.filter((item) => item.space_id === spaceId);
-    const times = [...new Set(studioItems.map((item) => item.time_slot))].sort();
-    const cells = new Map(studioItems.map((item) => [`${item.time_slot}-${item.weekday}`, item]));
-    return `<section class="heatmap-studio">
-      <div class="heatmap-studio-head">
-        <h4>${safe(studioItems[0].space_name)}</h4>
-        <div class="heatmap-hover-details" aria-live="polite"><span>HOVER OR TAP A SLOT</span><strong>See exact usage</strong><small>The cell shows booked occurrences out of matching weekdays.</small></div>
-      </div>
-      <div class="heatmap-scroll"><table class="heatmap-table">
-        <thead><tr><th>Time</th>${weekdays.map((day) => `<th>${day}</th>`).join("")}</tr></thead>
-        <tbody>${times.map((timeSlot) => {
-          const endTime = minutesToTime(timeToMinutes(timeSlot) + 30);
-          return `<tr><th>${safe(displayTime(timeSlot))}<small>to ${safe(displayTime(endTime))}</small></th>${weekdays.map((day, weekday) => {
-          const cell = cells.get(`${timeSlot}-${weekday}`);
-          const percent = Number(cell?.utilization_percent || 0);
-          const booked = Number(cell?.booked_occurrences || 0);
-          const available = Number(cell?.available_occurrences || 0);
-          const level = percent === 0 ? 0 : percent <= 25 ? 1 : percent <= 50 ? 2 : percent <= 75 ? 3 : 4;
-          const weekdayName = weekdayNames[weekday];
-          const schedule = `${weekdayName} · ${displayTime(timeSlot)} to ${displayTime(endTime)}`;
-          const usage = available
-            ? `Booked ${booked} of ${available} matching ${weekdayName}s · ${percent}% utilisation`
-            : `No ${weekdayName}s occur in this month`;
-          const details = `${schedule}. ${usage}.`;
-          return `<td class="heatmap-cell heatmap-level-${level}" tabindex="0" data-schedule="${safeAttr(schedule)}" data-usage="${safeAttr(usage)}" title="${safeAttr(details)}" aria-label="${safeAttr(details)}"><b>${booked}/${available}</b><small>${percent}%</small></td>`;
-        }).join("")}</tr>`;
-        }).join("")}</tbody>
-      </table></div>
-    </section>`;
+  const maxWeekdayHours = Math.max(...overview.weekdays.map((item) => Number(item.booked_hours || 0)), 1);
+  const maxBandHours = Math.max(...overview.time_bands.map((item) => Number(item.booked_hours || 0)), 1);
+  const demandRows = (items, maxHours, label) => items.map((item) => {
+    const width = percentage(Number(item.booked_hours || 0), maxHours);
+    const bookings = `${item.booking_count} booking${item.booking_count === 1 ? "" : "s"}`;
+    const details = `${item[label]}: ${hoursLabel(item.booked_hours)}, ${bookings}`;
+    return `<article class="demand-row">
+      <div><b>${safe(item[label])}</b><span>${safe(hoursLabel(item.booked_hours))} · ${safe(bookings)}</span></div>
+      <div class="demand-track" role="img" aria-label="${safeAttr(details)}"><i style="width:${width}%"></i></div>
+    </article>`;
   }).join("");
-  const showDetails = (cell) => {
-    const details = cell.closest(".heatmap-studio").querySelector(".heatmap-hover-details");
-    details.querySelector("span").textContent = cell.dataset.schedule;
-    details.querySelector("strong").textContent = cell.dataset.usage;
-    details.querySelector("small").textContent = "Darker colour indicates more frequent use of this same weekday and time.";
-    cell.closest(".heatmap-table").querySelectorAll(".heatmap-cell.is-active").forEach((item) => item.classList.remove("is-active"));
-    cell.classList.add("is-active");
-  };
-  target.querySelectorAll(".heatmap-cell").forEach((cell) => {
-    cell.addEventListener("mouseenter", () => showDetails(cell));
-    cell.addEventListener("focus", () => showDetails(cell));
-    cell.addEventListener("click", () => showDetails(cell));
-  });
+  target.innerHTML = `<div class="booking-demand-grid">
+    <section class="demand-card">
+      <header><p>BUSIEST DAYS</p><small>Ranked by booked hours</small></header>
+      <div class="demand-bars">${demandRows(overview.weekdays, maxWeekdayHours, "weekday_name")}</div>
+    </section>
+    <section class="demand-card demand-time-bands">
+      <header><p>BUSIEST TIME OF DAY</p><small>Booked time split into three simple bands</small></header>
+      <div class="demand-bars">${overview.time_bands.map((item) => {
+        const width = percentage(Number(item.booked_hours || 0), maxBandHours);
+        const bookings = `${item.booking_count} booking${item.booking_count === 1 ? "" : "s"}`;
+        const details = `${item.label}, ${item.time_range}: ${hoursLabel(item.booked_hours)}, ${bookings}`;
+        return `<article class="demand-row">
+          <div><b>${safe(item.label)}<small>${safe(item.time_range)}</small></b><span>${safe(hoursLabel(item.booked_hours))} · ${safe(bookings)}</span></div>
+          <div class="demand-track" role="img" aria-label="${safeAttr(details)}"><i style="width:${width}%"></i></div>
+        </article>`;
+      }).join("")}</div>
+    </section>
+    <section class="demand-card popular-slots-card">
+      <header><p>TOP START TIMES</p><small>Most frequently chosen weekday and start time</small></header>
+      <ol class="popular-slots">${overview.popular_slots.map((item, index) => `<li>
+        <span>${index + 1}</span><div><b>${safe(item.weekday_name)}</b><small>${safe(displayTime(item.start_time))}</small></div><strong>${item.booking_count}<small>booking${item.booking_count === 1 ? "" : "s"}</small></strong>
+      </li>`).join("")}</ol>
+    </section>
+  </div>`;
 }
 
 async function loadBookingsUpcomingOverview() {
@@ -881,20 +862,20 @@ async function loadBookingsPurposeYearOverview() {
   }
 }
 
-async function loadBookingsHeatmapOverview() {
-  const chart = document.querySelector("#utilisation-heatmap");
-  chart.innerHTML = '<p class="analytics-empty">Loading utilisation heatmap...</p>';
+async function loadBookingsDemandOverview() {
+  const chart = document.querySelector("#booking-demand");
+  chart.innerHTML = '<p class="analytics-empty">Loading booking demand...</p>';
   const query = appendOverviewSpace(new URLSearchParams({
-    month: bookingsHeatmapMonth.value,
+    month: bookingsDemandMonth.value,
   }), bookingsOverviewFilters);
   try {
-    const overview = await overviewPanelApi("bookings-heatmap", `/api/admin/overview/bookings/heatmap?${query}`);
+    const overview = await overviewPanelApi("bookings-demand", `/api/admin/overview/bookings/demand?${query}`);
     if (!overview) return;
-    document.querySelector("#utilisation-heatmap-title").textContent = monthLabel(overview.month);
-    renderUtilizationHeatmap(overview.cells);
+    document.querySelector("#booking-demand-title").textContent = monthLabel(overview.month);
+    renderBookingDemand(overview);
   } catch (error) {
     showOverviewError("#bookings-overview-message", error);
-    chart.innerHTML = '<p class="analytics-empty">Utilisation heatmap could not be loaded.</p>';
+    chart.innerHTML = '<p class="analytics-empty">Booking demand could not be loaded.</p>';
   }
 }
 
@@ -983,7 +964,7 @@ async function loadBookingsOverview() {
     loadBookingsYearUtilisationOverview(),
     loadBookingsPurposeMonthOverview(),
     loadBookingsPurposeYearOverview(),
-    loadBookingsHeatmapOverview(),
+    loadBookingsDemandOverview(),
     loadBookingsConversionOverview(),
     loadBookingsCapacityOverview(),
   ]);
@@ -998,7 +979,7 @@ async function loadBookingsOverview() {
   document.querySelector("#expired-bookings-body").innerHTML = '<tr><td colspan="7" class="empty">Loading expired bookings...</td></tr>';
   document.querySelector("#action-centre-count").textContent = "Loading actions...";
   document.querySelector("#action-centre-body").innerHTML = '<tr><td colspan="6" class="empty">Loading action centre...</td></tr>';
-  document.querySelector("#utilisation-heatmap").innerHTML = '<p class="analytics-empty">Loading utilisation heatmap...</p>';
+  document.querySelector("#booking-demand").innerHTML = '<p class="analytics-empty">Loading booking demand...</p>';
   document.querySelector("#studio-utilisation-chart").innerHTML = '<p class="analytics-empty">Loading utilisation…</p>';
   const query = new URLSearchParams({ month: bookingsUtilisationMonth.value });
   if (bookingsOverviewFilters.elements.space_id.value) {

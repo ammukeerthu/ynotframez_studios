@@ -23,7 +23,7 @@ from app.api.routes.admin import (
     admin_bookings_day,
     admin_bookings_capacity,
     admin_bookings_conversion,
-    admin_bookings_heatmap,
+    admin_bookings_demand,
     admin_bookings_overview,
     admin_bookings_purpose_month,
     admin_bookings_purpose_year,
@@ -325,7 +325,7 @@ class AdminAuthenticationTest(unittest.TestCase):
             ("/api/admin/overview/bookings/utilization/year", "GET"),
             ("/api/admin/overview/bookings/purposes/month", "GET"),
             ("/api/admin/overview/bookings/purposes/year", "GET"),
-            ("/api/admin/overview/bookings/heatmap", "GET"),
+            ("/api/admin/overview/bookings/demand", "GET"),
             ("/api/admin/overview/bookings/conversion", "GET"),
             ("/api/admin/overview/bookings/capacity", "GET"),
             ("/api/admin/overview/customers", "GET"),
@@ -549,7 +549,7 @@ class AdminAuthenticationTest(unittest.TestCase):
             bookings_year_utilization_panel = admin_bookings_year_utilization(studio_today.year, db)
             bookings_purpose_month_panel = admin_bookings_purpose_month(selected_month, db)
             bookings_purpose_year_panel = admin_bookings_purpose_year(studio_today.year, db)
-            bookings_heatmap_panel = admin_bookings_heatmap(selected_month, db)
+            bookings_demand_panel = admin_bookings_demand(selected_month, db)
             bookings_conversion_panel = admin_bookings_conversion(selected_month, db)
             bookings_capacity_panel = admin_bookings_capacity(selected_month, db)
             customers_overview = admin_customers_overview(db)
@@ -631,7 +631,16 @@ class AdminAuthenticationTest(unittest.TestCase):
                 sum(item.booking_count for item in bookings_purpose_year_panel.purposes),
                 3,
             )
-            self.assertEqual(bookings_heatmap_panel.month, selected_month)
+            self.assertEqual(bookings_demand_panel.month, selected_month)
+            busiest_day = bookings_demand_panel.weekdays[0]
+            self.assertEqual(busiest_day.weekday, studio_today.weekday())
+            self.assertEqual(busiest_day.booking_count, 2)
+            self.assertEqual(busiest_day.booked_hours, 3)
+            demand_bands = {item.key: item for item in bookings_demand_panel.time_bands}
+            self.assertEqual(demand_bands["morning"].booked_hours, 2)
+            self.assertEqual(demand_bands["afternoon"].booked_hours, 1)
+            self.assertEqual(demand_bands["evening"].booked_hours, 0)
+            self.assertEqual(bookings_demand_panel.popular_slots[0].start_time, "10:00")
             self.assertEqual(bookings_conversion_panel.total_requests, 5)
             self.assertEqual(bookings_conversion_panel.confirmed, 3)
             self.assertEqual(bookings_conversion_panel.expired, 1)
@@ -646,15 +655,6 @@ class AdminAuthenticationTest(unittest.TestCase):
             self.assertEqual(customers_month.active_customers, 2)
             self.assertEqual(customers_month.new_customers, 2)
             self.assertEqual([item.space_name for item in bookings.bookings], ["Cube", "Arena"])
-            cube_heatmap_cell = next(
-                item
-                for item in bookings.utilization_heatmap
-                if item.space_id == "standard_small"
-                and item.weekday == studio_today.weekday()
-                and item.time_slot == "10:00"
-            )
-            self.assertEqual(cube_heatmap_cell.booked_occurrences, 1)
-            self.assertGreater(cube_heatmap_cell.utilization_percent, 0)
             action_ids = {item.id for item in bookings.action_items}
             self.assertIn(f"calendar-missing-{future.id}", action_ids)
             self.assertIn(f"payment-{future.id}", action_ids)
@@ -663,10 +663,6 @@ class AdminAuthenticationTest(unittest.TestCase):
             self.assertEqual([item.space_name for item in cube_bookings.bookings], ["Cube"])
             self.assertEqual(
                 {item.space_id for item in cube_bookings.studio_utilization},
-                {"standard_small"},
-            )
-            self.assertEqual(
-                {item.space_id for item in cube_bookings.utilization_heatmap},
                 {"standard_small"},
             )
             self.assertTrue(

@@ -181,14 +181,29 @@ class AdminPurposeUtilizationItem(BaseModel):
     utilization_percent: float
 
 
-class AdminUtilizationHeatmapCell(BaseModel):
-    space_id: str
-    space_name: str
+class AdminBookingDemandWeekdayItem(BaseModel):
     weekday: int
-    time_slot: str
-    booked_occurrences: int
-    available_occurrences: int
-    utilization_percent: float
+    weekday_name: str
+    booking_count: int
+    booked_hours: float
+    share_percent: float
+
+
+class AdminBookingDemandTimeBandItem(BaseModel):
+    key: str
+    label: str
+    time_range: str
+    booking_count: int
+    booked_hours: float
+    share_percent: float
+
+
+class AdminBookingDemandSlotItem(BaseModel):
+    weekday: int
+    weekday_name: str
+    start_time: str
+    booking_count: int
+    booked_hours: float
 
 
 class AdminActionItem(BaseModel):
@@ -221,7 +236,6 @@ class AdminBookingsOverviewResponse(BaseModel):
     bookings: list[AdminOverviewBookingItem]
     utilization_month: str
     studio_utilization: list[AdminStudioUtilizationItem]
-    utilization_heatmap: list[AdminUtilizationHeatmapCell]
     action_items: list[AdminActionItem]
 
 
@@ -236,9 +250,11 @@ class AdminBookingsUtilizationResponse(BaseModel):
     studios: list[AdminStudioUtilizationItem]
 
 
-class AdminBookingsHeatmapResponse(BaseModel):
+class AdminBookingsDemandResponse(BaseModel):
     month: str
-    cells: list[AdminUtilizationHeatmapCell]
+    weekdays: list[AdminBookingDemandWeekdayItem]
+    time_bands: list[AdminBookingDemandTimeBandItem]
+    popular_slots: list[AdminBookingDemandSlotItem]
 
 
 class AdminBookingsUpcomingResponse(BaseModel):

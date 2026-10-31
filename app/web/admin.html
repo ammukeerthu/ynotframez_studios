@@ -9,9 +9,9 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800&amp;display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/admin.css?v=20261031-1">
+  <link rel="stylesheet" href="/static/admin.css?v=20261031-2">
   <script src="/static/studio_cache.js?v=20260908-1" defer></script>
-  <script src="/static/admin.js?v=20261031-1" defer></script>
+  <script src="/static/admin.js?v=20261031-2" defer></script>
 </head>
 <body>
   <section id="login-view" class="login-view" hidden>
@@ -260,10 +260,10 @@
               <div id="purpose-year-chart" class="analytics-bars"><p class="analytics-empty">Loading purposes&hellip;</p></div>
             </div>
           </div>
-          <div class="analytics-panel utilisation-heatmap-panel">
-            <div class="analytics-panel-head funds-panel-head"><div><p>UTILISATION HEATMAP</p><h3 id="utilisation-heatmap-title">Selected month</h3></div><label><span>MONTH &amp; YEAR</span><input id="bookings-heatmap-month" type="month" required></label></div>
-            <small class="analytics-panel-note">Booking frequency by weekday and 30-minute time slot</small>
-            <div id="utilisation-heatmap" class="utilisation-heatmap"><p class="analytics-empty">Loading utilisation heatmap&hellip;</p></div>
+          <div class="analytics-panel booking-demand-panel">
+            <div class="analytics-panel-head funds-panel-head"><div><p>BOOKING DEMAND</p><h3 id="booking-demand-title">Selected month</h3></div><label><span>MONTH &amp; YEAR</span><input id="bookings-demand-month" type="month" required></label></div>
+            <small class="analytics-panel-note">The busiest weekdays, parts of the day, and booking start times</small>
+            <div id="booking-demand" class="booking-demand"><p class="analytics-empty">Loading booking demand&hellip;</p></div>
           </div>
         </div>
       </section>
